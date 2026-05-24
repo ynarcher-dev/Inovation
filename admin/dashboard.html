@@ -38,6 +38,33 @@
           <div data-company-table></div>
         </section>
         <section class="card" style="margin-top:16px">
+          <h2>규정 및 유의사항</h2>
+          <form class="form" data-guidance-form>
+            <div class="grid grid-3">
+              <div class="field">
+                <label for="guidance-title">제목</label>
+                <input id="guidance-title" required>
+              </div>
+              <div class="field">
+                <label for="guidance-link">링크</label>
+                <input id="guidance-link" placeholder="/docs/... 또는 https://...">
+              </div>
+              <div class="field">
+                <label for="guidance-sort">순서</label>
+                <input id="guidance-sort" type="number" value="0">
+              </div>
+            </div>
+            <div class="field">
+              <label for="guidance-content">내용</label>
+              <textarea id="guidance-content" placeholder="창업자 대시보드에 함께 표시할 안내 문구를 입력합니다."></textarea>
+            </div>
+            <div class="actions">
+              <button class="button" type="submit">추가</button>
+            </div>
+          </form>
+          <div style="margin-top:16px" data-guidance-list></div>
+        </section>
+        <section class="card" style="margin-top:16px">
           <h2>최근 신청 건</h2>
           <div data-expense-table></div>
         </section>

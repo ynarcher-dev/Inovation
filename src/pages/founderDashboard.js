@@ -41,7 +41,13 @@ function ManualLinks(links) {
   if (!links?.length) return `<p class="empty">등록된 매뉴얼이 없습니다.</p>`;
   return `
     <div class="manual-list">
-      ${links.map((link) => `<a class="manual-link" href="${encodeURI(link.href)}" target="_blank" rel="noreferrer">${escapeHtml(link.label)}</a>`).join("")}
+      ${links.map((item) => {
+        const title = escapeHtml(item.title || item.label || "-");
+        const content = item.content ? `<span class="muted block">${escapeHtml(item.content)}</span>` : "";
+        return item.link_url || item.href
+          ? `<a class="manual-link" href="${encodeURI(item.link_url || item.href)}" target="_blank" rel="noreferrer"><strong>${title}</strong>${content}</a>`
+          : `<div class="manual-link"><strong>${title}</strong>${content}</div>`;
+      }).join("")}
     </div>
   `;
 }

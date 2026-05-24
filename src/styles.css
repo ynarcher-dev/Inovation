@@ -460,6 +460,13 @@ textarea {
   background: #fff;
 }
 
+.guidance-admin-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
 .login-page {
   min-height: 100vh;
   display: grid;

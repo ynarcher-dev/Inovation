@@ -1,12 +1,6 @@
 import { getSupabase } from "./supabaseClient.js";
 import { generateChecklist } from "./rulesEngine.js";
 
-const manualLinks = [
-  { label: "사업화지원금 주요 비목 및 산정기준", href: "/docs/(000) 2025년 체육인 새싹 사업화지원금 주요 비목 및 산정기준.pdf" },
-  { label: "사업비 집행 유의사항 안내", href: "/docs/체육인창업지원(새싹) 사업 집행 유의사항 안내(예비창업자)_1013_최종.pdf" },
-  { label: "회계 교육자료", href: "/docs/(000) 2025년 체육인 직업안정사업(창업보육) 회계 교육자료_260129.pdf" },
-];
-
 function calculateBudgetSummary(items, expenses) {
   return items.map((item) => {
     const related = expenses.filter((expense) => expense.budget_category === item.budget_category);
@@ -23,6 +17,17 @@ function calculateBudgetSummary(items, expenses) {
       remaining_amount: Number(item.allocated_amount || 0) - approvedAmount - pendingAmount,
     };
   });
+}
+
+async function getGuidanceItems(supabase) {
+  const { data, error } = await supabase
+    .from("guidance_items")
+    .select("*")
+    .eq("active", true)
+    .order("sort_order", { ascending: true })
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  return data || [];
 }
 
 export async function getFounderDashboard() {
@@ -55,13 +60,44 @@ export async function getFounderDashboard() {
   const plan = businessPlans?.[0];
   const businessPlanItems = plan?.business_plan_items || [];
 
+  const guidanceItems = await getGuidanceItems(supabase);
+
   return {
     company: { ...company, business_plan: plan },
     expenses: expenses || [],
     businessPlanItems,
     budgetSummary: calculateBudgetSummary(businessPlanItems, expenses || []),
-    manualLinks,
+    manualLinks: guidanceItems,
   };
+}
+
+export async function getFounderProfile() {
+  const supabase = await getSupabase();
+  if (!supabase) throw new Error("Supabase 설정이 필요합니다.");
+
+  const { data: memberships, error } = await supabase
+    .from("company_members")
+    .select("company_id, companies(*)")
+    .limit(1);
+  if (error) throw error;
+
+  return {
+    company: memberships?.[0]?.companies || null,
+  };
+}
+
+export async function updateFounderProfile(input) {
+  const supabase = await getSupabase();
+  if (!supabase) throw new Error("Supabase 설정이 필요합니다.");
+
+  const { data, error } = await supabase.rpc("update_founder_company_profile", {
+    company_name: input.company_name,
+    representative_name: input.representative_name,
+    business_number: input.business_number || null,
+    phone: input.phone || null,
+  });
+  if (error) throw error;
+  return data;
 }
 
 export async function getAdminDashboard() {
@@ -72,6 +108,7 @@ export async function getAdminDashboard() {
     { data: expenses, error: expenseError },
     { data: companiesData, count, error: countError },
     { data: businessPlans, error: planError },
+    guidanceItems,
   ] = await Promise.all([
     supabase
       .from("expense_requests")
@@ -85,6 +122,7 @@ export async function getAdminDashboard() {
       .from("business_plans")
       .select("company_id, business_plan_items(*)")
       .eq("status", "final"),
+    getGuidanceItems(supabase),
   ]);
   if (expenseError) throw expenseError;
   if (countError) throw countError;
@@ -110,12 +148,44 @@ export async function getAdminDashboard() {
     totalSupportAmount: companies.reduce((sum, company) => sum + Number(company.support_total_amount || 0), 0),
     totalApprovedAmount,
     totalIssueCount: 0,
+    guidanceItems,
     expenses: expensesRows.map((row) => ({
       ...row,
       company_name: row.companies?.name,
       representative_name: row.companies?.representative_name,
     })),
   };
+}
+
+export async function createGuidanceItem(input, adminUserId) {
+  const supabase = await getSupabase();
+  if (!supabase) throw new Error("Supabase 설정이 필요합니다.");
+
+  const { data, error } = await supabase
+    .from("guidance_items")
+    .insert({
+      title: input.title,
+      content: input.content || null,
+      link_url: input.link_url || null,
+      sort_order: Number(input.sort_order || 0),
+      created_by: adminUserId,
+    })
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function deleteGuidanceItem(id) {
+  const supabase = await getSupabase();
+  if (!supabase) throw new Error("Supabase 설정이 필요합니다.");
+
+  const { error } = await supabase
+    .from("guidance_items")
+    .delete()
+    .eq("id", id);
+  if (error) throw error;
+  return { ok: true };
 }
 
 export async function approveCompany(companyId, adminUserId) {
