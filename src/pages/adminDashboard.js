@@ -1,4 +1,4 @@
-import { mountShell, showError, setText } from "../app.js";
+import { mountShell, runWithErrorBoundary, showError, setText } from "../app.js";
 import { requireRole } from "../auth.js";
 import { approveCompany, getAdminDashboard } from "../api.js";
 import { ExpenseTable } from "../components/ExpenseTable.js";
@@ -73,10 +73,11 @@ try {
       document.querySelectorAll("[data-approve-company]").forEach((button) => {
         button.addEventListener("click", async (event) => {
           event.stopPropagation();
-          button.disabled = true;
-          await approveCompany(button.dataset.approveCompany, user.id);
-          dashboard = await getAdminDashboard();
-          render();
+          await runWithErrorBoundary(async () => {
+            await approveCompany(button.dataset.approveCompany, user.id);
+            dashboard = await getAdminDashboard();
+            render();
+          }, { button });
         });
       });
 

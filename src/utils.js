@@ -16,7 +16,9 @@ export function parseNumber(value) {
 
 export function formatDate(value) {
   if (!value) return "-";
-  return new Intl.DateTimeFormat("ko-KR", { dateStyle: "medium" }).format(new Date(value));
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+  return new Intl.DateTimeFormat("ko-KR", { dateStyle: "medium" }).format(date);
 }
 
 export function qs(selector, root = document) {

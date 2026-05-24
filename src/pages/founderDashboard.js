@@ -69,7 +69,7 @@ try {
     setText("[data-support-total]", formatCurrency(company?.support_total_amount));
     setText("[data-business-plan-version]", company?.business_plan?.version || "-");
     setText("[data-business-plan-approved]", formatDate(company?.business_plan?.approved_at));
-    setText("[data-business-plan-file]", company?.business_plan?.filename || "-");
+    setText("[data-business-plan-file]", company?.business_plan?.original_filename || "-");
     setText("[data-approved-total]", formatCurrency(expenses.filter((row) => row.status === "pre_approved").reduce((sum, row) => sum + Number(row.amount_supply || 0), 0)));
     setText("[data-pending-count]", expenses.filter((row) => row.status?.includes("submitted")).length);
     setText("[data-revision-count]", expenses.filter((row) => row.status?.includes("revision")).length);

@@ -7,16 +7,96 @@
     <link rel="stylesheet" href="/src/styles.css">
   </head>
   <body>
-    <main class="login-page">
-      <section class="card login-card">
-        <h1>사업비 집행 도우미</h1>
-        <p class="muted">체육인 창업지원 사업화지원금 사전승인, 검수, 정산을 단계별로 관리합니다.</p>
-        <div class="actions">
-          <a class="button" href="/login.html">로그인</a>
-          <a class="button secondary" href="/development_plan.md">개발 계획 보기</a>
+    <main class="home-page">
+      <header class="home-nav">
+        <a class="home-brand" href="/">
+          <span class="home-brand-mark">Y</span>
+          <span>사업비 집행 도우미</span>
+        </a>
+        <nav class="home-actions" aria-label="주요 메뉴">
+          <a href="/signup.html">창업자 가입</a>
+          <a class="button small" href="/login.html">로그인</a>
+        </nav>
+      </header>
+
+      <section class="home-hero">
+        <div class="home-hero-copy">
+          <p class="eyebrow">체육인 창업지원 사업화지원금 관리</p>
+          <h1>사전승인부터 정산까지, 지출 절차를 한 화면에서 관리합니다.</h1>
+          <p class="home-lead">창업자는 필요한 서류를 놓치지 않고 제출하고, 관리자는 기업별 예산·검토·보완 상태를 빠르게 확인합니다.</p>
+          <div class="actions">
+            <a class="button" href="/login.html">서비스 시작</a>
+            <a class="button secondary" href="/signup.html">창업자 가입 신청</a>
+          </div>
+        </div>
+
+        <div class="product-preview" aria-label="서비스 화면 미리보기">
+          <div class="preview-header">
+            <div>
+              <strong>ABC스포츠</strong>
+              <span>사업비 집행 현황</span>
+            </div>
+            <span class="badge badge-success">승인 완료</span>
+          </div>
+          <div class="preview-metrics">
+            <div>
+              <span>총 지원금</span>
+              <strong>30,000,000원</strong>
+            </div>
+            <div>
+              <span>승인/제출</span>
+              <strong>12,400,000원</strong>
+            </div>
+            <div>
+              <span>보완 요청</span>
+              <strong>1건</strong>
+            </div>
+          </div>
+          <div class="preview-progress">
+            <span style="width:41%"></span>
+          </div>
+          <div class="preview-table">
+            <div class="preview-row preview-row-head">
+              <span>신청 건</span>
+              <span>상태</span>
+              <span>서류</span>
+            </div>
+            <div class="preview-row">
+              <span>홈페이지 개발 외주</span>
+              <span class="status-dot status-info">검토중</span>
+              <span>5/6</span>
+            </div>
+            <div class="preview-row">
+              <span>장비 유지보수</span>
+              <span class="status-dot status-success">승인</span>
+              <span>4/4</span>
+            </div>
+            <div class="preview-row">
+              <span>전문가 멘토링</span>
+              <span class="status-dot status-warning">보완</span>
+              <span>3/5</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="home-workflow" aria-label="핵심 기능">
+        <div>
+          <span>01</span>
+          <strong>사업계획서 기준 신청</strong>
+          <p>등록된 항목과 비목에 맞춰 지출 유형을 제한합니다.</p>
+        </div>
+        <div>
+          <span>02</span>
+          <strong>필수서류 자동 점검</strong>
+          <p>금액, 선금 여부, 지출 유형에 따라 제출 서류를 안내합니다.</p>
+        </div>
+        <div>
+          <span>03</span>
+          <strong>관리자 검토 이력</strong>
+          <p>승인, 반려, 보완 요청을 신청 건별로 관리합니다.</p>
         </div>
       </section>
     </main>
   </body>
 </html>
-

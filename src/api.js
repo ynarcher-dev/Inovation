@@ -154,14 +154,25 @@ export async function getAdminCompanyDetail(companyId) {
     .order("created_at", { ascending: false });
   if (expenseError) throw expenseError;
 
-  const { data: businessPlans, error: planError } = await supabase
-    .from("business_plans")
-    .select("*, business_plan_items(*)")
-    .eq("company_id", companyId)
-    .eq("status", "final")
-    .order("created_at", { ascending: false })
-    .limit(1);
+  const [
+    { data: businessPlans, error: planError },
+    { data: reviewHistory, error: reviewHistoryError },
+  ] = await Promise.all([
+    supabase
+      .from("business_plans")
+      .select("*, business_plan_items(*)")
+      .eq("company_id", companyId)
+      .eq("status", "final")
+      .order("created_at", { ascending: false })
+      .limit(1),
+    supabase
+      .from("reviews")
+      .select("*, expense_requests!inner(id, title, company_id)")
+      .eq("expense_requests.company_id", companyId)
+      .order("created_at", { ascending: false }),
+  ]);
   if (planError) throw planError;
+  if (reviewHistoryError) throw reviewHistoryError;
   const plan = businessPlans?.[0];
   const businessPlanItems = plan?.business_plan_items || [];
 
@@ -170,7 +181,10 @@ export async function getAdminCompanyDetail(companyId) {
     businessPlanItems,
     budgetSummary: calculateBudgetSummary(businessPlanItems, expenses || []),
     expenses: expenses || [],
-    reviewHistory: [],
+    reviewHistory: (reviewHistory || []).map((row) => ({
+      ...row,
+      title: row.expense_requests?.title || "-",
+    })),
   };
 }
 
@@ -263,6 +277,8 @@ export async function reviewExpenseRequest(id, decision, comment, reviewerId) {
     rejected: "rejected",
     revision_requested: "pre_approval_revision_requested",
   };
+  if (!statusMap[decision]) throw new Error("지원하지 않는 검토 결과입니다.");
+
   const { error: reviewError } = await supabase.from("reviews").insert({
     expense_request_id: id,
     reviewer_id: reviewerId,

@@ -1,4 +1,4 @@
-import { mountShell, showError } from "../app.js";
+import { mountShell, runWithErrorBoundary, showError } from "../app.js";
 import { requireRole } from "../auth.js";
 import { createExpense, getFounderDashboard } from "../api.js";
 import { Checklist } from "../components/Checklist.js";
@@ -129,8 +129,10 @@ try {
         window.alert("사업계획서 항목과 지출 유형을 선택해야 합니다.");
         return;
       }
-      const data = await createExpense(readInput(company.id), user);
-      window.location.href = `/founder/expense-detail.html?id=${encodeURIComponent(data.id)}`;
+      await runWithErrorBoundary(async () => {
+        const data = await createExpense(readInput(company.id), user);
+        window.location.href = `/founder/expense-detail.html?id=${encodeURIComponent(data.id)}`;
+      }, { button: event.submitter });
     });
     update();
   }

@@ -15,7 +15,7 @@ export function showError(error) {
   const target = document.querySelector("[data-error]");
   if (target) {
     target.hidden = false;
-    target.textContent = error.message || "처리 중 오류가 발생했습니다.";
+    target.textContent = error?.message || "처리 중 오류가 발생했습니다.";
   }
 }
 
@@ -24,3 +24,15 @@ export function setText(selector, value) {
   if (node) node.textContent = value;
 }
 
+export async function runWithErrorBoundary(action, options = {}) {
+  const button = options.button;
+  try {
+    if (button) button.disabled = true;
+    return await action();
+  } catch (error) {
+    showError(error);
+    return null;
+  } finally {
+    if (button) button.disabled = false;
+  }
+}

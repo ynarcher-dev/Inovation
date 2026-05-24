@@ -74,7 +74,7 @@ try {
     setText("[data-approval-status]", approvalText[company.approval_status] || company.approval_status || "-");
     setText("[data-support-total]", formatCurrency(company.support_total_amount));
     setText("[data-business-plan-version]", company.business_plan?.version || "-");
-    setText("[data-business-plan-file]", company.business_plan?.filename || "-");
+    setText("[data-business-plan-file]", company.business_plan?.original_filename || "-");
     setText("[data-business-plan-approved]", formatDate(company.business_plan?.approved_at));
     document.querySelector("[data-budget-table]").innerHTML = BudgetTable(budgetSummary);
     document.querySelector("[data-expense-table]").innerHTML = ExpenseTable(expenses, { admin: true });

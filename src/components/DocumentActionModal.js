@@ -34,6 +34,7 @@ export function openDocumentActionModal(documentItem, options) {
         <button class="modal-close" type="button" aria-label="닫기">×</button>
       </div>
       <p>${escapeHtml(meta.description)}</p>
+      <p class="error" data-modal-error hidden></p>
       <div class="notice">
         <strong>확인할 내용</strong>
         <ul>
@@ -65,14 +66,28 @@ export function openDocumentActionModal(documentItem, options) {
     if (event.target === backdrop) close();
   });
   backdrop.querySelector("[data-complete-document]").addEventListener("click", async () => {
+    const completeButton = backdrop.querySelector("[data-complete-document]");
+    const errorTarget = backdrop.querySelector("[data-modal-error]");
     const fileInput = backdrop.querySelector("#document-upload-input");
     const file = fileInput?.files?.[0] || null;
     if (meta.action === "upload" && options.requireFile !== false && !file) {
       window.alert("업로드할 파일을 선택해야 합니다.");
       return;
     }
-    await options.onComplete(documentItem, { file });
-    close();
+    try {
+      completeButton.disabled = true;
+      if (errorTarget) errorTarget.hidden = true;
+      await options.onComplete(documentItem, { file });
+      close();
+    } catch (error) {
+      if (errorTarget) {
+        errorTarget.hidden = false;
+        errorTarget.textContent = error?.message || "서류 처리 중 오류가 발생했습니다.";
+      }
+      if (options.onError) options.onError(error);
+    } finally {
+      completeButton.disabled = false;
+    }
   });
 
   document.body.append(backdrop);

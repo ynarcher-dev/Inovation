@@ -1,4 +1,4 @@
-import { mountShell, showError } from "../app.js";
+import { mountShell, runWithErrorBoundary, showError } from "../app.js";
 import { requireRole } from "../auth.js";
 import { getExpenseDetail, markDocumentUploaded, submitExpenseRequest, uploadDocumentFile } from "../api.js";
 import { Checklist } from "../components/Checklist.js";
@@ -61,6 +61,7 @@ try {
               renderChecklist();
               renderFiles();
             },
+            onError: showError,
           });
         });
       });
@@ -76,9 +77,11 @@ try {
     `;
     renderChecklist();
     renderFiles();
-    document.querySelector("[data-submit]").addEventListener("click", async () => {
-      await submitExpenseRequest(expense.id);
-      window.location.reload();
+    document.querySelector("[data-submit]").addEventListener("click", async (event) => {
+      await runWithErrorBoundary(async () => {
+        await submitExpenseRequest(expense.id);
+        window.location.reload();
+      }, { button: event.currentTarget });
     });
   }
 } catch (error) {
