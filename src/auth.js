@@ -46,6 +46,7 @@ async function ensureFounderRegistration(supabase, user) {
     company_name: metadata.company_name,
     business_number: metadata.business_number || null,
     phone: metadata.phone || null,
+    support_program_id: metadata.support_program_id || null,
   });
   if (error) throw error;
 }
@@ -71,6 +72,7 @@ export async function signUpFounder(input) {
       data: {
         founder_name: input.founder_name,
         company_name: input.company_name,
+        support_program_id: input.support_program_id,
         business_number: input.business_number || "",
         phone: input.phone || "",
       },
@@ -85,13 +87,7 @@ export async function signUpFounder(input) {
     };
   }
 
-  const { error: registerError } = await supabase.rpc("register_founder_company", {
-    founder_name: input.founder_name,
-    company_name: input.company_name,
-    business_number: input.business_number || null,
-    phone: input.phone || null,
-  });
-  if (registerError) throw registerError;
+  if (data.user) await ensureFounderRegistration(supabase, data.user);
 
   return { needsConfirmation: false };
 }
@@ -100,6 +96,21 @@ export async function signOut() {
   const supabase = await getSupabase();
   if (!supabase) return;
   await supabase.auth.signOut();
+}
+
+export async function verifyCurrentPassword(password) {
+  const supabase = await getSupabase();
+  if (!supabase) throw new Error("Supabase 설정이 필요합니다.");
+  if (!password) throw new Error("비밀번호를 입력해야 합니다.");
+
+  const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+  if (sessionError) throw sessionError;
+
+  const email = sessionData.session?.user?.email;
+  if (!email) throw new Error("로그인 인증 정보를 찾을 수 없습니다.");
+
+  const { error } = await supabase.auth.signInWithPassword({ email, password });
+  if (error) throw new Error("관리자 비밀번호가 일치하지 않습니다.");
 }
 
 export function redirectByRole(role) {

@@ -1,5 +1,22 @@
 import { showError } from "../app.js";
+import { getSupportPrograms } from "../api.js";
 import { signUpFounder } from "../auth.js";
+import { escapeHtml } from "../utils.js";
+
+function renderSupportPrograms(programs) {
+  const select = document.querySelector("#support_program_id");
+  select.innerHTML = programs.length
+    ? `<option value="">참가 사업을 선택하세요</option>` + programs
+      .map((program) => `<option value="${escapeHtml(program.id)}">${escapeHtml(program.name)}</option>`)
+      .join("")
+    : `<option value="">등록된 참가 사업이 없습니다</option>`;
+}
+
+try {
+  renderSupportPrograms(await getSupportPrograms());
+} catch (error) {
+  showError(error);
+}
 
 document.querySelector("#signup-form").addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -11,6 +28,7 @@ document.querySelector("#signup-form").addEventListener("submit", async (event) 
       email: document.querySelector("#email").value.trim(),
       password: document.querySelector("#password").value,
       company_name: document.querySelector("#company_name").value.trim(),
+      support_program_id: document.querySelector("#support_program_id").value,
       founder_name: document.querySelector("#founder_name").value.trim(),
       business_number: document.querySelector("#business_number").value.trim(),
       phone: document.querySelector("#phone").value.trim(),

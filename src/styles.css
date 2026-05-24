@@ -467,6 +467,30 @@ textarea {
   gap: 12px;
 }
 
+.program-edit-fields {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) 120px;
+  align-items: start;
+  gap: 12px;
+  width: 100%;
+}
+
+.program-edit-fields input[readonly] {
+  background: var(--surface-muted);
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.program-edit-fields label,
+.program-name-code {
+  display: grid;
+  gap: 6px;
+}
+
+.program-name-code {
+  gap: 10px;
+}
+
 .login-page {
   min-height: 100vh;
   display: grid;

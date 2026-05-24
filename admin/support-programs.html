@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="ko">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>참가 사업명 관리</title>
+  <link rel="stylesheet" href="/src/styles.css">
+</head>
+
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand">관리자</div>
+      <nav class="nav">
+        <a href="/admin/dashboard.html">대시보드</a>
+        <a href="/admin/signup-requests.html">가입 신청 관리</a>
+        <a class="active" href="/admin/support-programs.html">참가 사업명 관리</a>
+        <a href="/admin/guidance-items.html">규정 및 유의사항</a>
+        <a href="/admin/expense-requests.html">신청 목록</a>
+        <button data-logout type="button">로그아웃</button>
+      </nav>
+    </aside>
+    <main class="main">
+      <div class="topbar">
+        <div>
+          <h1>참가 사업명 관리</h1>
+          <p class="muted">창업자 가입 화면에 표시할 참가 사업명을 관리합니다.</p>
+        </div>
+      </div>
+      <p class="error" data-error hidden></p>
+      <section class="card">
+        <h2>참가 사업명 추가</h2>
+        <p class="muted">사업 코드는 저장 시 자동 생성되며 수정할 수 없습니다.</p>
+        <form class="form" data-support-program-form>
+          <div class="grid grid-2">
+            <div class="field">
+              <label for="support-program-name">참가 사업명</label>
+              <input id="support-program-name" required>
+              <label for="support-program-code-preview" hidden>사업코드</label>
+              <input id="support-program-code-preview" value="저장 후 자동 생성" hidden>
+            </div>
+            <div class="field">
+              <label for="support-program-sort">순서</label>
+              <input id="support-program-sort" type="number" value="0">
+            </div>
+          </div>
+          <div class="actions">
+            <button class="button" type="submit">추가</button>
+          </div>
+        </form>
+      </section>
+      <section class="card" style="margin-top:16px">
+        <h2>등록된 참가 사업명</h2>
+        <div data-support-program-list></div>
+      </section>
+    </main>
+  </div>
+  <script type="module" src="/src/pages/adminSupportPrograms.js"></script>
+</body>
+
+</html>

@@ -19,13 +19,33 @@ function calculateBudgetSummary(items, expenses) {
   });
 }
 
-async function getGuidanceItems(supabase) {
+async function loadGuidanceItems(supabase) {
   const { data, error } = await supabase
     .from("guidance_items")
     .select("*")
     .eq("active", true)
     .order("sort_order", { ascending: true })
     .order("created_at", { ascending: false });
+  if (error) throw error;
+  return data || [];
+}
+
+export async function getGuidanceItems() {
+  const supabase = await getSupabase();
+  if (!supabase) throw new Error("Supabase 설정이 필요합니다.");
+  return loadGuidanceItems(supabase);
+}
+
+export async function getSupportPrograms() {
+  const supabase = await getSupabase();
+  if (!supabase) throw new Error("Supabase 설정이 필요합니다.");
+
+  const { data, error } = await supabase
+    .from("support_programs")
+    .select("*")
+    .eq("active", true)
+    .order("sort_order", { ascending: true })
+    .order("created_at", { ascending: true });
   if (error) throw error;
   return data || [];
 }
@@ -60,7 +80,7 @@ export async function getFounderDashboard() {
   const plan = businessPlans?.[0];
   const businessPlanItems = plan?.business_plan_items || [];
 
-  const guidanceItems = await getGuidanceItems(supabase);
+  const guidanceItems = await loadGuidanceItems(supabase);
 
   return {
     company: { ...company, business_plan: plan },
@@ -108,7 +128,7 @@ export async function getAdminDashboard() {
     { data: expenses, error: expenseError },
     { data: companiesData, count, error: countError },
     { data: businessPlans, error: planError },
-    guidanceItems,
+    supportPrograms,
   ] = await Promise.all([
     supabase
       .from("expense_requests")
@@ -116,13 +136,13 @@ export async function getAdminDashboard() {
       .order("created_at", { ascending: false }),
     supabase
       .from("companies")
-      .select("*", { count: "exact" })
+      .select("*, support_programs(name)", { count: "exact" })
       .order("created_at", { ascending: false }),
     supabase
       .from("business_plans")
       .select("company_id, business_plan_items(*)")
       .eq("status", "final"),
-    getGuidanceItems(supabase),
+    getSupportPrograms(),
   ]);
   if (expenseError) throw expenseError;
   if (countError) throw countError;
@@ -148,13 +168,61 @@ export async function getAdminDashboard() {
     totalSupportAmount: companies.reduce((sum, company) => sum + Number(company.support_total_amount || 0), 0),
     totalApprovedAmount,
     totalIssueCount: 0,
-    guidanceItems,
+    supportPrograms,
     expenses: expensesRows.map((row) => ({
       ...row,
       company_name: row.companies?.name,
       representative_name: row.companies?.representative_name,
     })),
   };
+}
+
+export async function createSupportProgram(input, adminUserId) {
+  const supabase = await getSupabase();
+  if (!supabase) throw new Error("Supabase 설정이 필요합니다.");
+
+  const { data, error } = await supabase
+    .from("support_programs")
+    .upsert({
+      name: input.name,
+      sort_order: Number(input.sort_order || 0),
+      active: true,
+      created_by: adminUserId,
+    }, { onConflict: "name" })
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function updateSupportProgram(id, input) {
+  const supabase = await getSupabase();
+  if (!supabase) throw new Error("Supabase 설정이 필요합니다.");
+
+  const { data, error } = await supabase
+    .from("support_programs")
+    .update({
+      name: input.name,
+      sort_order: Number(input.sort_order || 0),
+      active: true,
+    })
+    .eq("id", id)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function deleteSupportProgram(id) {
+  const supabase = await getSupabase();
+  if (!supabase) throw new Error("Supabase 설정이 필요합니다.");
+
+  const { error } = await supabase
+    .from("support_programs")
+    .update({ active: false })
+    .eq("id", id);
+  if (error) throw error;
+  return { ok: true };
 }
 
 export async function createGuidanceItem(input, adminUserId) {
@@ -198,6 +266,24 @@ export async function approveCompany(companyId, adminUserId) {
       approval_status: "approved",
       approved_at: new Date().toISOString(),
       approved_by: adminUserId,
+    })
+    .eq("id", companyId)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function rejectCompany(companyId) {
+  const supabase = await getSupabase();
+  if (!supabase) throw new Error("Supabase 설정이 필요합니다.");
+
+  const { data, error } = await supabase
+    .from("companies")
+    .update({
+      approval_status: "rejected",
+      approved_at: null,
+      approved_by: null,
     })
     .eq("id", companyId)
     .select()

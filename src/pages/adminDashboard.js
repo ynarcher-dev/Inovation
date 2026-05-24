@@ -1,6 +1,9 @@
 import { mountShell, runWithErrorBoundary, showError, setText } from "../app.js";
 import { requireRole } from "../auth.js";
-import { approveCompany, createGuidanceItem, deleteGuidanceItem, getAdminDashboard } from "../api.js";
+import {
+  approveCompany,
+  getAdminDashboard,
+} from "../api.js";
 import { ExpenseTable } from "../components/ExpenseTable.js";
 import { escapeHtml, formatCurrency } from "../utils.js";
 
@@ -52,31 +55,13 @@ function CompanyMonitorTable(companies) {
   `;
 }
 
-function GuidanceList(items) {
-  if (!items?.length) return `<p class="empty">등록된 규정 및 유의사항이 없습니다.</p>`;
-  return `
-    <div class="manual-list">
-      ${items.map((item) => `
-        <div class="manual-link guidance-admin-row">
-          <div>
-            <strong>${escapeHtml(item.title)}</strong>
-            ${item.content ? `<span class="muted block">${escapeHtml(item.content)}</span>` : ""}
-            ${item.link_url ? `<span class="muted block">${escapeHtml(item.link_url)}</span>` : ""}
-          </div>
-          <button class="button small danger" type="button" data-delete-guidance="${escapeHtml(item.id)}">삭제</button>
-        </div>
-      `).join("")}
-    </div>
-  `;
-}
-
 try {
   mountShell();
   const user = await requireRole(["admin", "super_admin"]);
   if (user) {
     let dashboard = await getAdminDashboard();
     const render = () => {
-      const { companies, companyCount, expenses, guidanceItems, totalApprovedAmount, totalIssueCount, totalSupportAmount } = dashboard;
+      const { companies, companyCount, expenses, totalApprovedAmount, totalIssueCount, totalSupportAmount } = dashboard;
       setText("[data-user-name]", user.profile.name);
       setText("[data-company-count]", companyCount);
       setText("[data-total-support]", formatCurrency(totalSupportAmount));
@@ -87,7 +72,6 @@ try {
       setText("[data-risk-count]", totalIssueCount ?? expenses.reduce((sum, row) => sum + Number(row.warning_count || 0), 0));
       document.querySelector("[data-company-table]").innerHTML = CompanyMonitorTable(companies);
       document.querySelector("[data-expense-table]").innerHTML = ExpenseTable(expenses, { admin: true });
-      document.querySelector("[data-guidance-list]").innerHTML = GuidanceList(guidanceItems);
 
       document.querySelectorAll("[data-approve-company]").forEach((button) => {
         button.addEventListener("click", async (event) => {
@@ -107,32 +91,7 @@ try {
         });
       });
 
-      document.querySelectorAll("[data-delete-guidance]").forEach((button) => {
-        button.addEventListener("click", async () => {
-          await runWithErrorBoundary(async () => {
-            await deleteGuidanceItem(button.dataset.deleteGuidance);
-            dashboard = await getAdminDashboard();
-            render();
-          }, { button });
-        });
-      });
     };
-
-    document.querySelector("[data-guidance-form]").addEventListener("submit", async (event) => {
-      event.preventDefault();
-      await runWithErrorBoundary(async () => {
-        await createGuidanceItem({
-          title: document.querySelector("#guidance-title").value.trim(),
-          link_url: document.querySelector("#guidance-link").value.trim(),
-          sort_order: document.querySelector("#guidance-sort").value,
-          content: document.querySelector("#guidance-content").value.trim(),
-        }, user.id);
-        event.currentTarget.reset();
-        document.querySelector("#guidance-sort").value = "0";
-        dashboard = await getAdminDashboard();
-        render();
-      }, { button: event.submitter });
-    });
 
     render();
   }
