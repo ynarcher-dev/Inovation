@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>관리자 신청 상세</title>
+    <link rel="stylesheet" href="/src/styles.css">
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">관리자</div>
+        <nav class="nav">
+          <a href="/admin/dashboard.html">대시보드</a>
+          <a href="/admin/expense-requests.html">신청 목록</a>
+          <button data-logout type="button">로그아웃</button>
+        </nav>
+      </aside>
+      <main class="main">
+        <div class="topbar">
+          <div>
+            <h1 data-title>신청 상세</h1>
+            <p data-status></p>
+          </div>
+        </div>
+        <p class="error" data-error hidden></p>
+        <div class="detail-layout">
+          <section class="card">
+            <h2>신청 정보</h2>
+            <div data-summary></div>
+            <form class="form" data-review-form>
+              <div class="field">
+                <label for="comment">검토 의견</label>
+                <textarea id="comment" placeholder="승인/반려/보완 요청 사유를 입력하세요."></textarea>
+              </div>
+              <div class="actions">
+                <button class="button" name="decision" value="approved" type="submit">승인</button>
+                <button class="button secondary" name="decision" value="revision_requested" type="submit">보완 요청</button>
+                <button class="button danger" name="decision" value="rejected" type="submit">반려</button>
+              </div>
+            </form>
+          </section>
+          <aside class="card">
+            <h2>필수서류</h2>
+            <div data-checklist></div>
+          </aside>
+        </div>
+      </main>
+    </div>
+    <script type="module" src="/src/pages/adminExpenseDetail.js"></script>
+  </body>
+</html>

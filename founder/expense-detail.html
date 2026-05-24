@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>지출 신청 상세</title>
+    <link rel="stylesheet" href="/src/styles.css">
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">사업비 집행 도우미</div>
+        <nav class="nav">
+          <a href="/founder/dashboard.html">대시보드</a>
+          <a href="/founder/expense-new.html">새 지출 신청</a>
+          <button data-logout type="button">로그아웃</button>
+        </nav>
+      </aside>
+      <main class="main">
+        <div class="topbar">
+          <div>
+            <h1 data-title>지출 신청 상세</h1>
+            <p data-status></p>
+          </div>
+          <button class="button" data-submit type="button">사전승인 제출</button>
+        </div>
+        <p class="error" data-error hidden></p>
+        <div class="detail-layout">
+          <section class="card">
+            <h2>신청 정보</h2>
+            <div data-summary></div>
+            <h2>업로드 파일</h2>
+            <div data-files></div>
+          </section>
+          <aside class="card">
+            <h2>필수서류</h2>
+            <div data-checklist></div>
+          </aside>
+        </div>
+      </main>
+    </div>
+    <script type="module" src="/src/pages/founderExpenseDetail.js"></script>
+  </body>
+</html>

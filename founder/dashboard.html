@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>창업자 대시보드</title>
+    <link rel="stylesheet" href="/src/styles.css">
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">사업비 집행 도우미</div>
+        <nav class="nav">
+          <a class="active" href="/founder/dashboard.html">대시보드</a>
+          <a href="/founder/expense-new.html">새 지출 신청</a>
+          <button data-logout type="button">로그아웃</button>
+        </nav>
+      </aside>
+      <main class="main">
+        <div class="topbar">
+          <div>
+            <h1>창업자 대시보드</h1>
+            <p class="muted"><span data-user-name></span>님의 사업비 진행 현황입니다.</p>
+          </div>
+          <a class="button" data-new-expense-link href="/founder/expense-new.html">새 지출 신청</a>
+        </div>
+        <p class="error" data-error hidden></p>
+        <p class="notice" data-approval-notice hidden></p>
+        <section class="grid grid-3">
+          <div class="card metric"><span>기업명</span><strong data-company-name>-</strong></div>
+          <div class="card metric"><span>대표자</span><strong data-representative>-</strong></div>
+          <div class="card metric"><span>협약기간</span><strong data-agreement>-</strong></div>
+          <div class="card metric"><span>총 지원금</span><strong data-support-total>-</strong></div>
+          <div class="card metric"><span>승인 완료 금액</span><strong data-approved-total>-</strong></div>
+          <div class="card metric"><span>제출/보완</span><strong><span data-pending-count>0</span> / <span data-revision-count>0</span></strong></div>
+        </section>
+        <section class="grid grid-2" style="margin-top:16px">
+          <div class="card">
+            <h2>최종 사업계획서</h2>
+            <p><strong>버전</strong> <span data-business-plan-version>-</span></p>
+            <p><strong>승인일</strong> <span data-business-plan-approved>-</span></p>
+            <p><strong>파일</strong> <span data-business-plan-file>-</span></p>
+            <p class="muted">사업계획서는 관리자가 업로드한 최종 승인본을 기준으로 고정됩니다.</p>
+          </div>
+          <div class="card">
+            <h2>규정 및 유의사항</h2>
+            <div data-manual-links></div>
+          </div>
+        </section>
+        <section class="card" style="margin-top:16px">
+          <h2>비목별 사업화지원금 현황</h2>
+          <div data-budget-summary></div>
+        </section>
+        <section class="card" style="margin-top:16px">
+          <h2>최근 지출 신청</h2>
+          <div data-expense-table></div>
+        </section>
+      </main>
+    </div>
+    <script type="module" src="/src/pages/founderDashboard.js"></script>
+  </body>
+</html>

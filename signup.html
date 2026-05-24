@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>창업자 가입 | 사업비 집행 도우미</title>
+    <link rel="stylesheet" href="/src/styles.css">
+  </head>
+  <body>
+    <main class="login-page">
+      <section class="card login-card">
+        <h1>창업자 가입</h1>
+        <p class="muted">가입 후 관리자가 기업을 승인하면 지출 신청을 진행할 수 있습니다.</p>
+        <form class="form" id="signup-form">
+          <div class="field">
+            <label for="email">이메일</label>
+            <input id="email" type="email" autocomplete="email" required>
+          </div>
+          <div class="field">
+            <label for="password">비밀번호</label>
+            <input id="password" type="password" autocomplete="new-password" minlength="6" required>
+          </div>
+          <div class="field">
+            <label for="company_name">기업명</label>
+            <input id="company_name" required>
+          </div>
+          <div class="field">
+            <label for="founder_name">대표자명</label>
+            <input id="founder_name" required>
+          </div>
+          <div class="field">
+            <label for="business_number">사업자등록번호</label>
+            <input id="business_number" placeholder="000-00-00000">
+          </div>
+          <div class="field">
+            <label for="phone">연락처</label>
+            <input id="phone" autocomplete="tel">
+          </div>
+          <p class="error" data-error hidden></p>
+          <p class="notice" data-result hidden></p>
+          <div class="actions">
+            <button class="button" type="submit">가입 신청</button>
+            <a class="button secondary" href="/login.html">로그인으로 돌아가기</a>
+          </div>
+        </form>
+      </section>
+    </main>
+    <script type="module" src="/src/pages/signup.js"></script>
+  </body>
+</html>

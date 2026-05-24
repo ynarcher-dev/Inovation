@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>관리자 대시보드</title>
+    <link rel="stylesheet" href="/src/styles.css">
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">관리자</div>
+        <nav class="nav">
+          <a class="active" href="/admin/dashboard.html">대시보드</a>
+          <a href="/admin/expense-requests.html">신청 목록</a>
+          <button data-logout type="button">로그아웃</button>
+        </nav>
+      </aside>
+      <main class="main">
+        <div class="topbar">
+          <div>
+            <h1>관리자 대시보드</h1>
+            <p class="muted"><span data-user-name></span> 관리자 계정입니다.</p>
+          </div>
+        </div>
+        <p class="error" data-error hidden></p>
+        <section class="grid grid-3">
+          <div class="card metric"><span>창업자 기업</span><strong data-company-count>0</strong></div>
+          <div class="card metric"><span>총 지원금</span><strong data-total-support>0원</strong></div>
+          <div class="card metric"><span>승인/제출 금액</span><strong data-total-approved>0원</strong></div>
+          <div class="card metric"><span>총 집행률</span><strong data-execution-rate>0%</strong></div>
+          <div class="card metric"><span>사전승인 제출</span><strong data-submitted-count>0</strong></div>
+          <div class="card metric"><span>보완 요청</span><strong data-revision-count>0</strong></div>
+          <div class="card metric"><span>위험 경고</span><strong data-risk-count>0</strong></div>
+        </section>
+        <section class="card" style="margin-top:16px">
+          <h2>전체 기업 모니터링</h2>
+          <div data-company-table></div>
+        </section>
+        <section class="card" style="margin-top:16px">
+          <h2>최근 신청 건</h2>
+          <div data-expense-table></div>
+        </section>
+      </main>
+    </div>
+    <script type="module" src="/src/pages/adminDashboard.js"></script>
+  </body>
+</html>
