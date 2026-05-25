@@ -1,6 +1,6 @@
 import { mountShell, showError, setText } from "../app.js";
 import { requireRole } from "../auth.js";
-import { getFounderDashboard } from "../api.js";
+import { getFounderDashboard, getGuidanceDownloadUrl } from "../api.js";
 import { ExpenseTable } from "../components/ExpenseTable.js";
 import { escapeHtml, formatCurrency, formatDate } from "../utils.js";
 
@@ -43,10 +43,10 @@ function ManualLinks(links) {
     <div class="manual-list">
       ${links.map((item) => {
         const title = escapeHtml(item.title || item.label || "-");
-        const content = item.content ? `<span class="muted block">${escapeHtml(item.content)}</span>` : "";
-        return item.link_url || item.href
-          ? `<a class="manual-link" href="${encodeURI(item.link_url || item.href)}" target="_blank" rel="noreferrer"><strong>${title}</strong>${content}</a>`
-          : `<div class="manual-link"><strong>${title}</strong>${content}</div>`;
+        const linkUrl = item.link_url || item.href;
+        return linkUrl
+          ? `<a class="manual-link" href="${encodeURI(linkUrl)}" target="_blank" rel="noreferrer" data-guidance-link="${escapeHtml(linkUrl)}"><strong>${title}</strong></a>`
+          : `<div class="manual-link"><strong>${title}</strong></div>`;
       }).join("")}
     </div>
   `;
@@ -81,6 +81,15 @@ try {
     setText("[data-revision-count]", expenses.filter((row) => row.status?.includes("revision")).length);
     document.querySelector("[data-budget-summary]").innerHTML = BudgetSummaryTable(budgetSummary);
     document.querySelector("[data-manual-links]").innerHTML = ManualLinks(manualLinks);
+    document.querySelectorAll("[data-guidance-link]").forEach((link) => {
+      link.addEventListener("click", async (event) => {
+        const linkUrl = link.dataset.guidanceLink;
+        if (!linkUrl?.startsWith("r2://")) return;
+        event.preventDefault();
+        const downloadUrl = await getGuidanceDownloadUrl(linkUrl);
+        window.open(downloadUrl, "_blank", "noopener,noreferrer");
+      });
+    });
     document.querySelector("[data-expense-table]").innerHTML = ExpenseTable(expenses);
   }
 } catch (error) {

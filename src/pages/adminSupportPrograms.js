@@ -81,13 +81,18 @@ function SupportProgramList(items) {
             </label>
           </div>
           <div class="actions">
-            <button class="button small secondary" type="button" data-save-support-program="${escapeHtml(item.id)}">저장</button>
-            <button class="button small danger" type="button" data-delete-support-program="${escapeHtml(item.id)}">삭제</button>
+            <button class="button small secondary icon-button" type="button" data-save-support-program="${escapeHtml(item.id)}" aria-label="저장" title="저장">💾</button>
+            <button class="button small danger icon-button" type="button" data-delete-support-program="${escapeHtml(item.id)}" aria-label="삭제" title="삭제">🗑️</button>
           </div>
         </div>
       `).join("")}
     </div>
   `;
+}
+
+function getNextSortOrder(items) {
+  const maxSortOrder = (items || []).reduce((max, item) => Math.max(max, Number(item.sort_order || 0)), 0);
+  return maxSortOrder + 10;
 }
 
 try {
@@ -140,10 +145,9 @@ try {
       await runWithErrorBoundary(async () => {
         await createSupportProgram({
           name: document.querySelector("#support-program-name").value.trim(),
-          sort_order: document.querySelector("#support-program-sort").value,
+          sort_order: getNextSortOrder(supportPrograms),
         }, user.id);
         form.reset();
-        document.querySelector("#support-program-sort").value = "0";
         supportPrograms = await getSupportPrograms();
         render();
       }, { button: event.submitter });

@@ -1,5 +1,5 @@
 import { mountShell, runWithErrorBoundary, showError } from "../app.js";
-import { createGuidanceItem, deleteGuidanceItem, getGuidanceItems } from "../api.js";
+import { createGuidanceItem, deleteGuidanceItem, getGuidanceItems, getGuidanceDownloadUrl, uploadGuidanceFile } from "../api.js";
 import { requireRole } from "../auth.js";
 import { escapeHtml } from "../utils.js";
 
@@ -11,14 +11,18 @@ function GuidanceList(items) {
         <div class="manual-link guidance-admin-row">
           <div>
             <strong>${escapeHtml(item.title)}</strong>
-            ${item.content ? `<span class="muted block">${escapeHtml(item.content)}</span>` : ""}
-            ${item.link_url ? `<span class="muted block">${escapeHtml(item.link_url)}</span>` : ""}
+            ${item.link_url ? `<button class="button small secondary guidance-file-button" type="button" data-open-guidance="${escapeHtml(item.link_url)}">첨부파일 열기</button>` : ""}
           </div>
           <button class="button small danger" type="button" data-delete-guidance="${escapeHtml(item.id)}">삭제</button>
         </div>
       `).join("")}
     </div>
   `;
+}
+
+function getNextSortOrder(items) {
+  const maxSortOrder = (items || []).reduce((max, item) => Math.max(max, Number(item.sort_order || 0)), 0);
+  return maxSortOrder + 10;
 }
 
 try {
@@ -38,20 +42,28 @@ try {
           }, { button });
         });
       });
+      document.querySelectorAll("[data-open-guidance]").forEach((button) => {
+        button.addEventListener("click", async () => {
+          await runWithErrorBoundary(async () => {
+            const url = await getGuidanceDownloadUrl(button.dataset.openGuidance);
+            window.open(url, "_blank", "noopener,noreferrer");
+          }, { button });
+        });
+      });
     };
 
     document.querySelector("[data-guidance-form]").addEventListener("submit", async (event) => {
       event.preventDefault();
       const form = event.currentTarget;
       await runWithErrorBoundary(async () => {
+        const file = document.querySelector("#guidance-file").files?.[0] || null;
+        const upload = file ? await uploadGuidanceFile(file) : null;
         await createGuidanceItem({
           title: document.querySelector("#guidance-title").value.trim(),
-          link_url: document.querySelector("#guidance-link").value.trim(),
-          sort_order: document.querySelector("#guidance-sort").value,
-          content: document.querySelector("#guidance-content").value.trim(),
+          link_url: upload?.link_url || null,
+          sort_order: getNextSortOrder(guidanceItems),
         }, user.id);
         form.reset();
-        document.querySelector("#guidance-sort").value = "0";
         guidanceItems = await getGuidanceItems();
         render();
       }, { button: event.submitter });

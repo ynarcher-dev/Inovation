@@ -244,6 +244,56 @@ export async function createGuidanceItem(input, adminUserId) {
   return data;
 }
 
+export async function uploadGuidanceFile(file) {
+  const supabase = await getSupabase();
+  if (!supabase) throw new Error("Supabase 설정이 필요합니다.");
+  if (!file) return null;
+
+  const { data: signedUrl, error: functionError } = await supabase.functions.invoke("create-guidance-upload-url", {
+    body: {
+      filename: file.name,
+      mime_type: file.type || "application/octet-stream",
+      size_bytes: file.size,
+    },
+  });
+  if (functionError) throw functionError;
+  if (!signedUrl?.upload_url || !signedUrl?.link_url) {
+    throw new Error("R2 업로드 URL을 받지 못했습니다.");
+  }
+
+  const uploadResponse = await fetch(signedUrl.upload_url, {
+    method: "PUT",
+    headers: {
+      "Content-Type": file.type || "application/octet-stream",
+    },
+    body: file,
+  });
+  if (!uploadResponse.ok) {
+    throw new Error(`R2 업로드 실패: ${uploadResponse.status}`);
+  }
+
+  return {
+    link_url: signedUrl.link_url,
+    s3_bucket: signedUrl.s3_bucket,
+    s3_key: signedUrl.s3_key,
+    original_filename: file.name,
+  };
+}
+
+export async function getGuidanceDownloadUrl(linkUrl) {
+  const supabase = await getSupabase();
+  if (!supabase) throw new Error("Supabase 설정이 필요합니다.");
+  if (!linkUrl) throw new Error("다운로드할 파일 링크가 없습니다.");
+  if (!linkUrl.startsWith("r2://")) return linkUrl;
+
+  const { data, error } = await supabase.functions.invoke("create-guidance-download-url", {
+    body: { link_url: linkUrl },
+  });
+  if (error) throw error;
+  if (!data?.download_url) throw new Error("다운로드 URL을 받지 못했습니다.");
+  return data.download_url;
+}
+
 export async function deleteGuidanceItem(id) {
   const supabase = await getSupabase();
   if (!supabase) throw new Error("Supabase 설정이 필요합니다.");
