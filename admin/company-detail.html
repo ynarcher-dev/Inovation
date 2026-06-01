@@ -4,18 +4,87 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>기업 상세 관리</title>
-    <link rel="stylesheet" href="/src/styles.css">
+    <link rel="stylesheet" href="../src/styles.css">
+    <style>
+      .support-total-form { display: flex; gap: 6px; align-items: center; }
+      .support-total-form input { flex: 1; min-width: 0; font-weight: 600; font-size: 15px; }
+      .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+      .card.metric { padding: 12px 16px; }
+      .card.metric span { font-size: 11px; }
+      .card.metric strong { font-size: 16px; }
+      .budget-matrix {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 14px;
+      }
+      .budget-matrix th,
+      .budget-matrix td {
+        border: 1px solid #e5e7eb;
+        padding: 8px 12px;
+        vertical-align: middle;
+      }
+      .budget-matrix thead th {
+        background: #f3f4f6;
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        color: #6b7280;
+        text-align: left;
+      }
+      .budget-matrix thead th.budget-amount { text-align: right; }
+      .budget-matrix .hierarchy-cell {
+        font-weight: 500;
+        text-align: left;
+        background: #ffffff;
+      }
+      .budget-matrix .hierarchy-level-1 { background: #f9fafb; font-weight: 600; }
+      .budget-matrix .hierarchy-level-2 { background: #fcfcfd; }
+      .budget-matrix .hierarchy-empty { background: #ffffff; }
+      .budget-matrix .budget-amount {
+        text-align: right;
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap;
+      }
+      .budget-matrix .budget-amount.danger { color: #b91c1c; }
+      .budget-matrix .budget-amount.success { color: #047857; }
+      .budget-matrix .subtotal-row td { background: #fef3c7; font-weight: 600; }
+      .budget-matrix .subtotal-row .subtotal-label { text-align: right; }
+      .budget-tree-category { color: #6b7280; font-size: 12px; font-weight: 400; margin-left: 4px; }
+      .budget-alloc-input { width: 100%; text-align: right; box-sizing: border-box; }
+      .subtotal-tag {
+        display: inline-block;
+        margin-right: 6px;
+        padding: 1px 6px;
+        border-radius: 4px;
+        background: #d97706;
+        color: #ffffff;
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.02em;
+        vertical-align: middle;
+      }
+      /* 비목 매핑 하이라이트 */
+      .budget-matrix tr.leaf-row { cursor: pointer; transition: background 0.15s; }
+      .budget-matrix tr.leaf-row:hover td { background: #eff6ff !important; }
+      .budget-matrix tr.budget-category-highlight td { background: #dbeafe !important; outline: 2px solid #3b82f6; outline-offset: -2px; }
+      [data-expense-table] tr[data-budget-category] { cursor: pointer; transition: background 0.15s; }
+      [data-expense-table] tr[data-budget-category]:hover td { background: #f0fdf4 !important; }
+      [data-expense-table] tr.expense-category-highlight td { background: #dcfce7 !important; outline: 2px solid #22c55e; outline-offset: -2px; }
+
+
+    </style>
   </head>
   <body>
     <div class="app-shell">
       <aside class="sidebar">
         <div class="brand">관리자</div>
         <nav class="nav">
-          <a href="/admin/dashboard.html">대시보드</a>
-          <a href="/admin/signup-requests.html">가입 신청 관리</a>
-          <a href="/admin/support-programs.html">참가 사업명 관리</a>
-          <a href="/admin/guidance-items.html">규정 및 유의사항</a>
-          <a href="/admin/expense-requests.html">신청 목록</a>
+          <a href="./dashboard.html">대시보드</a>
+          <a href="./signup-requests.html">가입 신청 관리</a>
+          <a href="./support-programs.html">참가 사업명 관리</a>
+          <a href="./program-management.html">참가 사업 관리</a>
+          <a href="./companies.html">기업 목록</a>
           <button data-logout type="button">로그아웃</button>
         </nav>
       </aside>
@@ -23,43 +92,90 @@
         <div class="topbar">
           <div>
             <h1 data-company-name>기업 상세 관리</h1>
-            <p class="muted">사업계획서, 비목별 잔액, 지출 이력, 보완 히스토리를 확인합니다.</p>
+            <p class="muted">사업계획서, 비목별 잔액, 지출 이력을 확인하고 심사 의견을 조율합니다.</p>
           </div>
         </div>
         <p class="error" data-error hidden></p>
-        <section class="grid grid-3">
+        <section class="grid-4">
           <div class="card metric"><span>대표자</span><strong data-representative>-</strong></div>
           <div class="card metric"><span>사업자등록번호</span><strong data-business-number>-</strong></div>
           <div class="card metric"><span>승인 상태</span><strong data-approval-status>-</strong></div>
-          <div class="card metric"><span>총 지원금</span><strong data-support-total>-</strong></div>
-        </section>
-        <section class="grid grid-2" style="margin-top:16px">
-          <div class="card">
-            <h2>최종 사업계획서</h2>
-            <p><strong>버전</strong> <span data-business-plan-version>-</span></p>
-            <p><strong>파일</strong> <span data-business-plan-file>-</span></p>
-            <p><strong>승인일</strong> <span data-business-plan-approved>-</span></p>
-            <p class="muted">MVP에서는 업로드 UI 대신 최종 승인본 기준 정보를 표시합니다.</p>
-          </div>
-          <div class="card">
-            <h2>관리자 메모</h2>
-            <textarea placeholder="기업별 관리 메모를 입력합니다. MVP에서는 저장하지 않습니다."></textarea>
+          <div class="card metric">
+            <span>총 지원금</span>
+            <form class="support-total-form" data-support-total-form>
+              <input data-support-total-input type="text" inputmode="numeric" placeholder="0">
+              <span>원</span>
+              <button class="button small" type="submit">저장</button>
+            </form>
           </div>
         </section>
-        <section class="card" style="margin-top:16px">
-          <h2>사업계획서 항목 및 비목별 잔액</h2>
-          <div data-budget-table></div>
+
+        <!-- 배정 예산안 심사 영역 -->
+        <section class="card" id="budget-review-section" style="margin-top: 16px;">
+          <h2>배정 예산안 심사</h2>
+          <p class="muted">스타트업이 배정한 예산안에 대해 검토 의견을 적고 승인/보완요청/반려를 결정합니다.</p>
+          <div style="display: flex; gap: 12px; margin-top: 12px; align-items: flex-start;">
+            <textarea id="budget-review-comment" placeholder="보완요청 또는 반려 시 구체적인 사유를 작성하세요." style="flex: 1; height: 64px; box-sizing: border-box;"></textarea>
+            <div style="display: flex; gap: 8px;">
+              <button class="button" id="btn-approve-budget" type="button" style="background-color: #10b981; border-color: #10b981;">승인</button>
+              <button class="button warning" id="btn-revision-budget" type="button" style="background-color: #f59e0b; border-color: #f59e0b;">보완요청</button>
+              <button class="button danger" id="btn-reject-budget" type="button" style="background-color: #ef4444; border-color: #ef4444;">반려</button>
+            </div>
+          </div>
         </section>
-        <section class="card" style="margin-top:16px">
-          <h2>지출 신청 이력</h2>
-          <div data-expense-table></div>
-        </section>
-        <section class="card" style="margin-top:16px">
-          <h2>서류 보완/반려 히스토리</h2>
-          <div data-review-history></div>
-        </section>
+
+        <!-- Tabs Navigation -->
+        <div class="tabs-nav">
+          <button class="tab-button active" data-tab="tab-expense" type="button">지출/이력</button>
+          <button class="tab-button" data-tab="tab-budget" type="button">예산 관리</button>
+          <button class="tab-button" data-tab="tab-plan" type="button">파일관리</button>
+        </div>
+
+        <!-- Tab 1: 지출 신청 및 이력 (Active by default) -->
+        <div id="tab-expense" class="tab-content active">
+          <section class="card">
+            <h2>지출 신청 현황</h2>
+            <p class="muted">기업이 등록한 지출 신청 목록입니다. 신청 제목을 클릭하여 지출 신청서 상세 화면으로 이동합니다.</p>
+            <div data-expense-table></div>
+
+            <div class="review-history-section">
+              <h2>심사 이력 히스토리</h2>
+              <p class="muted">이 기업의 전체 지출 건에 대한 심사 이력(승인, 보완 요청, 반려 등)이 최신순으로 나열됩니다.</p>
+              <div data-review-history></div>
+            </div>
+          </section>
+        </div>
+
+        <!-- Tab 2: 예산 및 비목 잔액 -->
+        <div id="tab-budget" class="tab-content">
+          <section class="card">
+            <h2>항목 및 비목별 잔액</h2>
+            <p class="muted">참가 사업의 예산/비목 구조를 따릅니다. 말단(리프) 항목에 배정 금액을 입력하면 자동으로 저장됩니다.</p>
+            <div data-budget-tree></div>
+          </section>
+        </div>
+
+        <!-- Tab 3: 사업계획서 및 메모 -->
+        <div id="tab-plan" class="tab-content">
+          <section class="grid grid-2">
+            <div class="card">
+              <h2>최종 사업계획서 & 증빙</h2>
+              <p><strong>버전</strong> <span data-business-plan-version>-</span></p>
+              <p><strong>파일</strong> <span data-business-plan-file>-</span></p>
+              <p><strong>승인일</strong> <span data-business-plan-approved>-</span></p>
+              <hr style="border: 0; border-top: 1px solid var(--line); margin: 12px 0;">
+              <button class="button" id="btn-download-all-docs" type="button" style="width: 100%;">📦 증빙 서류 일괄 다운로드 (ZIP)</button>
+            </div>
+            <div class="card">
+              <h2>관리자 내부 메모</h2>
+              <textarea id="admin-internal-memo" placeholder="기업별 관리 메모를 입력합니다. 저장 시 관리자 간 공유됩니다." style="width: 100%; height: 100px; box-sizing: border-box;"></textarea>
+              <button class="button small" id="btn-save-memo" type="button" style="margin-top: 8px;">메모 저장</button>
+            </div>
+          </section>
+        </div>
       </main>
     </div>
-    <script type="module" src="/src/pages/adminCompanyDetail.js"></script>
+    <script type="module" src="../src/pages/adminCompanyDetail.js"></script>
   </body>
 </html>
+

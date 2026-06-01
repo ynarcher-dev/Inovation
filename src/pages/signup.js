@@ -37,14 +37,15 @@ document.querySelector("#signup-form").addEventListener("submit", async (event) 
     resultTarget.hidden = false;
     resultTarget.textContent = result.needsConfirmation
       ? result.message
-      : "가입 신청이 완료되었습니다. 관리자 승인 후 지출 신청을 진행할 수 있습니다.";
+      : "가입 신청이 완료되었습니다. 예산 및 비목 승인 후 지출 신청을 진행할 수 있습니다.";
 
     if (!result.needsConfirmation) {
       window.setTimeout(() => {
-        window.location.href = "/founder/dashboard.html";
+        window.location.href = "./founder/dashboard.html";
       }, 1200);
     }
   } catch (error) {
     showError(error);
   }
 });
+

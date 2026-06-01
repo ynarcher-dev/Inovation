@@ -1,4 +1,4 @@
-import { mountShell, runWithErrorBoundary, showError } from "../app.js";
+﻿import { mountShell, runWithErrorBoundary, showError } from "../app.js";
 import { approveCompany, getAdminDashboard, rejectCompany } from "../api.js";
 import { requireRole } from "../auth.js";
 import { escapeHtml, formatDate } from "../utils.js";
@@ -28,7 +28,7 @@ function SignupTable(companies, options = {}) {
         <tbody>
           ${companies.map((company) => `
             <tr>
-              <td><a href="/admin/company-detail.html?id=${encodeURIComponent(company.id)}">${escapeHtml(company.name)}</a></td>
+              <td><a href="company-detail.html?id=${encodeURIComponent(company.id)}">${escapeHtml(company.name)}</a></td>
               <td>${escapeHtml(company.representative_name || "-")}</td>
               <td>${escapeHtml(company.business_number || "-")}</td>
               <td>${escapeHtml(company.support_programs?.name || "-")}</td>
@@ -86,3 +86,4 @@ try {
 } catch (error) {
   showError(error);
 }
+

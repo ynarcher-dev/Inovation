@@ -1,11 +1,7 @@
-﻿import { mountShell, runWithErrorBoundary, showError, setText } from "../app.js";
+import { mountShell, runWithErrorBoundary, setText, showError } from "../app.js";
+import { approveCompany, getAdminDashboard } from "../api.js";
 import { requireRole } from "../auth.js";
-import {
-  approveCompany,
-  getAdminDashboard,
-} from "../api.js";
-import { ExpenseTable } from "../components/ExpenseTable.js";
-import { escapeHtml, formatCurrency } from "../utils.js";
+import { escapeHtml, formatCurrency, formatDate } from "../utils.js";
 
 const approvalText = {
   pending: "승인 대기",
@@ -22,7 +18,10 @@ function CompanyMonitorTable(companies) {
           <tr>
             <th>기업</th>
             <th>대표자</th>
+            <th>사업자등록번호</th>
+            <th>참가 사업</th>
             <th>승인 상태</th>
+            <th>가입일</th>
             <th>총 지원금</th>
             <th>승인/제출 금액</th>
             <th>진행률</th>
@@ -31,13 +30,22 @@ function CompanyMonitorTable(companies) {
         </thead>
         <tbody>
           ${companies.map((company) => {
-            const used = (company.budgetSummary || []).reduce((sum, row) => sum + Number(row.approved_amount || 0) + Number(row.pending_amount || 0), 0);
-            const rate = company.support_total_amount ? Math.round((used / Number(company.support_total_amount)) * 100) : 0;
+            const used = (company.budgetSummary || []).reduce(
+              (sum, row) => sum + Number(row.approved_amount || 0) + Number(row.pending_amount || 0),
+              0,
+            );
+            const rate = company.support_total_amount
+              ? Math.round((used / Number(company.support_total_amount)) * 100)
+              : 0;
+            const programName = company.support_programs?.name || "-";
             return `
               <tr data-company-row data-company-id="${escapeHtml(company.id)}">
                 <td><a href="company-detail.html?id=${encodeURIComponent(company.id)}">${escapeHtml(company.name)}</a></td>
                 <td>${escapeHtml(company.representative_name || "-")}</td>
+                <td>${escapeHtml(company.business_number || "-")}</td>
+                <td>${escapeHtml(programName)}</td>
                 <td>${escapeHtml(approvalText[company.approval_status] || company.approval_status || "-")}</td>
+                <td>${formatDate(company.created_at)}</td>
                 <td>${formatCurrency(company.support_total_amount)}</td>
                 <td>${formatCurrency(used)}</td>
                 <td>${rate}%</td>
@@ -60,20 +68,13 @@ try {
   const user = await requireRole(["admin", "super_admin"]);
   if (user) {
     let dashboard = await getAdminDashboard();
-    const render = () => {
-      const { companies, companyCount, expenses, totalApprovedAmount, totalIssueCount, totalSupportAmount } = dashboard;
-      setText("[data-user-name]", user.profile.name);
-      setText("[data-company-count]", companyCount);
-      setText("[data-total-support]", formatCurrency(totalSupportAmount));
-      setText("[data-total-approved]", formatCurrency(totalApprovedAmount));
-      setText("[data-execution-rate]", totalSupportAmount ? `${Math.round((Number(totalApprovedAmount || 0) / Number(totalSupportAmount || 1)) * 100)}%` : "0%");
-      setText("[data-submitted-count]", expenses.filter((row) => row.status === "pre_approval_submitted").length);
-      setText("[data-revision-count]", expenses.filter((row) => row.status?.includes("revision")).length);
-      setText("[data-risk-count]", totalIssueCount ?? expenses.reduce((sum, row) => sum + Number(row.warning_count || 0), 0));
-      document.querySelector("[data-company-table]").innerHTML = CompanyMonitorTable(companies);
-      document.querySelector("[data-expense-table]").innerHTML = ExpenseTable(expenses, { admin: true });
+    const container = document.querySelector("[data-company-table]");
 
-      document.querySelectorAll("[data-approve-company]").forEach((button) => {
+    const render = () => {
+      setText("[data-user-name]", user.profile.name);
+      container.innerHTML = CompanyMonitorTable(dashboard.companies);
+
+      container.querySelectorAll("[data-approve-company]").forEach((button) => {
         button.addEventListener("click", async (event) => {
           event.stopPropagation();
           await runWithErrorBoundary(async () => {
@@ -84,13 +85,12 @@ try {
         });
       });
 
-      document.querySelectorAll("[data-company-row]").forEach((row) => {
+      container.querySelectorAll("[data-company-row]").forEach((row) => {
         row.addEventListener("click", (event) => {
           if (event.target.closest("a, button")) return;
           window.location.href = `company-detail.html?id=${encodeURIComponent(row.dataset.companyId)}`;
         });
       });
-
     };
 
     render();
@@ -98,4 +98,3 @@ try {
 } catch (error) {
   showError(error);
 }
-

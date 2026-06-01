@@ -1,11 +1,12 @@
-import { signOut } from "./auth.js";
+﻿import { signOut } from "./auth.js";
 import { qsa } from "./utils.js";
 
 export function mountShell() {
   qsa("[data-logout]").forEach((button) => {
     button.addEventListener("click", async () => {
       await signOut();
-      window.location.href = "/login.html";
+      const isSubFolder = window.location.pathname.includes("/admin/") || window.location.pathname.includes("/founder/");
+      window.location.href = isSubFolder ? "../login.html" : "login.html";
     });
   });
 }
@@ -36,3 +37,4 @@ export async function runWithErrorBoundary(action, options = {}) {
     if (button) button.disabled = false;
   }
 }
+

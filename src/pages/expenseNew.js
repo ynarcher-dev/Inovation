@@ -99,14 +99,14 @@ try {
   mountShell();
   const user = await requireRole(["founder"]);
   if (user) {
-    const { businessPlanItems, company } = await getFounderDashboard();
+    const { budgetSummary, company } = await getFounderDashboard();
     if (company?.approval_status !== "approved") {
-      window.alert("관리자 승인 완료 후 지출 신청을 생성할 수 있습니다.");
-      window.location.href = "/founder/dashboard.html";
-      throw new Error("관리자 승인 대기 중입니다.");
+      window.alert("예산 및 비목 승인 완료 후 지출 신청을 생성할 수 있습니다.");
+      window.location.href = "dashboard.html";
+      throw new Error("예산 및 비목 승인 대기 중입니다.");
     }
-    planItems = businessPlanItems || [];
-    renderBusinessPlanOptions(businessPlanItems);
+    planItems = budgetSummary || [];
+    renderBusinessPlanOptions(budgetSummary);
     renderExpenseTypeOptions();
     const form = document.querySelector("#expense-form");
     document.querySelectorAll("[data-money-input]").forEach((input) => {
@@ -125,13 +125,22 @@ try {
     form.addEventListener("change", update);
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
-      if (!getSelectedBusinessPlanItem() || !document.querySelector("#expense_type").value) {
-        window.alert("사업계획서 항목과 지출 유형을 선택해야 합니다.");
+      const planItem = getSelectedBusinessPlanItem();
+      if (!planItem || !document.querySelector("#expense_type").value) {
+        window.alert("예산 항목과 지출 유형을 선택해야 합니다.");
         return;
       }
+      
+      const inputVal = readInput(company.id);
+      // Validate remaining amount limit
+      if (inputVal.amount_supply > Number(planItem.remaining_amount || 0)) {
+        window.alert(`신청 금액(공급가액 기준 ${formatNumber(inputVal.amount_supply)}원)이 해당 비목의 집행 잔액(${formatNumber(planItem.remaining_amount)}원)을 초과하여 신청할 수 없습니다.`);
+        return;
+      }
+
       await runWithErrorBoundary(async () => {
-        const data = await createExpense(readInput(company.id), user);
-        window.location.href = `/founder/expense-detail.html?id=${encodeURIComponent(data.id)}`;
+        const data = await createExpense(inputVal, user);
+        window.location.href = `expense-detail.html?id=${encodeURIComponent(data.id)}`;
       }, { button: event.submitter });
     });
     update();
@@ -139,3 +148,4 @@ try {
 } catch (error) {
   showError(error);
 }
+

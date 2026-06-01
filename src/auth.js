@@ -1,128 +1,40 @@
-import { getSupabase } from "./supabaseClient.js";
-
-const LOGIN_ALIASES = {
-  admin: "admin@yna.local",
-  founder: "founder@yna.local",
-  user: "founder@yna.local",
-};
+import {
+  mockGetCurrentUser,
+  mockSignIn,
+  mockSignUpFounder,
+  mockSignOut,
+  mockVerifyCurrentPassword,
+} from "./mockApi.js";
 
 export function normalizeLoginId(value) {
+  const LOGIN_ALIASES = {
+    admin: "admin@yna.local",
+    founder: "founder@yna.local",
+    user: "founder@yna.local",
+  };
   const trimmed = String(value || "").trim();
   return LOGIN_ALIASES[trimmed] || trimmed;
 }
 
-export async function getCurrentUser() {
-  const supabase = await getSupabase();
-  if (!supabase) return null;
-
-  const { data: sessionData } = await supabase.auth.getSession();
-  const user = sessionData.session?.user;
-  if (!user) return null;
-
-  const { data: profile, error } = await supabase
-    .from("profiles")
-    .select("*")
-    .eq("user_id", user.id)
-    .single();
-
-  if (error) throw error;
-  return { ...user, profile };
-}
-
-async function ensureFounderRegistration(supabase, user) {
-  const { data: existingProfile, error: profileError } = await supabase
-    .from("profiles")
-    .select("id")
-    .eq("user_id", user.id)
-    .maybeSingle();
-  if (profileError) throw profileError;
-  if (existingProfile) return;
-
-  const metadata = user.user_metadata || {};
-  if (!metadata.company_name || !metadata.founder_name) return;
-
-  const { error } = await supabase.rpc("register_founder_company", {
-    founder_name: metadata.founder_name,
-    company_name: metadata.company_name,
-    business_number: metadata.business_number || null,
-    phone: metadata.phone || null,
-    support_program_id: metadata.support_program_id || null,
-  });
-  if (error) throw error;
-}
-
-export async function signIn(loginId, password) {
-  const supabase = await getSupabase();
-  if (!supabase) throw new Error("Supabase 설정이 필요합니다.");
-  const email = normalizeLoginId(loginId);
-  const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-  if (error) throw error;
-  if (data.user) await ensureFounderRegistration(supabase, data.user);
-  return data;
-}
-
-export async function signUpFounder(input) {
-  const supabase = await getSupabase();
-  if (!supabase) throw new Error("Supabase 설정이 필요합니다.");
-
-  const { data, error } = await supabase.auth.signUp({
-    email: input.email,
-    password: input.password,
-    options: {
-      data: {
-        founder_name: input.founder_name,
-        company_name: input.company_name,
-        support_program_id: input.support_program_id,
-        business_number: input.business_number || "",
-        phone: input.phone || "",
-      },
-    },
-  });
-  if (error) throw error;
-
-  if (!data.session) {
-    return {
-      needsConfirmation: true,
-      message: "가입 확인 메일을 확인한 뒤 로그인해 주세요.",
-    };
-  }
-
-  if (data.user) await ensureFounderRegistration(supabase, data.user);
-
-  return { needsConfirmation: false };
-}
-
-export async function signOut() {
-  const supabase = await getSupabase();
-  if (!supabase) return;
-  await supabase.auth.signOut();
-}
-
-export async function verifyCurrentPassword(password) {
-  const supabase = await getSupabase();
-  if (!supabase) throw new Error("Supabase 설정이 필요합니다.");
-  if (!password) throw new Error("비밀번호를 입력해야 합니다.");
-
-  const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
-  if (sessionError) throw sessionError;
-
-  const email = sessionData.session?.user?.email;
-  if (!email) throw new Error("로그인 인증 정보를 찾을 수 없습니다.");
-
-  const { error } = await supabase.auth.signInWithPassword({ email, password });
-  if (error) throw new Error("관리자 비밀번호가 일치하지 않습니다.");
-}
+export const getCurrentUser = mockGetCurrentUser;
+export const signIn = mockSignIn;
+export const signUpFounder = mockSignUpFounder;
+export const signOut = mockSignOut;
+export const verifyCurrentPassword = mockVerifyCurrentPassword;
 
 export function redirectByRole(role) {
+  const isSubFolder = window.location.pathname.includes("/admin/") || window.location.pathname.includes("/founder/");
+  const base = isSubFolder ? "../" : "./";
   window.location.href = role === "admin" || role === "super_admin"
-    ? "/admin/dashboard.html"
-    : "/founder/dashboard.html";
+    ? `${base}admin/dashboard.html`
+    : `${base}founder/dashboard.html`;
 }
 
 export async function requireRole(allowedRoles) {
   const user = await getCurrentUser();
   if (!user) {
-    window.location.href = "/login.html";
+    const isSubFolder = window.location.pathname.includes("/admin/") || window.location.pathname.includes("/founder/");
+    window.location.href = isSubFolder ? "../login.html" : "login.html";
     return null;
   }
   if (!allowedRoles.includes(user.profile.role)) {

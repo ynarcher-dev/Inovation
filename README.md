@@ -1,124 +1,100 @@
 # 체육인 창업지원 사업비 집행 도우미
 
-체육인 직업안정사업/창업지원 새싹 과정의 사업화지원금 사전승인, 집행 증빙, 검수, 정산을 돕는 웹 시스템 개발 저장소입니다.
+본 시스템은 스타트업 액셀러레이터가 스타트업에게 지원하는 사업화 자금의 예산 수립, 지출 신청, 검토, 승인 및 정산 절차를 돕는 웹 서비스입니다. 
+창업자와 관리자 간의 유기적인 협업을 통해 오집행을 방지하고 정산 업무를 효율화하는 것을 목표로 합니다.
 
-## 현재 문서
+---
 
-- `update.md`: 앞으로 반영할 개발 항목과 최근 변경 기록
-- `rules.md`: 업데이트 과정에서도 임의로 바꾸면 안 되는 고정 규칙
-- `docs/`: 사업비 집행 지침, 양식, 루모스V2 참고자료 원문
+## 1. 서비스 개요 및 권장 기술 스택
 
-## 목표
+* **목표**: 창업자는 규정을 몰라도 시스템 안내에 따라 올바르게 사업비를 집행하고, 관리자는 누락 서류와 집행 현황을 한눈에 검토 및 보완 요청합니다.
+* **Frontend**: HTML5 + CSS + ESM JavaScript (Tailwind CSS 미사용, 순수 CSS/Vanilla JS 지향)
+* **Auth/DB**: Supabase Auth + PostgreSQL
+* **File Storage**: Cloudflare R2 private bucket (Presigned URL 통신)
+* **AI Engine**: Gemini API (증빙 서류 분석 및 규정 검토 보조)
 
-- 창업자는 복잡한 사업비 절차를 화면 안내에 따라 진행합니다.
-- 관리자는 창업자별 진행 상태, 누락 서류, 위험 항목을 확인합니다.
-- Gemini API는 문서 분류, 금액 추출, 누락 점검, 규정 Q&A를 보조합니다.
+---
 
-## 권장 스택
+## 2. 역할별 주요 화면 및 기능 개요
 
-- Frontend: HTML5 + CSS + ESM JavaScript
-- Auth/DB: Supabase Auth + PostgreSQL
-- File Storage: Cloudflare R2 private bucket
-- Backend: Supabase Edge Functions 또는 Node.js API
-- AI: Gemini API
+### 2.1 창업자(스타트업) 페이지
 
-## 다음 개발 단계
+창업자가 자신의 지원금 집행 상태를 모니터링하고 지출을 신청하는 페이지입니다.
 
-1. Supabase 스키마와 RLS 정책 작성
-2. HTML5+ESM 기본 앱 구조 생성
-3. 로그인 및 역할별 라우팅 구현
-4. 창업자 지출 신청/체크리스트 MVP 구현
-5. 관리자 검토 화면 구현
-6. R2 파일 업로드와 Gemini 문서 분석 연결
+#### 1) 상단 인포메이션 및 대시보드
+* **기업 정보**: 기업명, 대표자명, 참가 프로젝트명, 협약 기간 표시.
+* **지원금 및 자부담금 요약**: 
+  * 승인된 지원금 예산 및 자부담금 매칭액(`self_payment_required_amount`) 표시.
+  * 실제 최종 승인 완료된 집행 금액 및 예산 대비 총 집행률(%) 실시간 계산.
+* **지출 상태 카운터**: 지출 신청 건의 상태별 건수(승인 완료, 보완요청, 반려 건수) 표시.
+  * 보완요청 건수 클릭 시, 관리자의 피드백 내용을 확인하고 즉시 보완할 수 있는 동선 제공.
+* **사업계획서**: 관리자가 업로드한 최종 승인 사업계획서 다운로드 링크.
+* **공통 안내사항**: 액셀러레이터가 등록한 집행 지침 공지사항 및 규정 PDF 파일(복수 등록 지원) 다운로드.
 
-## 로컬 실행
+#### 2) 탭 관리 기능
+* **지출 이력**: 신청된 지출 건들의 히스토리 리스트. 각 신청건의 진행 단계 및 심사 의견 조회.
+* **예산 관리**: 테이블 형태로 제공되는 실시간 예산 매트릭스.
+  * 대분류 - 중분류 - 소분류 트리 구조에 따른 예산 배정액, 승인액, 집행 신청액, 집행 잔액 표시.
+  * 부가세(VAT)는 사업비 대상이 아니므로 공급가액 기준으로 잔액을 차감하며, 화면상에서 공급가액과 부가세를 명확히 구분하여 표기.
 
-정적 파일 서버로 실행합니다.
+#### 3) 계정 및 프로필 관리
+* 기업명, 대표자명, 사업자등록번호, 대표 연락처 등을 수정할 수 있는 관리 기능.
 
-```powershell
-python -m http.server 8080
-```
+---
 
-브라우저에서 `http://localhost:8080`을 엽니다.
+### 2.2 관리자(어드민) 페이지
 
-현재 Supabase URL과 publishable key는 `src/config.js`에 설정되어 있습니다.
+액셀러레이터 담당자가 프로그램과 기업을 운영하고, 제출된 지출 건을 심사하는 관리 페이지입니다.
 
-로그인 화면은 Supabase Auth 계정으로 동작합니다.
+#### 1) 대시보드 (업무 처리 파이프라인)
+* 로그인 즉시 관리자가 처리해야 하는 업무를 직관적으로 파악할 수 있는 **Todo 보드** 제공.
+  * 가입 승인 대기 건수, 예산안 승인 대기 건수, 지출/증빙 승인 대기 건수 배지 및 바로가기 제공.
 
-초기 계정:
+#### 2) 가입 신청 관리
+* 창업자 가입 신청 목록 조회.
+* **승인 대기 기업** 승인/반려 처리 및 프로그램(사업) 매칭.
+* 전체 가입 완료 기업 리스트 모니터링 및 상태 관리.
 
-```text
-관리자 ID: admin
-창업자 ID: founder
-비밀번호: yna123
-```
+#### 3) 프로그램(사업) 관리
+* 지원 사업(프로그램) 신규 생성 및 불필요한 사업 비활성화/삭제.
+* 프로그램별 고유 사업 코드 자동 발급 및 관리.
 
-`admin`은 내부적으로 `admin@yna.local`, `founder`는 `founder@yna.local`로 매핑됩니다.
+#### 4) 프로그램 운영 관리
+* **참가 사업 설명**: 해당 지원 사업의 개요 및 지원 기준 작성.
+* **동적 예산/비목 구조 정의**: 프로그램별로 상이한 예산 단계 구조(예: 대분류 > 중분류 > 소분류)와 세부 항목 동적 정의.
+* **안내 및 유의사항 관리**: 창업자 화면에 노출될 안내 사항 작성 및 필수 증빙 양식 PDF 파일 첨부 관리.
+* **관리자 확인용 내부 메모**: 프로그램 운영 관점에서의 참고사항 기록.
 
-창업자 신규 가입은 `/signup.html`에서 진행합니다. 가입한 기업은 `승인 대기` 상태로 생성되며, 관리자가 `/admin/dashboard.html`의 전체 기업 모니터링 목록에서 승인해야 지출 신청을 생성할 수 있습니다.
+#### 5) 참가 기업 관리
+* 관리자 목적으로 특화된 기업 상세 페이지.
+* 특정 기업을 선택하면 **창업자 대시보드와 동일한 뷰(기업 정보, 예산 관리 테이블, 지출 이력)**를 확인 가능.
+* 창업자가 신청한 예산안 및 지출 증빙 서류에 대한 **승인, 반려, 보완요청(의견 기재)** 액션 제공.
+* **관리자 전용 메모**: 창업자에게 노출되지 않는 기업별 내부 특이사항 기록.
+* **증빙 파일 일괄 다운로드**: 정산 시점에 해당 기업이 제출한 모든 증빙 문서를 ZIP 파일로 일괄 다운로드하는 기능 제공.
 
-## Supabase 설정
+---
 
-`supabase/schema.sql`을 Supabase SQL editor에서 실행하거나, CLI 로그인을 완료한 뒤 migration을 적용하면 MVP용 테이블, 인덱스, RLS 정책이 생성됩니다.
+## 3. 핵심 개발 및 설계 원칙
 
-```powershell
-supabase login
-supabase link --project-ref vqdftooqzpmkqboztasc
-supabase db push
-```
+시스템의 유지보수성과 완성도를 극대화하기 위해 개발 과정에서 반드시 준수해야 하는 원칙입니다.
 
-`supabase login`에는 publishable key가 아니라 Supabase dashboard에서 생성한 access token이 필요합니다. 보통 `sbp_...` 형태입니다.
+### 3.1 코드 관리 및 모듈화 원칙
+1. **페이지당 코드 500줄 이하 유지**
+   * 단일 소스코드 파일의 크기가 500줄을 초과하지 않도록 철저히 모듈화합니다.
+   * 복잡한 UI 렌더링 로직이나 테이블 뷰 등은 컴포넌트(`src/components/`) 단위로 분리하고, 공통 비즈니스 로직은 유틸리티 모듈(`src/utils.js`)로 추상화합니다.
+2. **하드코딩 절대 지양 및 라이브러리/공통 모듈 활용**
+   * API 엔드포인트, 고정된 문자열, 비목 코드, 에러 메시지 등은 별도의 설정 파일(`src/config.js`) 또는 공통 상수 객체로 정의하여 사용합니다.
+   * 날짜 포맷팅, 통화 표기, 유효성 검사 등은 공통 라이브러리 함수를 호출하여 중복 코드를 방지합니다.
 
-## Cloudflare R2 업로드 설정
+### 3.2 비즈니스 및 보안 규칙 (rules.md 준수)
+* **공급가액 기준 정산**: 사업비 신청과 잔액 계산은 공급가액 기준으로 처리하며, 부가세는 화면에서 항상 분리하여 보여줍니다.
+* **보안 및 권한**: Supabase Auth 및 RLS 정책을 통해 founder는 본인 기업 데이터만 접근할 수 있게 하고, API Key 등의 민감 정보는 브라우저에 노출하지 않습니다.
+* **AI 검토 보조**: Gemini AI의 추출 정보는 관리자의 최종 승인/반려 결정을 돕는 보조 지표로만 활용합니다.
+* **예산 수립 및 집행 흐름 (Lifecycle)**:
+  1. **예산 구조 정의 (어드민)**: 프로그램(사업)별로 상이한 예산 비목 구조(대분류-중분류-소분류)를 관리자가 먼저 작성합니다.
+  2. **기업별 예산 배정 (스타트업)**: 스타트업은 지정된 예산 구조 내에서 개별 기업 상황에 맞는 세부 배정 금액을 입력하여 승인을 신청합니다. (참여기업별 예산 한도 상이)
+  3. **예산 확정 (어드민)**: 관리자가 스타트업의 예산 배정안을 최종 검토하여 승인(확정) 처리합니다.
+  4. **집행 허가 및 차감**: 스타트업은 최종 승인된 비목별 예산 범위 내에서만 지출(예산 사용) 신청을 할 수 있으며, 관리자가 허가하면 해당 잔액이 차감됩니다.
 
-파일 업로드는 Supabase Edge Function이 Cloudflare R2 presigned PUT URL을 발급하고, 브라우저가 해당 URL로 직접 업로드하는 방식입니다. R2 secret key는 브라우저에 노출하지 않습니다.
-
-Edge Function 배포:
-
-```powershell
-supabase functions deploy create-upload-url
-```
-
-Edge Function 환경변수:
-
-```text
-R2_ACCOUNT_ID=your-cloudflare-account-id
-R2_ENDPOINT=https://your-cloudflare-account-id.r2.cloudflarestorage.com
-R2_BUCKET=your-private-bucket
-R2_ACCESS_KEY_ID=...
-R2_SECRET_ACCESS_KEY=...
-```
-
-R2 bucket CORS 예시:
-
-```json
-[
-  {
-    "AllowedOrigins": ["http://127.0.0.1:8080", "http://localhost:8080"],
-    "AllowedMethods": ["PUT"],
-    "AllowedHeaders": ["Content-Type"],
-    "ExposeHeaders": ["ETag"],
-    "MaxAgeSeconds": 3000
-  }
-]
-```
-
-## 실제 사용자 생성
-
-1. Supabase Dashboard > Authentication > Users에서 사용자를 생성합니다.
-2. 생성된 사용자의 `user_id`를 확인합니다.
-3. SQL editor에서 `profiles`, `companies`, `company_members`에 연결 데이터를 넣습니다.
-
-예시:
-
-```sql
-insert into public.companies (id, name, representative_name, support_total_amount)
-values ('00000000-0000-0000-0000-000000000001', 'ABC스포츠', '김대표', 30000000)
-on conflict do nothing;
-
-insert into public.profiles (user_id, role, name, company_name)
-values ('AUTH_USER_ID_HERE', 'founder', '김대표', 'ABC스포츠');
-
-insert into public.company_members (company_id, user_id)
-values ('00000000-0000-0000-0000-000000000001', 'AUTH_USER_ID_HERE');
-```
+### 3.3 개발 진행 방식 (Frontend First)
+* **프론트엔드 선제 완성**: 프론트엔드 화면 UI/UX 및 비즈니스 흐름(Mock 데이터 기반)을 우선적으로 완전하게 개발한 후, 데이터베이스(Supabase) 연동 작업을 진행합니다. 스키마 구성 및 실 데이터 바인딩은 추후 단계에서 별도로 진행합니다.

@@ -1,6 +1,6 @@
 export const CONFIG = {
-  supabaseUrl: window.APP_CONFIG?.supabaseUrl || "https://vqdftooqzpmkqboztasc.supabase.co",
-  supabaseAnonKey: window.APP_CONFIG?.supabaseAnonKey || "sb_publishable_621F6vVLGX6dMZ4utkrwCg_h81iwhYJ",
+  supabaseUrl: window.APP_CONFIG?.supabaseUrl || "https://kbyuumrgmovngaahycmk.supabase.co",
+  supabaseAnonKey: window.APP_CONFIG?.supabaseAnonKey || "sb_publishable_IWbWxOxtH_89WfyHPWzN2w_KMVkjVKN",
   apiBaseUrl: window.APP_CONFIG?.apiBaseUrl || "/api",
 };
 

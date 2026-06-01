@@ -2,7 +2,9 @@ import { StatusBadge } from "./StatusBadge.js";
 import { escapeHtml, formatCurrency, formatDate } from "../utils.js";
 
 export function ExpenseTable(rows, options = {}) {
-  const target = options.admin ? "/admin/expense-detail.html" : "/founder/expense-detail.html";
+  const isSubFolder = window.location.pathname.includes("/admin/") || window.location.pathname.includes("/founder/");
+  const base = isSubFolder ? "../" : "./";
+  const target = options.admin ? `${base}admin/expense-detail.html` : `${base}founder/expense-detail.html`;
   if (!rows?.length) {
     return `<p class="empty">표시할 신청 건이 없습니다.</p>`;
   }
@@ -12,7 +14,7 @@ export function ExpenseTable(rows, options = {}) {
       <table>
         <thead>
           <tr>
-            ${options.admin ? "<th>기업</th>" : ""}
+            ${options.admin && !options.hideCompany ? "<th>기업</th>" : ""}
             <th>신청 제목</th>
             <th>비목</th>
             <th>공급가액</th>
@@ -24,8 +26,8 @@ export function ExpenseTable(rows, options = {}) {
         </thead>
         <tbody>
           ${rows.map((row) => `
-            <tr data-href="${target}?id=${encodeURIComponent(row.id)}">
-              ${options.admin ? `<td>${escapeHtml(row.company_name || "-")}</td>` : ""}
+            <tr data-href="${target}?id=${encodeURIComponent(row.id)}" data-budget-category="${escapeHtml(row.budget_category || '')}">
+              ${options.admin && !options.hideCompany ? `<td>${escapeHtml(row.company_name || "-")}</td>` : ""}
               <td><a href="${target}?id=${encodeURIComponent(row.id)}">${escapeHtml(row.title)}</a></td>
               <td>${escapeHtml(row.budget_category)}</td>
               <td>${formatCurrency(row.amount_supply)}</td>
@@ -40,4 +42,5 @@ export function ExpenseTable(rows, options = {}) {
     </div>
   `;
 }
+
 
