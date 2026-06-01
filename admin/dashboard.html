@@ -36,6 +36,19 @@
           <div class="card metric"><span>보완 요청</span><strong data-revision-count>0</strong></div>
           <div class="card metric"><span>위험 경고</span><strong data-risk-count>0</strong></div>
         </section>
+        <section style="margin-top:16px">
+          <h2 style="margin-bottom:8px">업무 큐</h2>
+          <div class="grid grid-4" data-queue-cards></div>
+        </section>
+        <section class="card" style="margin-top:16px">
+          <h2>처리 대기 업무</h2>
+          <h3 id="queue-signup" style="margin-top:8px">가입 승인 대기</h3>
+          <div data-queue-signup></div>
+          <h3 id="queue-budget" style="margin-top:20px">예산안 / 예산 변경 승인 대기</h3>
+          <div data-queue-budget></div>
+          <h3 id="queue-expense" style="margin-top:20px">지출 사용 승인 검토 대기</h3>
+          <div data-queue-expense></div>
+        </section>
         <section class="card" style="margin-top:16px">
           <h2>전체 기업 모니터링</h2>
           <div data-company-table></div>

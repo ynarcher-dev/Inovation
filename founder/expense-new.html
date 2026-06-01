@@ -27,68 +27,71 @@
         <div class="detail-layout">
           <section class="card">
             <form class="form" id="expense-form">
-              <div class="field">
-                <label for="title">지출 제목</label>
-                <input id="title" required value="홈페이지 개발 외주">
-              </div>
-              <div class="field">
-                <label for="business_plan_item_id">사업계획서 항목</label>
-                <select id="business_plan_item_id"></select>
-                <p class="muted">최종 승인된 사업계획서 항목 범위 안에서만 지출을 신청합니다.</p>
-              </div>
-              <div class="field">
-                <label for="expense_type">지출 유형</label>
-                <select id="expense_type" required></select>
-                <p class="muted">선택한 사업계획서 항목의 비목에 맞는 유형만 표시됩니다.</p>
-              </div>
-              <div class="card" style="background: var(--surface-muted);">
-                <p class="muted" style="margin-top:0">자동 설정 비목</p>
-                <h2 data-budget-category>일반용역비</h2>
-                <p class="muted" data-budget-reason>외부 업체가 과업을 수행하고 결과물을 납품하는 지출입니다.</p>
-              </div>
-              <div class="grid grid-2">
+              <fieldset class="form-block">
+                <legend>예산 항목</legend>
                 <div class="field">
-                  <label for="amount_supply">공급가액</label>
-                  <input id="amount_supply" inputmode="numeric" data-money-input value="5,500,000">
+                  <label for="title">지출 제목</label>
+                  <input id="title" required placeholder="예: 홈페이지 개발 외주">
                 </div>
                 <div class="field">
-                  <label for="vat_amount">부가세</label>
-                  <input id="vat_amount" inputmode="numeric" data-money-input value="550,000">
+                  <label for="business_plan_item_id">예산 항목</label>
+                  <div class="amount-select" data-plan-select></div>
+                  <select id="business_plan_item_id" hidden></select>
+                  <p class="muted">관리자가 설정한 비목 단계(뎁스)와 배정 금액 범위 안에서만 지출을 신청합니다.</p>
                 </div>
-              </div>
-              <div class="grid grid-2">
+              </fieldset>
+              <fieldset class="form-block">
+                <legend>지출 상세</legend>
                 <div class="field">
                   <label for="vendor_name">거래처명</label>
-                  <input id="vendor_name" value="웹스튜디오 예시">
+                  <input id="vendor_name" placeholder="예: 웹스튜디오">
                 </div>
                 <div class="field">
                   <label for="vendor_business_number">거래처 사업자등록번호</label>
                   <input id="vendor_business_number" placeholder="000-00-00000">
                 </div>
-              </div>
-              <div class="field">
-                <label for="expected_completion_date">완료 예정일</label>
-                <input id="expected_completion_date" type="date">
-              </div>
-              <div class="field">
-                <label for="purpose">신청 내용</label>
-                <textarea id="purpose">시제품 홍보용 홈페이지 개발</textarea>
-              </div>
-              <label class="checkbox-field" for="advance_payment_requested">
-                <input id="advance_payment_requested" type="checkbox">
-                <span>선금 신청</span>
-              </label>
-              <button class="button" type="submit">임시저장 후 상세로 이동</button>
+                <div class="grid grid-2">
+                  <div class="field">
+                    <label for="amount_supply">공급가액</label>
+                    <input id="amount_supply" inputmode="numeric" data-money-input placeholder="예: 5,000,000">
+                  </div>
+                  <div class="field">
+                    <label for="vat_amount">부가세</label>
+                    <input id="vat_amount" inputmode="numeric" data-money-input placeholder="예: 500,000">
+                  </div>
+                </div>
+                <div class="field">
+                  <label for="expected_completion_date">지출 예정일자</label>
+                  <input id="expected_completion_date" type="date">
+                </div>
+                <div class="field">
+                  <label for="purpose">신청 내용</label>
+                  <textarea id="purpose" placeholder="예: 시제품 홍보용 홈페이지 개발"></textarea>
+                </div>
+              </fieldset>
+              <button class="button" type="submit">신청하기</button>
             </form>
           </section>
           <aside class="grid">
             <section class="card ai-panel">
-              <h2>위험 경고</h2>
+              <h2>집행 가이드</h2>
               <div data-warnings></div>
             </section>
             <section class="card">
-              <h2>필수서류</h2>
+              <h2>첨부 서류</h2>
               <div data-checklist></div>
+              <label class="toggle-field" for="advance_payment_requested">
+                <span>선금 신청</span>
+                <input id="advance_payment_requested" type="checkbox">
+                <span class="toggle-track" aria-hidden="true"></span>
+              </label>
+              <div data-advance-checklist></div>
+              <label class="toggle-field" for="other_evidence_enabled">
+                <span>기타 증빙서류 첨부</span>
+                <input id="other_evidence_enabled" type="checkbox">
+                <span class="toggle-track" aria-hidden="true"></span>
+              </label>
+              <div data-other-evidence hidden></div>
             </section>
           </aside>
         </div>

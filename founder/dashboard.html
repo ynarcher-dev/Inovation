@@ -25,43 +25,39 @@
           <a class="button" data-new-expense-link href="./expense-new.html">새 지출 신청</a>
         </div>
         <p class="error" data-error hidden></p>
-        <p class="notice" data-approval-notice hidden></p>
-        <section class="grid grid-4" style="margin-bottom: 16px;">
-          <div class="card metric"><span>기업 정보</span><strong data-company-name>-</strong><span data-representative class="muted" style="font-size:12px"></span></div>
-          <div class="card metric"><span>참가 사업</span><strong data-support-program>-</strong><span data-agreement class="muted" style="font-size:12px"></span></div>
-          <div class="card metric"><span>지원금 집행현황</span><strong><span data-approved-total>-</span> / <span data-support-total>-</span></strong><span data-execution-rate class="muted" style="font-size:12px">0% 집행</span></div>
-          <div class="card metric"><span>자부담금 현황</span><strong><span data-self-payment-total>-</span></strong><span data-self-payment-status class="muted" style="font-size:12px">확인 중</span></div>
+        <div class="notice" data-approval-notice hidden></div>
+        <section class="grid grid-4 info-metrics" style="margin-bottom: 16px;">
+          <div class="card metric"><span>기업 정보</span><strong data-company-name>-</strong><span data-representative class="muted caption"></span></div>
+          <div class="card metric"><span>참가 사업</span><strong data-support-program>-</strong><span data-agreement class="muted caption"></span></div>
+          <div class="card metric"><span>지원금 집행현황</span><strong><span data-approved-total>-</span> / <span data-support-total>-</span></strong><span data-execution-rate class="muted caption">0% 집행</span></div>
+          <div class="card metric bp-card">
+            <span>사업 계획서</span>
+            <strong data-bp-name class="bp-name-link" id="bp-download-trigger" title="클릭하면 첨부한 파일을 다운로드합니다.">-</strong>
+            <span data-bp-updated class="muted caption">최종 수정일: -</span>
+            <button type="button" class="button small secondary bp-upload-btn" id="bp-upload-btn">파일 첨부/수정</button>
+            <input type="file" id="bp-file-input" hidden accept=".pdf,.doc,.docx,.hwp,.hwpx,.xls,.xlsx,.ppt,.pptx">
+          </div>
         </section>
-        <section class="grid grid-3" style="margin-bottom: 16px;">
-          <div class="card metric status-approved"><span>승인 건수</span><strong data-approved-count>0</strong></div>
-          <div class="card metric status-revision" style="cursor: pointer;" id="revision-counter-card"><span>보완 요청 건수</span><strong data-revision-count>0</strong></div>
-          <div class="card metric status-rejected"><span>반려 건수</span><strong data-rejected-count>0</strong></div>
-        </section>
-        <div class="card notice" id="revision-feedback-card" style="border-left: 4px solid #f59e0b; background-color: #fef3c7; margin-bottom: 16px;" hidden>
-          <strong style="color: #d97706; display: block; margin-bottom: 6px;">⚠️ 보완요청 사유 및 첨부 파일 재보완 필요</strong>
-          <p id="revision-feedback-text" style="margin: 0; font-size: 14px; color: #78350f;"></p>
-        </div>
-        <div class="card notice" id="business-plan-card" style="margin-bottom: 16px;">
-          <span>최종 승인 사업계획서: </span><strong data-business-plan-file>-</strong>
-          <span style="margin-left: 12px; font-size:12px;" class="muted" data-business-plan-approved></span>
-        </div>
         <!-- Tabs Navigation -->
         <div class="tabs-nav">
-          <button class="tab-button active" data-tab="tab-expense" type="button">지출/이력</button>
+          <button class="tab-button active" data-tab="tab-expense" type="button">지출 현황</button>
           <button class="tab-button" data-tab="tab-budget" type="button">예산 관리</button>
+          <button class="tab-button" data-tab="tab-budget-history" type="button">예산 히스토리</button>
+          <button class="tab-button" data-tab="tab-overview" type="button">사업개요 및 첨부파일</button>
         </div>
 
-        <!-- Tab 1: 지출/이력 -->
+        <!-- Tab 1: 지출 현황 -->
         <div id="tab-expense" class="tab-content active">
+          <section class="grid grid-4" style="margin-bottom: 16px;">
+            <div class="card metric status-pending"><span>검토 중</span><strong data-pending-count>0</strong></div>
+            <div class="card metric status-approved"><span>승인</span><strong data-approved-count>0</strong></div>
+            <div class="card metric status-revision"><span>보완 요청</span><strong data-revision-count>0</strong></div>
+            <div class="card metric status-rejected"><span>반려</span><strong data-rejected-count>0</strong></div>
+          </section>
           <section class="card">
-            <h2>최근 지출 신청</h2>
+            <h2>지출 현황</h2>
+            <p class="muted">신청명·금액(공급가액+부가세)·제출일·상태가 최신순으로 표시됩니다. 각 건은 독립적이며, 보완·반려된 건은 수정 대신 새 결재를 올려 주세요.</p>
             <div data-expense-table></div>
-
-            <div class="review-history-section">
-              <h2>심사 이력 히스토리</h2>
-              <p class="muted">귀사의 지출 건에 대한 전체 심사 이력(승인, 보완 요청, 반려 등)이 최신순으로 나열됩니다.</p>
-              <div data-review-history></div>
-            </div>
           </section>
         </div>
 
@@ -69,7 +65,7 @@
         <div id="tab-budget" class="tab-content">
           <!-- Before Application: Empty card with Apply button -->
           <div class="card" id="budget-empty-card" style="text-align: center; padding: 40px 20px;">
-            <h3 style="font-size: 18px; margin-bottom: 8px;">예산 및 비목 등록</h3>
+            <h3 style="margin-bottom: 8px;">예산 및 비목 등록</h3>
             <p class="muted" style="max-width: 500px; margin: 0 auto 20px;">
               지출 신청을 진행하기 전에, 참가 사업의 비목별 예산 계획을 등록해 주세요.<br>
               등록하신 예산안은 관리자의 승인을 거쳐 확정됩니다.
@@ -80,7 +76,7 @@
           <!-- Editing or Submitted/Approved: Hierarchical budget tree -->
           <div id="budget-tree-container" hidden>
             <section class="card">
-              <h2 id="budget-tree-title">비목별 사업화지원금 현황</h2>
+              <h2 id="budget-tree-title">예산 현황</h2>
               <p class="muted" id="budget-tree-desc" style="margin-bottom: 16px;">
                 참가 사업의 예산/비목 구조에 따라 배정 금액을 입력하거나 조회할 수 있습니다.
               </p>
@@ -89,6 +85,29 @@
               </form>
             </section>
           </div>
+        </div>
+
+        <!-- Tab 3: 예산 히스토리 -->
+        <div id="tab-budget-history" class="tab-content">
+          <section class="card">
+            <h2>예산 히스토리</h2>
+            <p class="muted">예산안 제출과 예산 변경 요청, 그리고 관리자 검토 결과 이력이 최신순으로 표시됩니다.</p>
+            <div data-budget-history></div>
+          </section>
+        </div>
+
+        <!-- Tab 4: 사업개요 및 첨부파일 -->
+        <div id="tab-overview" class="tab-content">
+          <section class="card">
+            <h2>사업 개요</h2>
+            <p class="muted" style="margin-bottom: 12px;">참가 사업에 대해 관리자가 등록한 개요입니다.</p>
+            <p data-program-description style="white-space: pre-line;">-</p>
+          </section>
+          <section class="card" style="margin-top: 16px;">
+            <h2>첨부파일</h2>
+            <p class="muted" style="margin-bottom: 12px;">관리자가 등록한 안내자료 및 첨부파일입니다.</p>
+            <div data-program-attachments></div>
+          </section>
         </div>
 
       </main>

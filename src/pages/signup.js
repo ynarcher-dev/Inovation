@@ -40,8 +40,10 @@ document.querySelector("#signup-form").addEventListener("submit", async (event) 
       : "가입 신청이 완료되었습니다. 예산 및 비목 승인 후 지출 신청을 진행할 수 있습니다.";
 
     if (!result.needsConfirmation) {
+      // 가입은 승인 대기 상태로 생성되며, 승인 전에는 로그인이 차단된다.
+      // 따라서 대시보드가 아니라 로그인 페이지로 안내한다.
       window.setTimeout(() => {
-        window.location.href = "./founder/dashboard.html";
+        window.location.href = "./login.html";
       }, 1200);
     }
   } catch (error) {

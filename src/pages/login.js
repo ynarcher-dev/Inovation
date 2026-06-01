@@ -11,6 +11,10 @@ document.querySelector("#login-form").addEventListener("submit", async (event) =
     const user = await getCurrentUser();
     redirectByRole(user.profile.role);
   } catch (error) {
-    showError(error);
+    if (error?.blocked) {
+      window.alert(error.message); // 가입 승인 대기/반려: 얼럿으로 안내하고 로그인 차단
+    } else {
+      showError(error);
+    }
   }
 });

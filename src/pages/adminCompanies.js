@@ -2,11 +2,12 @@ import { mountShell, runWithErrorBoundary, setText, showError } from "../app.js"
 import { approveCompany, getAdminDashboard } from "../api.js";
 import { requireRole } from "../auth.js";
 import { escapeHtml, formatCurrency, formatDate } from "../utils.js";
+import { getBudgetStatusLabel } from "../budgetStatus.js";
 
 const approvalText = {
-  pending: "승인 대기",
-  approved: "승인 완료",
-  rejected: "반려",
+  pending: "가입 승인 대기",
+  approved: "가입 승인 완료",
+  rejected: "가입 반려",
 };
 
 function CompanyMonitorTable(companies) {
@@ -20,7 +21,8 @@ function CompanyMonitorTable(companies) {
             <th>대표자</th>
             <th>사업자등록번호</th>
             <th>참가 사업</th>
-            <th>승인 상태</th>
+            <th>가입 상태</th>
+            <th>예산안 상태</th>
             <th>가입일</th>
             <th>총 지원금</th>
             <th>승인/제출 금액</th>
@@ -45,13 +47,14 @@ function CompanyMonitorTable(companies) {
                 <td>${escapeHtml(company.business_number || "-")}</td>
                 <td>${escapeHtml(programName)}</td>
                 <td>${escapeHtml(approvalText[company.approval_status] || company.approval_status || "-")}</td>
+                <td>${escapeHtml(getBudgetStatusLabel(company.budget_status))}</td>
                 <td>${formatDate(company.created_at)}</td>
                 <td>${formatCurrency(company.support_total_amount)}</td>
                 <td>${formatCurrency(used)}</td>
                 <td>${rate}%</td>
                 <td>
                   ${company.approval_status === "pending"
-                    ? `<button class="button small" type="button" data-approve-company="${escapeHtml(company.id)}">승인</button>`
+                    ? `<button class="button small" type="button" data-approve-company="${escapeHtml(company.id)}">가입 승인</button>`
                     : `<a href="company-detail.html?id=${encodeURIComponent(company.id)}">상세 관리</a>`}
                 </td>
               </tr>

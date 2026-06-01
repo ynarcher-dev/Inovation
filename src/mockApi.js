@@ -13,9 +13,34 @@ export const STORAGE_KEYS = {
   PROGRAMS: "mock_support_programs",
   BUDGETS: "mock_support_program_budgets",
   ALLOCATIONS: "mock_company_budget_allocations",
+  BUDGET_SUBMISSIONS: "mock_budget_submissions",
+  BUDGET_SUBMISSION_ITEMS: "mock_budget_submission_items",
+  UPLOADED_FILES: "mock_uploaded_files",
   REVIEWS: "mock_reviews",
   GUIDANCE: "mock_guidance_items",
+  FILES: "mock_file_blobs",
 };
+
+// 실제 첨부 파일(바이트)을 dataURL 로 보관한다(mock 환경). 다운로드 시 그대로 복원한다.
+// 반환 key 는 link_url 로 사용되어 다른 레코드(guidance/business_plan 등)와 연결된다.
+export function mockStoreFile(dataUrl, filename, type) {
+  const files = load(STORAGE_KEYS.FILES, {});
+  const key = `storage:${uuid()}:${filename}`;
+  files[key] = { data: dataUrl, filename, type: type || "application/octet-stream" };
+  save(STORAGE_KEYS.FILES, files);
+  return key;
+}
+
+export function mockGetFile(key) {
+  if (!key) return null;
+  const files = load(STORAGE_KEYS.FILES, {});
+  return files[key] || null;
+}
+
+// localStorage 시드 데이터 버전. 데이터 구조가 바뀌면 올린다.
+// 버전이 다르면 mock 데이터를 재시드한다(개발용 로컬 데이터만 초기화).
+const DATA_VERSION = "2";
+const DATA_VERSION_KEY = "mock_data_version";
 
 // Helper: load from localStorage
 export function load(key, defaultVal = []) {
@@ -35,7 +60,13 @@ export function uuid() {
 
 // Initialize Mock Data
 export function initMockData() {
-  if (localStorage.getItem(STORAGE_KEYS.USERS)) return;
+  const seededVersion = localStorage.getItem(DATA_VERSION_KEY);
+  if (localStorage.getItem(STORAGE_KEYS.USERS) && seededVersion === DATA_VERSION) return;
+  // 구조가 바뀐 경우 기존 mock 키를 비우고 재시드한다(로컬 개발 데이터 한정).
+  if (seededVersion !== DATA_VERSION) {
+    Object.values(STORAGE_KEYS).forEach((key) => localStorage.removeItem(key));
+    localStorage.removeItem(STORAGE_KEYS.CURRENT_USER);
+  }
 
   // 1. Initial Users
   const users = [
@@ -77,7 +108,14 @@ export function initMockData() {
     agreement_start_date: "2026-01-01",
     agreement_end_date: "2026-12-31",
     support_program_id: "prog-1",
-    approval_status: "approved",
+    approval_status: "approved", // 가입 승인 상태 (예산 상태와 분리)
+    budget_status: "budget_approved", // 예산안 승인 상태
+    business_plan: {
+      version: "V1.0",
+      original_filename: "최종_사업계획서.pdf",
+      approved_at: "2026-05-12T10:00:00Z",
+      updated_at: "2026-05-20T09:30:00Z", // 최종 수정일자
+    },
   };
   save(STORAGE_KEYS.COMPANIES, [company]);
 
@@ -98,6 +136,32 @@ export function initMockData() {
     { id: "a-4", company_id: "comp-abc", support_program_budget_id: "b-2-3", allocated_amount: 5000000 },
   ];
   save(STORAGE_KEYS.ALLOCATIONS, allocations);
+
+  // 5-2. Budget Submission history (최초 예산안이 승인되어 확정된 이력)
+  const budgetSubmissions = [
+    {
+      id: "bsub-1",
+      company_id: "comp-abc",
+      type: "initial",
+      status: "budget_approved",
+      reason: "최초 예산안 제출",
+      submitted_by: "founder-uid",
+      submitted_at: "2026-01-05T09:00:00Z",
+      reviewed_by: "admin-uid",
+      reviewed_at: "2026-01-07T10:00:00Z",
+      review_comment: "비목 구성 적정하여 승인합니다.",
+      created_at: "2026-01-05T09:00:00Z",
+    },
+  ];
+  save(STORAGE_KEYS.BUDGET_SUBMISSIONS, budgetSubmissions);
+
+  const budgetSubmissionItems = [
+    { id: "bitem-1", budget_submission_id: "bsub-1", support_program_budget_id: "b-1", previous_allocated_amount: 0, requested_allocated_amount: 5000000, approved_allocated_amount: 5000000 },
+    { id: "bitem-2", budget_submission_id: "bsub-1", support_program_budget_id: "b-2-1", previous_allocated_amount: 0, requested_allocated_amount: 15000000, approved_allocated_amount: 15000000 },
+    { id: "bitem-3", budget_submission_id: "bsub-1", support_program_budget_id: "b-2-2", previous_allocated_amount: 0, requested_allocated_amount: 5000000, approved_allocated_amount: 5000000 },
+    { id: "bitem-4", budget_submission_id: "bsub-1", support_program_budget_id: "b-2-3", previous_allocated_amount: 0, requested_allocated_amount: 5000000, approved_allocated_amount: 5000000 },
+  ];
+  save(STORAGE_KEYS.BUDGET_SUBMISSION_ITEMS, budgetSubmissionItems);
 
   // 6. Initial Expense Requests
   const expenses = [
@@ -135,6 +199,8 @@ export function initMockData() {
     { id: "guid-1", title: "사업비 집행 지침 안내", content: "사업비는 규정에 맞게 집행해야 합니다.", link_url: "storage:sample_manual.pdf", active: true, sort_order: 1, support_program_id: "prog-1" },
   ];
   save(STORAGE_KEYS.GUIDANCE, guidance);
+
+  localStorage.setItem(DATA_VERSION_KEY, DATA_VERSION);
 }
 
 // ----------------------------------------------------
@@ -155,6 +221,25 @@ export function mockSignIn(loginId, password) {
   
   const user = users.find((u) => u.email === email && u.password === password);
   if (!user) throw new Error("아이디 또는 비밀번호가 잘못되었습니다.");
+
+  // 창업자는 가입 승인 전/반려 상태에서 로그인을 차단한다. (관리자는 예외)
+  const profiles = load(STORAGE_KEYS.PROFILES, []);
+  const profile = profiles.find((p) => p.user_id === user.id);
+  if (profile?.role === "founder") {
+    const members = load(STORAGE_KEYS.MEMBERS, []);
+    const member = members.find((m) => m.user_id === user.id);
+    const companies = load(STORAGE_KEYS.COMPANIES, []);
+    const company = companies.find((c) => c.id === member?.company_id);
+    if (company && company.approval_status !== "approved") {
+      const blocked = new Error(
+        company.approval_status === "rejected"
+          ? "가입이 반려되었습니다. 관리자에게 문의해 주세요."
+          : "가입 승인 대기 중입니다. 관리자 승인 후 로그인할 수 있습니다."
+      );
+      blocked.blocked = true; // 로그인 페이지에서 얼럿으로 안내
+      throw blocked;
+    }
+  }
 
   save(STORAGE_KEYS.CURRENT_USER, user);
   return { user };
@@ -182,7 +267,8 @@ export function mockSignUpFounder(input) {
     self_payment_required_amount: 0,
     self_payment_paid: false,
     support_program_id: input.support_program_id,
-    approval_status: "pending",
+    approval_status: "pending", // 가입 승인 대기
+    budget_status: "not_submitted", // 예산안 미제출
   });
   save(STORAGE_KEYS.COMPANIES, companies);
 

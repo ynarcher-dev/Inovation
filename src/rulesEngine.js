@@ -1,5 +1,4 @@
 const commonDocs = [
-  ["pre_approval_request", "사업화 지원금 사전승인 신청서"],
   ["estimate", "견적서"],
   ["vendor_business_license", "거래처 사업자등록증"],
   ["vendor_bankbook", "거래처 통장사본"],

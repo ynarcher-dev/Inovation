@@ -1,13 +1,6 @@
-import { mountShell, runWithErrorBoundary, setText, showError } from "../app.js";
+import { mountShell, runWithErrorBoundary, showError } from "../app.js";
 import { getFounderProfile, updateFounderProfile } from "../api.js";
 import { requireRole } from "../auth.js";
-import { formatCurrency, formatDate } from "../utils.js";
-
-const approvalText = {
-  pending: "승인 대기",
-  approved: "승인 완료",
-  rejected: "반려",
-};
 
 try {
   mountShell();
@@ -20,10 +13,6 @@ try {
     document.querySelector("#representative_name").value = company.representative_name || user.profile.name || "";
     document.querySelector("#business_number").value = company.business_number || "";
     document.querySelector("#phone").value = user.profile.phone || "";
-
-    setText("[data-approval-status]", approvalText[company.approval_status] || company.approval_status || "-");
-    setText("[data-agreement]", `${formatDate(company.agreement_start_date)} - ${formatDate(company.agreement_end_date)}`);
-    setText("[data-support-total]", formatCurrency(company.support_total_amount));
 
     document.querySelector("#profile-form").addEventListener("submit", async (event) => {
       event.preventDefault();

@@ -4,13 +4,13 @@ import {
   getAdminCompanyDetail,
   updateCompanySupportTotal,
   upsertCompanyBudgetAllocation,
-  approveCompany,
-  rejectCompany,
+  reviewBudgetSubmission,
 } from "../api.js";
 import { ExpenseTable } from "../components/ExpenseTable.js";
 import { StatusBadge } from "../components/StatusBadge.js";
 import { BudgetTreeView } from "../components/BudgetTreeView.js";
 import { FlatReviewHistoryTable } from "../components/FlatReviewHistoryTable.js";
+import { getBudgetStatusLabel } from "../budgetStatus.js";
 import {
   escapeHtml,
   formatCurrency,
@@ -21,10 +21,70 @@ import {
 } from "../utils.js";
 
 const approvalText = {
-  pending: "승인 대기",
-  approved: "승인 완료",
-  rejected: "반려",
+  pending: "가입 승인 대기",
+  approved: "가입 승인 완료",
+  rejected: "가입 반려",
 };
+
+// 제출안의 비목별 변경 전/후 금액 비교표를 만든다.
+function BudgetSubmissionDiff(submission, programBudgets) {
+  if (!submission) return "";
+  const titleById = new Map(programBudgets.map((b) => [b.id, b]));
+  const pathOf = (id) => {
+    const parts = [];
+    let curr = titleById.get(id);
+    while (curr) {
+      parts.unshift(curr.title);
+      curr = curr.parent_id ? titleById.get(curr.parent_id) : null;
+    }
+    return parts.join(" > ");
+  };
+  const items = (submission.items || []).slice().sort((a, b) =>
+    pathOf(a.support_program_budget_id).localeCompare(pathOf(b.support_program_budget_id))
+  );
+  const prevTotal = items.reduce((s, it) => s + Number(it.previous_allocated_amount || 0), 0);
+  const reqTotal = items.reduce((s, it) => s + Number(it.requested_allocated_amount || 0), 0);
+  const typeLabel = submission.type === "change" ? "예산 변경 요청" : "최초 예산안";
+
+  const rows = items.map((it) => {
+    const prev = Number(it.previous_allocated_amount || 0);
+    const req = Number(it.requested_allocated_amount || 0);
+    const diff = req - prev;
+    const diffStr = diff === 0 ? "-" : `${diff > 0 ? "+" : ""}${formatCurrency(diff)}`;
+    const diffColor = diff > 0 ? "#047857" : diff < 0 ? "#b91c1c" : "#6b7280";
+    return `
+      <tr>
+        <td>${escapeHtml(pathOf(it.support_program_budget_id) || "-")}</td>
+        <td style="text-align:right;">${formatCurrency(prev)}</td>
+        <td style="text-align:right;">${formatCurrency(req)}</td>
+        <td style="text-align:right; color:${diffColor};">${diffStr}</td>
+      </tr>`;
+  }).join("");
+
+  const totalDiff = reqTotal - prevTotal;
+  return `
+    <div class="notice" style="margin-bottom:8px;">
+      <strong>${escapeHtml(typeLabel)}</strong>
+      · 제출일 ${formatDate(submission.submitted_at)}
+      ${submission.reason ? `· 사유: ${escapeHtml(submission.reason)}` : ""}
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>비목</th><th style="text-align:right;">변경 전</th><th style="text-align:right;">요청(변경 후)</th><th style="text-align:right;">증감</th></tr>
+        </thead>
+        <tbody>${rows}</tbody>
+        <tfoot>
+          <tr style="font-weight:700;">
+            <td>합계</td>
+            <td style="text-align:right;">${formatCurrency(prevTotal)}</td>
+            <td style="text-align:right;">${formatCurrency(reqTotal)}</td>
+            <td style="text-align:right; color:${totalDiff > 0 ? "#047857" : totalDiff < 0 ? "#b91c1c" : "#6b7280"};">${totalDiff === 0 ? "-" : `${totalDiff > 0 ? "+" : ""}${formatCurrency(totalDiff)}`}</td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>`;
+}
 
 function getBudgetCategoryPaths(programBudgets) {
   const budgetsById = new Map(programBudgets.map((b) => [b.id, b]));
@@ -179,6 +239,7 @@ try {
       setText("[data-representative]", company.representative_name || "-");
       setText("[data-business-number]", company.business_number || "-");
       setText("[data-approval-status]", approvalText[company.approval_status] || company.approval_status || "-");
+      setText("[data-budget-status]", getBudgetStatusLabel(company.budget_status));
       supportTotalInput.value = formatNumber(company.support_total_amount || 0);
       setText("[data-business-plan-version]", company.business_plan?.version || "V1.0");
       setText("[data-business-plan-file]", company.business_plan?.original_filename || "최종_사업계획서.pdf");
@@ -189,7 +250,7 @@ try {
         internalMemoEl.value = company.internal_memo || "";
       }
 
-      budgetTreeEl.innerHTML = BudgetTreeView(detail.budgetTree, false); // view-only on admin too
+      budgetTreeEl.innerHTML = BudgetTreeView(detail.budgetTree, false, company.support_programs?.level_labels); // view-only on admin too
       attachAllocationHandlers(budgetTreeEl, company.id, async () => {
         detail = await getAdminCompanyDetail(id);
         renderHeader();
@@ -202,6 +263,26 @@ try {
       reviewHistoryEl.innerHTML = FlatReviewHistoryTable(detail.reviewHistory, true);
 
       attachCategoryHighlight(budgetTreeEl, expenseTableEl);
+      renderBudgetReview();
+    };
+
+    // 예산 제출안 심사 영역 렌더링: 검토 대기 제출안이 있을 때만 버튼 활성화.
+    const renderBudgetReview = () => {
+      const detailEl = document.getElementById("budget-review-detail");
+      const actionsEl = document.getElementById("budget-review-actions");
+      const pending = detail.pendingSubmission;
+      const reviewButtons = actionsEl ? actionsEl.querySelectorAll("button") : [];
+
+      if (pending) {
+        detailEl.innerHTML = BudgetSubmissionDiff(pending, detail.programBudgets);
+        reviewButtons.forEach((b) => (b.disabled = false));
+        if (commentInput) commentInput.disabled = false;
+      } else {
+        const status = detail.company.budget_status || "not_submitted";
+        detailEl.innerHTML = `<p class="empty">현재 검토할 예산 제출안이 없습니다. (예산안 상태: ${escapeHtml(getBudgetStatusLabel(status))})</p>`;
+        reviewButtons.forEach((b) => (b.disabled = true));
+        if (commentInput) commentInput.disabled = true;
+      }
     };
 
     supportTotalInput.addEventListener("input", () => {
@@ -222,36 +303,17 @@ try {
       }, { button });
     });
 
-    // Budget review actions
+    // 예산 제출안 심사 액션 (승인 시에만 확정 예산 반영)
     const commentInput = document.getElementById("budget-review-comment");
-    
-    document.getElementById("btn-approve-budget")?.addEventListener("click", async (e) => {
-      if (!confirm("이 기업의 배정 예산안을 최종 승인하시겠습니까?")) return;
-      await runWithErrorBoundary(async () => {
-        await approveCompany(id, user.id);
-        
-        // Log to reviews
-        const reviews = JSON.parse(localStorage.getItem("mock_reviews") || "[]");
-        reviews.push({
-          id: "rev-budget-" + id,
-          expense_request_id: "budget-" + id,
-          reviewer_id: user.profile.name,
-          decision: "approved",
-          comment: commentInput.value.trim() || "예산 배정안을 승인합니다.",
-          created_at: new Date().toISOString()
-        });
-        localStorage.setItem("mock_reviews", JSON.stringify(reviews));
 
-        commentInput.value = "";
-        detail = await getAdminCompanyDetail(id);
-        renderHeader();
-        alert("예산안이 승인 처리되었습니다.");
-      }, { button: e.currentTarget });
-    });
-
-    const handleBudgetReview = async (decision, label, btn) => {
+    const submitBudgetReview = async (decision, label, btn) => {
+      const pending = detail.pendingSubmission;
+      if (!pending) {
+        alert("검토할 예산 제출안이 없습니다.");
+        return;
+      }
       const comment = commentInput.value.trim();
-      if (!comment) {
+      if (decision !== "approved" && !comment) {
         alert("보완요청 또는 반려 시에는 반드시 심사 의견을 작성해야 합니다.");
         commentInput.focus();
         return;
@@ -259,31 +321,7 @@ try {
       if (!confirm(`이 예산안을 ${label} 처리하시겠습니까?`)) return;
 
       await runWithErrorBoundary(async () => {
-        await rejectCompany(id); // Set status to 'rejected'
-        if (decision === "revision_requested") {
-          // If it is revision, set status back to 'rejected' but label as revision in review
-          const companies = JSON.parse(localStorage.getItem("mock_companies") || "[]");
-          const idx = companies.findIndex(c => c.id === id);
-          if (idx !== -1) {
-            companies[idx].approval_status = "rejected"; // Under pending/rejected state
-            localStorage.setItem("mock_companies", JSON.stringify(companies));
-          }
-        }
-
-        // Add review log
-        const reviews = JSON.parse(localStorage.getItem("mock_reviews") || "[]");
-        // Remove old budget reviews for this company to prevent spamming
-        const filtered = reviews.filter(r => r.expense_request_id !== "budget-" + id);
-        filtered.push({
-          id: "rev-budget-" + id + "-" + Date.now(),
-          expense_request_id: "budget-" + id,
-          reviewer_id: user.profile.name,
-          decision: decision,
-          comment: comment,
-          created_at: new Date().toISOString()
-        });
-        localStorage.setItem("mock_reviews", JSON.stringify(filtered));
-
+        await reviewBudgetSubmission(pending.id, decision, comment, user.profile.name);
         commentInput.value = "";
         detail = await getAdminCompanyDetail(id);
         renderHeader();
@@ -291,13 +329,9 @@ try {
       }, { button: btn });
     };
 
-    document.getElementById("btn-revision-budget")?.addEventListener("click", (e) => {
-      handleBudgetReview("revision_requested", "보완요청", e.currentTarget);
-    });
-
-    document.getElementById("btn-reject-budget")?.addEventListener("click", (e) => {
-      handleBudgetReview("rejected", "반려", e.currentTarget);
-    });
+    document.getElementById("btn-approve-budget")?.addEventListener("click", (e) => submitBudgetReview("approved", "승인", e.currentTarget));
+    document.getElementById("btn-revision-budget")?.addEventListener("click", (e) => submitBudgetReview("revision_requested", "보완요청", e.currentTarget));
+    document.getElementById("btn-reject-budget")?.addEventListener("click", (e) => submitBudgetReview("rejected", "반려", e.currentTarget));
 
     // Save internal memo
     document.getElementById("btn-save-memo")?.addEventListener("click", async (e) => {

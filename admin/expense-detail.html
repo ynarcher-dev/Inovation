@@ -31,7 +31,10 @@
           <section class="card">
             <h2>신청 정보</h2>
             <div data-summary></div>
-            <form class="form" data-review-form>
+            <h2 style="margin-top:16px">검토 요약</h2>
+            <div data-budget-check></div>
+            <div data-warnings style="margin-top:8px"></div>
+            <form class="form" data-review-form style="margin-top:16px">
               <div class="field">
                 <label for="comment">검토 의견</label>
                 <textarea id="comment" placeholder="승인/반려/보완 요청 사유를 입력하세요."></textarea>
@@ -48,6 +51,8 @@
             <div data-checklist></div>
             <h2>업로드 파일</h2>
             <div data-files></div>
+            <h2>AI 분석 <span class="muted" style="font-size:12px">(참고용)</span></h2>
+            <div data-ai></div>
             <h2>검토 이력</h2>
             <div data-reviews></div>
           </aside>

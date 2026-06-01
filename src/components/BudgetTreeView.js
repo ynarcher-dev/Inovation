@@ -1,6 +1,6 @@
 import { escapeHtml, formatCurrency, formatNumber } from "../utils.js";
 
-export function BudgetTreeView(tree, isEditable) {
+export function BudgetTreeView(tree, isEditable, levelLabels) {
   if (!tree?.length) {
     return `<p class="empty">참가 사업의 예산/비목 구조가 등록되어 있지 않습니다. 관리자에게 문의하세요.</p>`;
   }
@@ -104,7 +104,39 @@ export function BudgetTreeView(tree, isEditable) {
     `;
   };
 
-  const headerCells = Array.from({ length: maxLevel }, (_, i) => `<th>뎁스${i + 1}</th>`).join("");
+  // 모든 소계(루트 비목)를 합산한 전체 합계 행.
+  const renderGrandTotalRow = () => {
+    const totals = tree.reduce(
+      (acc, root) => ({
+        allocated: acc.allocated + Number(root.allocated_amount || 0),
+        approved: acc.approved + Number(root.approved_amount || 0),
+        pending: acc.pending + Number(root.pending_amount || 0),
+        remaining: acc.remaining + Number(root.remaining_amount || 0),
+      }),
+      { allocated: 0, approved: 0, pending: 0, remaining: 0 },
+    );
+    const remainingClass = totals.remaining < 0 ? "danger" : "success";
+    return `
+      <tr class="grandtotal-row">
+        <td colspan="${maxLevel}" class="subtotal-label">
+          <span class="subtotal-tag grandtotal-tag">합계</span>전체 비목
+        </td>
+        <td class="budget-amount">${formatCurrency(totals.allocated)}</td>
+        ${!isEditable ? `
+          <td class="budget-amount">${formatCurrency(totals.approved)}</td>
+          <td class="budget-amount">${formatCurrency(totals.pending)}</td>
+          <td class="budget-amount ${remainingClass}">${formatCurrency(totals.remaining)}</td>
+        ` : ""}
+      </tr>
+    `;
+  };
+
+  // 관리자가 참가 사업별로 지정한 단계 명칭(level_labels)을 그대로 헤더에 사용한다. 미지정 시 기본값.
+  const levelLabel = (lv) => {
+    const label = levelLabels?.[lv] ?? levelLabels?.[String(lv)];
+    return escapeHtml(label || `${lv}단계`);
+  };
+  const headerCells = Array.from({ length: maxLevel }, (_, i) => `<th>${levelLabel(i + 1)}</th>`).join("");
 
   return `
     <div class="table-wrap" style="overflow-x:auto">
@@ -112,11 +144,11 @@ export function BudgetTreeView(tree, isEditable) {
         <thead>
           <tr>
             ${headerCells}
-            <th class="budget-amount">배정 금액</th>
+            <th class="budget-amount">배정 금액 (A)</th>
             ${!isEditable ? `
-              <th class="budget-amount">승인 금액</th>
-              <th class="budget-amount">제출 대기</th>
-              <th class="budget-amount">잔액</th>
+              <th class="budget-amount">승인 금액 (B)</th>
+              <th class="budget-amount">검토중 (C)</th>
+              <th class="budget-amount">잔액 (A)-(B)-(C)</th>
             ` : ""}
           </tr>
         </thead>
@@ -125,6 +157,7 @@ export function BudgetTreeView(tree, isEditable) {
             ${g.paths.map((_, idx) => renderLeafRow(g.paths, idx)).join("")}
             ${g.root.isLeaf ? "" : renderSubtotalRow(g.root)}
           `).join("")}
+          ${!isEditable ? renderGrandTotalRow() : ""}
         </tbody>
       </table>
     </div>
