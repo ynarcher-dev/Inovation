@@ -27,7 +27,8 @@ const approvalText = {
 };
 
 // 제출안의 비목별 변경 전/후 금액 비교표를 만든다.
-function BudgetSubmissionDiff(submission, programBudgets) {
+// committedByBudgetId: 비목별 이미 집행(승인+검토중)된 금액 맵 → 감액 하한 경고 산출
+function BudgetSubmissionDiff(submission, programBudgets, committedByBudgetId = {}, company = {}) {
   if (!submission) return "";
   const titleById = new Map(programBudgets.map((b) => [b.id, b]));
   const pathOf = (id) => {
@@ -39,6 +40,7 @@ function BudgetSubmissionDiff(submission, programBudgets) {
     }
     return parts.join(" > ");
   };
+  const committedOf = (id) => Number(committedByBudgetId[id] || 0);
   const items = (submission.items || []).slice().sort((a, b) =>
     pathOf(a.support_program_budget_id).localeCompare(pathOf(b.support_program_budget_id))
   );
@@ -46,32 +48,48 @@ function BudgetSubmissionDiff(submission, programBudgets) {
   const reqTotal = items.reduce((s, it) => s + Number(it.requested_allocated_amount || 0), 0);
   const typeLabel = submission.type === "change" ? "예산 변경 요청" : "최초 예산안";
 
+  const violations = [];
   const rows = items.map((it) => {
     const prev = Number(it.previous_allocated_amount || 0);
     const req = Number(it.requested_allocated_amount || 0);
+    const committed = committedOf(it.support_program_budget_id);
     const diff = req - prev;
     const diffStr = diff === 0 ? "-" : `${diff > 0 ? "+" : ""}${formatCurrency(diff)}`;
     const diffColor = diff > 0 ? "#047857" : diff < 0 ? "#b91c1c" : "#6b7280";
+    // 감액 불가: 요청액이 이미 집행/검토중 금액보다 낮으면 경고
+    const isViolation = req < committed;
+    const pathLabel = pathOf(it.support_program_budget_id) || "-";
+    if (isViolation) violations.push(`${pathLabel} (요청 ${formatCurrency(req)} < 집행·검토중 ${formatCurrency(committed)})`);
     return `
-      <tr>
-        <td>${escapeHtml(pathOf(it.support_program_budget_id) || "-")}</td>
+      <tr${isViolation ? ' style="background:#fef2f2;"' : ""}>
+        <td>${escapeHtml(pathLabel)}${isViolation ? ' <span style="color:#b91c1c; font-weight:700;">⚠ 감액 불가</span>' : ""}</td>
         <td style="text-align:right;">${formatCurrency(prev)}</td>
         <td style="text-align:right;">${formatCurrency(req)}</td>
         <td style="text-align:right; color:${diffColor};">${diffStr}</td>
+        <td style="text-align:right; color:${committed > 0 ? "#374151" : "#9ca3af"};">${formatCurrency(committed)}</td>
       </tr>`;
   }).join("");
 
   const totalDiff = reqTotal - prevTotal;
+  const warningBanner = violations.length
+    ? `<div class="notice" style="margin-bottom:8px; background:#fef2f2; border-color:#fecaca; color:#b91c1c;">
+        <strong>⚠ 감액 불가 경고</strong> · 다음 비목은 이미 집행(승인/검토중)된 금액보다 낮게 요청되어 승인할 수 없습니다.
+        <ul style="margin:6px 0 0; padding-left:18px;">${violations.map((v) => `<li>${escapeHtml(v)}</li>`).join("")}</ul>
+      </div>`
+    : "";
   return `
+    ${warningBanner}
     <div class="notice" style="margin-bottom:8px;">
       <strong>${escapeHtml(typeLabel)}</strong>
       · 제출일 ${formatDate(submission.submitted_at)}
-      ${submission.reason ? `· 사유: ${escapeHtml(submission.reason)}` : ""}
+      · 제출자 ${escapeHtml(submission.submitted_by_name || "-")}
+      · 현재 예산 상태 ${escapeHtml(getBudgetStatusLabel(company.budget_status))}
+      ${submission.reason ? `<br>사유: ${escapeHtml(submission.reason)}` : ""}
     </div>
     <div class="table-wrap">
       <table>
         <thead>
-          <tr><th>비목</th><th style="text-align:right;">변경 전</th><th style="text-align:right;">요청(변경 후)</th><th style="text-align:right;">증감</th></tr>
+          <tr><th>비목</th><th style="text-align:right;">변경 전</th><th style="text-align:right;">요청(변경 후)</th><th style="text-align:right;">증감</th><th style="text-align:right;">집행·검토중</th></tr>
         </thead>
         <tbody>${rows}</tbody>
         <tfoot>
@@ -80,6 +98,7 @@ function BudgetSubmissionDiff(submission, programBudgets) {
             <td style="text-align:right;">${formatCurrency(prevTotal)}</td>
             <td style="text-align:right;">${formatCurrency(reqTotal)}</td>
             <td style="text-align:right; color:${totalDiff > 0 ? "#047857" : totalDiff < 0 ? "#b91c1c" : "#6b7280"};">${totalDiff === 0 ? "-" : `${totalDiff > 0 ? "+" : ""}${formatCurrency(totalDiff)}`}</td>
+            <td></td>
           </tr>
         </tfoot>
       </table>
@@ -119,9 +138,11 @@ function ExpenseRequestsTable(expenses, categoryPaths) {
           <tr>
             <th>신청 제목</th>
             <th>비목</th>
-            <th>금액</th>
+            <th>거래처</th>
             <th>공급가액</th>
             <th>부가세</th>
+            <th>첨부</th>
+            <th>경고</th>
             <th>상태</th>
             <th>제출일</th>
           </tr>
@@ -129,13 +150,25 @@ function ExpenseRequestsTable(expenses, categoryPaths) {
         <tbody>
           ${expenses.map((row) => {
             const catPath = categoryPaths.get(row.budget_category) || row.budget_category || "-";
+            const required = Number(row.doc_required || 0);
+            const submitted = Number(row.doc_submitted || 0);
+            const docComplete = required > 0 && submitted >= required;
+            const docLabel = required > 0
+              ? `<span style="color:${docComplete ? "#047857" : "#b91c1c"}; font-weight:600;">${submitted}/${required}</span>`
+              : `<span class="muted">-</span>`;
+            const warnCount = Number(row.warning_count || 0);
+            const warnLabel = warnCount > 0
+              ? `<span style="color:#d97706; font-weight:700;">⚠ ${warnCount}</span>`
+              : `<span class="muted">0</span>`;
             return `
               <tr data-budget-category="${escapeHtml(row.budget_category || '')}">
                 <td><a href="${target}?id=${encodeURIComponent(row.id)}" style="font-weight: 600;">${escapeHtml(row.title)}</a></td>
                 <td>${escapeHtml(catPath)}</td>
-                <td>${formatCurrency(row.total_amount)}</td>
+                <td>${escapeHtml(row.vendor_name || "-")}</td>
                 <td>${formatCurrency(row.amount_supply)}</td>
                 <td>${formatCurrency(row.vat_amount)}</td>
+                <td>${docLabel}</td>
+                <td>${warnLabel}</td>
                 <td>${StatusBadge(row.status)}</td>
                 <td>${formatDate(row.submitted_at)}</td>
               </tr>
@@ -223,15 +256,21 @@ try {
     // Tabs switching logic
     const tabButtons = document.querySelectorAll(".tab-button");
     const tabContents = document.querySelectorAll(".tab-content");
+    const activateTab = (targetTab) => {
+      if (!document.getElementById(targetTab)) return;
+      tabButtons.forEach((b) => b.classList.toggle("active", b.dataset.tab === targetTab));
+      tabContents.forEach((c) => c.classList.toggle("active", c.id === targetTab));
+    };
     tabButtons.forEach((btn) => {
-      btn.addEventListener("click", () => {
-        const targetTab = btn.dataset.tab;
-        tabButtons.forEach((b) => b.classList.remove("active"));
-        tabContents.forEach((c) => c.classList.remove("active"));
-        btn.classList.add("active");
-        document.getElementById(targetTab)?.classList.add("active");
-      });
+      btn.addEventListener("click", () => activateTab(btn.dataset.tab));
     });
+    // 요약 탭 빠른 액션: 지정 탭으로 이동
+    document.querySelectorAll("[data-goto-tab]").forEach((btn) => {
+      btn.addEventListener("click", () => activateTab(btn.dataset.gotoTab));
+    });
+    // 대시보드 등에서 ?tab=tab-budget-review 형태로 딥링크 진입 지원 (S5 동선)
+    const initialTab = getQueryParam("tab");
+    if (initialTab) activateTab(initialTab);
 
     const renderHeader = () => {
       const { company } = detail;
@@ -244,6 +283,28 @@ try {
       setText("[data-business-plan-version]", company.business_plan?.version || "V1.0");
       setText("[data-business-plan-file]", company.business_plan?.original_filename || "최종_사업계획서.pdf");
       setText("[data-business-plan-approved]", company.business_plan?.approved_at ? formatDate(company.business_plan.approved_at) : "미지정");
+
+      // 요약 탭: 기업 기본정보
+      setText("[data-summary-name]", company.name);
+      setText("[data-phone]", company.phone || "-");
+      setText("[data-program-name]", company.support_programs?.name || "-");
+      const agreement = company.agreement_start_date && company.agreement_end_date
+        ? `${formatDate(company.agreement_start_date)} ~ ${formatDate(company.agreement_end_date)}`
+        : "-";
+      setText("[data-agreement]", agreement);
+      setText("[data-approval-status-2]", approvalText[company.approval_status] || company.approval_status || "-");
+      setText("[data-budget-status-2]", getBudgetStatusLabel(company.budget_status));
+
+      // 요약 탭: 예산 집계 (비목 배정 합산)
+      const summaryRows = detail.budgetSummary || [];
+      const sum = (key) => summaryRows.reduce((acc, r) => acc + Number(r[key] || 0), 0);
+      setText("[data-sum-allocated]", formatCurrency(sum("allocated_amount")));
+      setText("[data-sum-approved]", formatCurrency(sum("approved_amount")));
+      setText("[data-sum-pending]", formatCurrency(sum("pending_amount")));
+      setText("[data-sum-remaining]", formatCurrency(sum("remaining_amount")));
+      const revisionCount = (detail.reviewHistory || [])
+        .filter((r) => r.decision === "revision_requested" || r.decision === "rejected").length;
+      setText("[data-revision-count]", String(revisionCount));
 
       // Load internal memo
       if (internalMemoEl) {
@@ -262,6 +323,15 @@ try {
       expenseTableEl.innerHTML = ExpenseRequestsTable(pendingExpenses, categoryPaths);
       reviewHistoryEl.innerHTML = FlatReviewHistoryTable(detail.reviewHistory, true);
 
+      // 탭 배지: 검토 대기 표시
+      const budgetReviewBadge = document.querySelector("[data-badge-budget-review]");
+      if (budgetReviewBadge) budgetReviewBadge.hidden = !detail.pendingSubmission;
+      const expenseReviewBadge = document.querySelector("[data-badge-expense-review]");
+      if (expenseReviewBadge) {
+        expenseReviewBadge.hidden = pendingExpenses.length === 0;
+        expenseReviewBadge.textContent = pendingExpenses.length ? String(pendingExpenses.length) : "●";
+      }
+
       attachCategoryHighlight(budgetTreeEl, expenseTableEl);
       renderBudgetReview();
     };
@@ -274,9 +344,19 @@ try {
       const reviewButtons = actionsEl ? actionsEl.querySelectorAll("button") : [];
 
       if (pending) {
-        detailEl.innerHTML = BudgetSubmissionDiff(pending, detail.programBudgets);
+        const committed = detail.committedByBudgetId || {};
+        detailEl.innerHTML = BudgetSubmissionDiff(pending, detail.programBudgets, committed, detail.company);
         reviewButtons.forEach((b) => (b.disabled = false));
         if (commentInput) commentInput.disabled = false;
+        // 감액 불가 위반이 있으면 승인만 차단 (보완/반려는 허용)
+        const hasViolation = (pending.items || []).some(
+          (it) => Number(it.requested_allocated_amount || 0) < Number(committed[it.support_program_budget_id] || 0)
+        );
+        const approveBtn = document.getElementById("btn-approve-budget");
+        if (approveBtn) {
+          approveBtn.disabled = hasViolation;
+          approveBtn.title = hasViolation ? "감액 불가 비목이 있어 승인할 수 없습니다." : "";
+        }
       } else {
         const status = detail.company.budget_status || "not_submitted";
         detailEl.innerHTML = `<p class="empty">현재 검토할 예산 제출안이 없습니다. (예산안 상태: ${escapeHtml(getBudgetStatusLabel(status))})</p>`;

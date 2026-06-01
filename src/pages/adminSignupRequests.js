@@ -50,15 +50,68 @@ function SignupTable(companies, options = {}) {
   `;
 }
 
+function matchesSearch(company, term) {
+  if (!term) return true;
+  const haystack = [
+    company.name,
+    company.representative_name,
+    company.business_number,
+    company.support_programs?.name,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+  return haystack.includes(term);
+}
+
+function inDateRange(company, from, to) {
+  if (!from && !to) return true;
+  const created = (company.created_at || "").slice(0, 10);
+  if (!created) return false;
+  if (from && created < from) return false;
+  if (to && created > to) return false;
+  return true;
+}
+
 try {
   mountShell();
   const user = await requireRole(["admin", "super_admin"]);
   if (user) {
     let dashboard = await getAdminDashboard();
+    const searchInput = document.querySelector("[data-signup-search]");
+    const statusFilter = document.querySelector("[data-signup-status]");
+    const programFilter = document.querySelector("[data-signup-program]");
+    const dateFromInput = document.querySelector("[data-signup-date-from]");
+    const dateToInput = document.querySelector("[data-signup-date-to]");
+
+    if (programFilter) {
+      programFilter.insertAdjacentHTML(
+        "beforeend",
+        (dashboard.supportPrograms || [])
+          .map((p) => `<option value="${escapeHtml(p.id)}">${escapeHtml(p.name)}</option>`)
+          .join("")
+      );
+    }
+
+    const renderAll = () => {
+      const term = (searchInput?.value || "").trim().toLowerCase();
+      const status = statusFilter?.value || "all";
+      const program = programFilter?.value || "all";
+      const dateFrom = dateFromInput?.value || "";
+      const dateTo = dateToInput?.value || "";
+      const filtered = dashboard.companies.filter((company) =>
+        (status === "all" || company.approval_status === status)
+        && (program === "all" || company.support_program_id === program)
+        && inDateRange(company, dateFrom, dateTo)
+        && matchesSearch(company, term)
+      );
+      document.querySelector("[data-all-signups]").innerHTML = SignupTable(filtered);
+    };
+
     const render = () => {
       const pending = dashboard.companies.filter((company) => company.approval_status === "pending");
       document.querySelector("[data-pending-signups]").innerHTML = SignupTable(pending, { actions: true });
-      document.querySelector("[data-all-signups]").innerHTML = SignupTable(dashboard.companies);
+      renderAll();
 
       document.querySelectorAll("[data-approve-company]").forEach((button) => {
         button.addEventListener("click", async () => {
@@ -80,6 +133,12 @@ try {
         });
       });
     };
+
+    searchInput?.addEventListener("input", renderAll);
+    statusFilter?.addEventListener("change", renderAll);
+    programFilter?.addEventListener("change", renderAll);
+    dateFromInput?.addEventListener("change", renderAll);
+    dateToInput?.addEventListener("change", renderAll);
 
     render();
   }

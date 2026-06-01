@@ -27,35 +27,25 @@
           </div>
         </div>
         <p class="error" data-error hidden></p>
-        <section class="grid grid-3">
-          <div class="card metric"><span>창업자 기업</span><strong data-company-count>0</strong></div>
-          <div class="card metric"><span>총 지원금</span><strong data-total-support>0원</strong></div>
-          <div class="card metric"><span>승인/제출 금액</span><strong data-total-approved>0원</strong></div>
-          <div class="card metric"><span>총 집행률</span><strong data-execution-rate>0%</strong></div>
-          <div class="card metric"><span>사전승인 제출</span><strong data-submitted-count>0</strong></div>
-          <div class="card metric"><span>보완 요청</span><strong data-revision-count>0</strong></div>
-          <div class="card metric"><span>위험 경고</span><strong data-risk-count>0</strong></div>
-        </section>
+
         <section style="margin-top:16px">
-          <h2 style="margin-bottom:8px">업무 큐</h2>
-          <div class="grid grid-4" data-queue-cards></div>
+          <h2 style="margin-bottom:8px">전체 통계</h2>
+          <div class="grid grid-4" data-stats-section></div>
         </section>
+
         <section class="card" style="margin-top:16px">
-          <h2>처리 대기 업무</h2>
-          <h3 id="queue-signup" style="margin-top:8px">가입 승인 대기</h3>
-          <div data-queue-signup></div>
-          <h3 id="queue-budget" style="margin-top:20px">예산안 / 예산 변경 승인 대기</h3>
-          <div data-queue-budget></div>
-          <h3 id="queue-expense" style="margin-top:20px">지출 사용 승인 검토 대기</h3>
-          <div data-queue-expense></div>
+          <h2>가입 승인</h2>
+          <div data-signup-approval-section></div>
         </section>
+
         <section class="card" style="margin-top:16px">
-          <h2>전체 기업 모니터링</h2>
-          <div data-company-table></div>
+          <h2>예산 사용 승인</h2>
+          <div data-expense-approval-section></div>
         </section>
+
         <section class="card" style="margin-top:16px">
-          <h2>최근 신청 건</h2>
-          <div data-expense-table></div>
+          <h2>예산 승인/변경</h2>
+          <div data-budget-approval-section></div>
         </section>
       </main>
     </div>

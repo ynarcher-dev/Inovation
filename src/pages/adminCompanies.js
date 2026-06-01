@@ -2,7 +2,7 @@ import { mountShell, runWithErrorBoundary, setText, showError } from "../app.js"
 import { approveCompany, getAdminDashboard } from "../api.js";
 import { requireRole } from "../auth.js";
 import { escapeHtml, formatCurrency, formatDate } from "../utils.js";
-import { getBudgetStatusLabel } from "../budgetStatus.js";
+import { budgetStatusLabels, getBudgetStatusLabel } from "../budgetStatus.js";
 
 const approvalText = {
   pending: "가입 승인 대기",
@@ -66,16 +66,62 @@ function CompanyMonitorTable(companies) {
   `;
 }
 
+function matchesSearch(company, term) {
+  if (!term) return true;
+  const haystack = [
+    company.name,
+    company.representative_name,
+    company.business_number,
+    company.support_programs?.name,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+  return haystack.includes(term);
+}
+
 try {
   mountShell();
   const user = await requireRole(["admin", "super_admin"]);
   if (user) {
     let dashboard = await getAdminDashboard();
     const container = document.querySelector("[data-company-table]");
+    const searchInput = document.querySelector("[data-company-search]");
+    const statusFilter = document.querySelector("[data-company-status]");
+    const budgetFilter = document.querySelector("[data-company-budget]");
+    const programFilter = document.querySelector("[data-company-program]");
+
+    if (budgetFilter) {
+      budgetFilter.insertAdjacentHTML(
+        "beforeend",
+        Object.entries(budgetStatusLabels)
+          .map(([value, label]) => `<option value="${escapeHtml(value)}">${escapeHtml(label)}</option>`)
+          .join("")
+      );
+    }
+
+    if (programFilter) {
+      programFilter.insertAdjacentHTML(
+        "beforeend",
+        (dashboard.supportPrograms || [])
+          .map((p) => `<option value="${escapeHtml(p.id)}">${escapeHtml(p.name)}</option>`)
+          .join("")
+      );
+    }
 
     const render = () => {
       setText("[data-user-name]", user.profile.name);
-      container.innerHTML = CompanyMonitorTable(dashboard.companies);
+      const term = (searchInput?.value || "").trim().toLowerCase();
+      const status = statusFilter?.value || "all";
+      const budget = budgetFilter?.value || "all";
+      const program = programFilter?.value || "all";
+      const filtered = dashboard.companies.filter((company) =>
+        (status === "all" || company.approval_status === status)
+        && (budget === "all" || (company.budget_status || "not_submitted") === budget)
+        && (program === "all" || company.support_program_id === program)
+        && matchesSearch(company, term)
+      );
+      container.innerHTML = CompanyMonitorTable(filtered);
 
       container.querySelectorAll("[data-approve-company]").forEach((button) => {
         button.addEventListener("click", async (event) => {
@@ -95,6 +141,11 @@ try {
         });
       });
     };
+
+    searchInput?.addEventListener("input", render);
+    statusFilter?.addEventListener("change", render);
+    budgetFilter?.addEventListener("change", render);
+    programFilter?.addEventListener("change", render);
 
     render();
   }

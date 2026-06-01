@@ -114,7 +114,7 @@ a:hover {
 
 .main {
   padding: 40px;
-  max-width: 1280px;
+  max-width: none;
   width: 100%;
   margin: 0 auto;
 }
@@ -511,6 +511,14 @@ input:focus, select:focus, textarea:focus {
   grid-template-columns: minmax(0, 1fr) 360px;
   gap: 24px;
 }
+/* 좌측 본문 — 카드(신청 정보 / 검토 요약)를 균일 간격으로 쌓는다 */
+.detail-main,
+/* 우측 — 검토 처리 / 서류·이력 카드를 균일 간격으로 쌓는다 */
+.detail-side {
+  display: grid;
+  gap: 24px;
+  align-content: start;
+}
 .ai-panel { background: #f0fdfa; border-color: #ccfbf1; color: #115e59; }
 
 /* 신청 정보 — 라벨/값 정의 리스트 */
@@ -542,6 +550,15 @@ input:focus, select:focus, textarea:focus {
   color: var(--primary-dark);
   font-variant-numeric: tabular-nums;
 }
+/* 검토 요약처럼 라벨이 긴 정의 리스트 — 라벨 열을 넓혀 줄바꿈을 막는다 */
+.summary-list--wide .summary-row { grid-template-columns: 168px minmax(0, 1fr); }
+/* 예산 수치 값 — 본문 톤 유지, 숫자만 정렬 */
+.summary-num { font-variant-numeric: tabular-nums; }
+/* 적합성 판정 — 톤 텍스트로만 강조 */
+.summary-fit { font-weight: 700; }
+.summary-fit.success { color: #047857; }
+.summary-fit.danger { color: #b91c1c; }
+.summary-fit .muted { font-weight: 600; }
 .summary-row-block {
   grid-template-columns: 1fr;
   gap: 6px;
@@ -551,6 +568,17 @@ input:focus, select:focus, textarea:focus {
   line-height: 1.65;
   white-space: pre-line;
 }
+
+/* 검토 이력 목록(상세 사이드) — review-row 카드들을 균일 간격으로 쌓는다 */
+.review-list { display: grid; gap: 12px; }
+
+/* 위험 경고 목록 — 배너 톤을 유지하되 기본 notice 여백을 압축해 촘촘히 쌓는다 */
+.warning-list { display: grid; gap: 8px; }
+.warning-list .notice { margin: 0; padding: 12px 14px; font-size: var(--text-sm); }
+/* 검토 요약 카드: 예산 표 아래 경고/안내를 한 칸 띄운다 */
+.budget-warnings:not(:empty) { margin-top: 16px; }
+/* 검토 처리: 승인/보완요청/반려 버튼을 우측 정렬 */
+[data-review-form] .actions { justify-content: flex-end; }
 
 /* 검토 결과(승인/보완요청/반려 + 코멘트) */
 .review-section:not(:empty) {

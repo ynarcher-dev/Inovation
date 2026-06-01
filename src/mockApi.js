@@ -39,7 +39,7 @@ export function mockGetFile(key) {
 
 // localStorage 시드 데이터 버전. 데이터 구조가 바뀌면 올린다.
 // 버전이 다르면 mock 데이터를 재시드한다(개발용 로컬 데이터만 초기화).
-const DATA_VERSION = "2";
+const DATA_VERSION = "3";
 const DATA_VERSION_KEY = "mock_data_version";
 
 // Helper: load from localStorage
@@ -108,6 +108,7 @@ export function initMockData() {
     agreement_start_date: "2026-01-01",
     agreement_end_date: "2026-12-31",
     support_program_id: "prog-1",
+    created_at: "2026-01-01T09:00:00Z",
     approval_status: "approved", // 가입 승인 상태 (예산 상태와 분리)
     budget_status: "budget_approved", // 예산안 승인 상태
     business_plan: {
@@ -267,6 +268,7 @@ export function mockSignUpFounder(input) {
     self_payment_required_amount: 0,
     self_payment_paid: false,
     support_program_id: input.support_program_id,
+    created_at: new Date().toISOString(),
     approval_status: "pending", // 가입 승인 대기
     budget_status: "not_submitted", // 예산안 미제출
   });

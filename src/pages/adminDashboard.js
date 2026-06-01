@@ -1,93 +1,75 @@
 import { mountShell, runWithErrorBoundary, showError, setText } from "../app.js";
 import { requireRole } from "../auth.js";
-import {
-  approveCompany,
-  getAdminDashboard,
-} from "../api.js";
-import { ExpenseTable } from "../components/ExpenseTable.js";
+import { approveCompany, getAdminDashboard, rejectCompany } from "../api.js";
 import { getBudgetStatusLabel } from "../budgetStatus.js";
 import { escapeHtml, formatCurrency, formatDate } from "../utils.js";
 
+// 가입 승인 상태 라벨
 const approvalText = {
   pending: "가입 승인 대기",
   approved: "가입 승인 완료",
   rejected: "가입 반려",
 };
 
-function CompanyMonitorTable(companies) {
-  if (!companies?.length) return `<p class="empty">표시할 기업이 없습니다.</p>`;
-  return `
+// 예산 승인 완료로 보는 상태
+const BUDGET_APPROVED_STATUSES = ["budget_approved", "change_approved"];
+// 예산(예산안/변경) 검토 대기 상태
+const BUDGET_PENDING_STATUSES = ["budget_submitted", "change_submitted"];
+// 예산 사용(지출 사전승인) 검토 대기 상태
+const EXPENSE_PENDING_STATUSES = ["pre_approval_submitted"];
+
+const companyDetailHref = (id) => `company-detail.html?id=${encodeURIComponent(id)}`;
+const expenseDetailHref = (id) => `expense-detail.html?id=${encodeURIComponent(id)}`;
+
+// ── 1. 전체 통계 ─────────────────────────────────────
+function renderStatsSection({ companies, supportPrograms, companyCount }) {
+  const activePrograms = (supportPrograms || []).filter((p) => p.active !== false).length;
+  const signupApproved = companies.filter((c) => c.approval_status === "approved").length;
+  const budgetApproved = companies.filter((c) => BUDGET_APPROVED_STATUSES.includes(c.budget_status)).length;
+
+  const cards = [
+    { label: "전체 기업 수", value: companyCount ?? companies.length },
+    { label: "진행 중인 사업 수", value: activePrograms },
+    { label: "가입 승인 완료 기업 수", value: signupApproved },
+    { label: "예산 승인 완료 기업 수", value: budgetApproved },
+  ];
+
+  document.querySelector("[data-stats-section]").innerHTML = cards
+    .map((card) => `<div class="card metric"><span>${escapeHtml(card.label)}</span><strong>${card.value}</strong></div>`)
+    .join("");
+}
+
+// ── 2. 가입 승인 ─────────────────────────────────────
+function renderSignupApprovalSection(companies) {
+  const pending = companies.filter((c) => c.approval_status === "pending");
+  const target = document.querySelector("[data-signup-approval-section]");
+
+  if (!pending.length) {
+    target.innerHTML = `<p class="empty">가입 승인 대기 중인 기업이 없습니다.</p>`;
+    return;
+  }
+
+  target.innerHTML = `
     <div class="table-wrap">
       <table>
         <thead>
-          <tr>
-            <th>기업</th>
-            <th>대표자</th>
-            <th>가입 상태</th>
-            <th>예산안 상태</th>
-            <th>총 지원금</th>
-            <th>승인/제출 금액</th>
-            <th>진행률</th>
-            <th>관리</th>
-          </tr>
+          <tr><th>기업명</th><th>대표자</th><th>참가 사업</th><th>신청일</th><th>상태</th><th>처리</th></tr>
         </thead>
         <tbody>
-          ${companies.map((company) => {
-            const used = (company.budgetSummary || []).reduce((sum, row) => sum + Number(row.approved_amount || 0) + Number(row.pending_amount || 0), 0);
-            const rate = company.support_total_amount ? Math.round((used / Number(company.support_total_amount)) * 100) : 0;
-            return `
-              <tr data-company-row data-company-id="${escapeHtml(company.id)}">
-                <td><a href="company-detail.html?id=${encodeURIComponent(company.id)}">${escapeHtml(company.name)}</a></td>
-                <td>${escapeHtml(company.representative_name || "-")}</td>
-                <td>${escapeHtml(approvalText[company.approval_status] || company.approval_status || "-")}</td>
-                <td>${escapeHtml(getBudgetStatusLabel(company.budget_status))}</td>
-                <td>${formatCurrency(company.support_total_amount)}</td>
-                <td>${formatCurrency(used)}</td>
-                <td>${rate}%</td>
-                <td>
-                  ${company.approval_status === "pending"
-                    ? `<button class="button small" type="button" data-approve-company="${escapeHtml(company.id)}">가입 승인</button>`
-                    : `<a href="company-detail.html?id=${encodeURIComponent(company.id)}">상세 관리</a>`}
-                </td>
-              </tr>
-            `;
-          }).join("")}
-        </tbody>
-      </table>
-    </div>
-  `;
-}
-
-// 업무 큐 요약 카드
-function QueueCards(queues) {
-  const cards = [
-    { key: "signup", label: "가입 승인 대기", count: queues.signup.length, target: "queue-signup" },
-    { key: "budgetInitial", label: "최초 예산안 승인 대기", count: queues.budgetInitial.length, target: "queue-budget" },
-    { key: "budgetChange", label: "예산 변경 승인 대기", count: queues.budgetChange.length, target: "queue-budget" },
-    { key: "expense", label: "지출 사용 승인 검토 대기", count: queues.expense.length, target: "queue-expense" },
-  ];
-  return cards.map((card) => `
-    <a class="card metric" href="#${card.target}" style="text-decoration:none; ${card.count > 0 ? "border-left:4px solid var(--primary);" : ""}">
-      <span>${escapeHtml(card.label)}</span>
-      <strong style="${card.count > 0 ? "color:var(--primary);" : ""}">${card.count}</strong>
-    </a>
-  `).join("");
-}
-
-// 가입 승인 대기 목록
-function SignupQueueTable(companies) {
-  if (!companies.length) return `<p class="empty">가입 승인 대기 중인 기업이 없습니다.</p>`;
-  return `
-    <div class="table-wrap">
-      <table>
-        <thead><tr><th>기업</th><th>대표자</th><th>참가 사업</th><th>처리</th></tr></thead>
-        <tbody>
-          ${companies.map((c) => `
+          ${pending.map((c) => `
             <tr>
-              <td>${escapeHtml(c.name)}</td>
+              <td><a href="${companyDetailHref(c.id)}">${escapeHtml(c.name)}</a></td>
               <td>${escapeHtml(c.representative_name || "-")}</td>
               <td>${escapeHtml(c.support_programs?.name || "-")}</td>
-              <td><button class="button small" type="button" data-approve-company="${escapeHtml(c.id)}">가입 승인</button></td>
+              <td>${formatDate(c.created_at)}</td>
+              <td>${escapeHtml(approvalText[c.approval_status] || c.approval_status || "-")}</td>
+              <td>
+                <div class="actions">
+                  <button class="button small" type="button" data-approve-company="${escapeHtml(c.id)}">승인</button>
+                  <button class="button small danger" type="button" data-reject-company="${escapeHtml(c.id)}">반려</button>
+                  <a class="button small secondary" href="${companyDetailHref(c.id)}">상세 보기</a>
+                </div>
+              </td>
             </tr>
           `).join("")}
         </tbody>
@@ -96,24 +78,35 @@ function SignupQueueTable(companies) {
   `;
 }
 
-// 예산안/변경 승인 대기 목록
-function BudgetQueueTable(companies) {
-  if (!companies.length) return `<p class="empty">검토 대기 중인 예산 제출안이 없습니다.</p>`;
-  return `
+// ── 3. 예산 승인 ─────────────────────────────────────
+function renderBudgetApprovalSection(companies) {
+  const pending = companies.filter((c) => BUDGET_PENDING_STATUSES.includes(c.budget_status));
+  const target = document.querySelector("[data-budget-approval-section]");
+
+  if (!pending.length) {
+    target.innerHTML = `<p class="empty">검토 대기 중인 예산 요청이 없습니다.</p>`;
+    return;
+  }
+
+  target.innerHTML = `
     <div class="table-wrap">
       <table>
-        <thead><tr><th>기업</th><th>유형</th><th>상태</th><th>제출일</th><th>심사</th></tr></thead>
+        <thead>
+          <tr><th>기업명</th><th>참가 사업</th><th>요청 유형</th><th>제출일</th><th>요청 사유</th><th>상태</th><th>처리</th></tr>
+        </thead>
         <tbody>
-          ${companies.map((c) => {
-            const isChange = String(c.budget_status || "").startsWith("change");
-            const submittedAt = c.pendingBudgetSubmission?.submitted_at;
+          ${pending.map((c) => {
+            const isChange = c.budget_status === "change_submitted";
+            const submission = c.pendingBudgetSubmission;
             return `
               <tr>
                 <td>${escapeHtml(c.name)}</td>
+                <td>${escapeHtml(c.support_programs?.name || "-")}</td>
                 <td>${isChange ? "예산 변경" : "최초 예산안"}</td>
+                <td>${submission?.submitted_at ? formatDate(submission.submitted_at) : "-"}</td>
+                <td>${escapeHtml(submission?.reason || "-")}</td>
                 <td>${escapeHtml(getBudgetStatusLabel(c.budget_status))}</td>
-                <td>${submittedAt ? formatDate(submittedAt) : "-"}</td>
-                <td><a class="button small" href="company-detail.html?id=${encodeURIComponent(c.id)}">심사하기</a></td>
+                <td><a class="button small" href="${companyDetailHref(c.id)}">검토하기</a></td>
               </tr>
             `;
           }).join("")}
@@ -123,56 +116,80 @@ function BudgetQueueTable(companies) {
   `;
 }
 
+// ── 4. 예산 사용 승인 (지출 사전승인) ────────────────
+function renderExpenseApprovalSection(expenses) {
+  const pending = (expenses || []).filter((e) => EXPENSE_PENDING_STATUSES.includes(e.status));
+  const target = document.querySelector("[data-expense-approval-section]");
+
+  if (!pending.length) {
+    target.innerHTML = `<p class="empty">검토 대기 중인 예산 사용 신청이 없습니다.</p>`;
+    return;
+  }
+
+  target.innerHTML = `
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>기업명</th><th>신청 제목</th><th>비목</th><th>공급가액</th><th>제출일</th><th>처리</th></tr>
+        </thead>
+        <tbody>
+          ${pending.map((e) => `
+            <tr>
+              <td>${escapeHtml(e.company_name || "-")}</td>
+              <td>${escapeHtml(e.title || "-")}</td>
+              <td>${escapeHtml(e.budget_category || "-")}</td>
+              <td>${formatCurrency(e.amount_supply)}</td>
+              <td>${e.submitted_at ? formatDate(e.submitted_at) : "-"}</td>
+              <td><a class="button small" href="${expenseDetailHref(e.id)}">검토하기</a></td>
+            </tr>
+          `).join("")}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+// 가입 승인/반려 처리 동작 바인딩
+function bindSignupActions(user, reload) {
+  document.querySelectorAll("[data-approve-company]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      await runWithErrorBoundary(async () => {
+        await approveCompany(button.dataset.approveCompany, user.id);
+        await reload();
+      }, { button });
+    });
+  });
+
+  document.querySelectorAll("[data-reject-company]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const reason = window.prompt("반려 사유를 입력하세요. (선택)") ?? "";
+      await runWithErrorBoundary(async () => {
+        await rejectCompany(button.dataset.rejectCompany, reason);
+        await reload();
+      }, { button });
+    });
+  });
+}
+
 try {
   mountShell();
   const user = await requireRole(["admin", "super_admin"]);
   if (user) {
     let dashboard = await getAdminDashboard();
-    const render = () => {
-      const { companies, companyCount, expenses, totalApprovedAmount, totalIssueCount, totalSupportAmount } = dashboard;
 
-      // 업무 큐 계산 (가입/예산 상태와 지출 상태를 분리)
-      const queues = {
-        signup: companies.filter((c) => c.approval_status === "pending"),
-        budgetInitial: companies.filter((c) => c.budget_status === "budget_submitted"),
-        budgetChange: companies.filter((c) => c.budget_status === "change_submitted"),
-        expense: expenses.filter((e) => e.status === "pre_approval_submitted"),
-      };
-      const budgetQueue = companies.filter((c) => ["budget_submitted", "change_submitted"].includes(c.budget_status));
+    const render = () => {
+      const { companies, supportPrograms, companyCount, expenses } = dashboard;
 
       setText("[data-user-name]", user.profile.name);
-      setText("[data-company-count]", companyCount);
-      setText("[data-total-support]", formatCurrency(totalSupportAmount));
-      setText("[data-total-approved]", formatCurrency(totalApprovedAmount));
-      setText("[data-execution-rate]", totalSupportAmount ? `${Math.round((Number(totalApprovedAmount || 0) / Number(totalSupportAmount || 1)) * 100)}%` : "0%");
-      setText("[data-submitted-count]", queues.expense.length);
-      setText("[data-revision-count]", expenses.filter((row) => row.status?.includes("revision")).length);
-      setText("[data-risk-count]", totalIssueCount ?? expenses.reduce((sum, row) => sum + Number(row.warning_count || 0), 0));
 
-      document.querySelector("[data-queue-cards]").innerHTML = QueueCards(queues);
-      document.querySelector("[data-queue-signup]").innerHTML = SignupQueueTable(queues.signup);
-      document.querySelector("[data-queue-budget]").innerHTML = BudgetQueueTable(budgetQueue);
-      document.querySelector("[data-queue-expense]").innerHTML = ExpenseTable(queues.expense, { admin: true });
+      renderStatsSection({ companies, supportPrograms, companyCount });
+      renderSignupApprovalSection(companies);
+      renderExpenseApprovalSection(expenses);
+      renderBudgetApprovalSection(companies);
 
-      document.querySelector("[data-company-table]").innerHTML = CompanyMonitorTable(companies);
-      document.querySelector("[data-expense-table]").innerHTML = ExpenseTable(expenses, { admin: true });
-
-      document.querySelectorAll("[data-approve-company]").forEach((button) => {
-        button.addEventListener("click", async (event) => {
-          event.stopPropagation();
-          await runWithErrorBoundary(async () => {
-            await approveCompany(button.dataset.approveCompany, user.id);
-            dashboard = await getAdminDashboard();
-            render();
-          }, { button });
-        });
-      });
-
-      document.querySelectorAll("[data-company-row]").forEach((row) => {
-        row.addEventListener("click", (event) => {
-          if (event.target.closest("a, button")) return;
-          window.location.href = `company-detail.html?id=${encodeURIComponent(row.dataset.companyId)}`;
-        });
+      bindSignupActions(user, async () => {
+        dashboard = await getAdminDashboard();
+        render();
       });
     };
 

@@ -501,6 +501,10 @@ export function mockGetAdminDashboard() {
     .filter((e) => ["pre_approved", "executing", "execution_submitted", "inspection_submitted", "settlement_submitted", "completed"].includes(e.status))
     .reduce((s, e) => s + Number(e.amount_supply || 0), 0);
 
+  // 비목명은 저장값(budget_category)이 비어 있을 수 있어 business_plan_item_id 기준으로 해석한다.
+  const budgetById = new Map(budgets.map((b) => [b.id, b]));
+  const leafIdByExpense = resolveExpenseLeafIds(expenses, allocations, budgets);
+
   return {
     companyCount: companies.length,
     companies: mappedCompanies,
@@ -510,8 +514,10 @@ export function mockGetAdminDashboard() {
     supportPrograms: programs.filter((p) => p.active !== false),
     expenses: expenses.map((e) => {
       const comp = companies.find((c) => c.id === e.company_id);
+      const leafNode = budgetById.get(leafIdByExpense.get(e.id));
       return {
         ...e,
+        budget_category: leafNode?.budget_category || leafNode?.title || e.budget_category || null,
         company_name: comp ? comp.name : "-",
         representative_name: comp ? comp.representative_name : "-",
         ...decorateExpenseCounts(e),
@@ -586,10 +592,19 @@ export function mockGetAdminCompanyDetail(companyId) {
     r.expense_request_id === "budget-" + companyId || expenses.some((e) => e.id === r.expense_request_id)
   );
 
+  // 비목별 이미 커밋된(승인+검토중) 지출 금액 — 감액 하한 계산용
+  const committedMap = computeCommittedByBudgetId(companyId);
+  const committedByBudgetId = Object.fromEntries(committedMap);
+
   // 검토 대기/보완 중인 예산 제출안 + 전체 제출 이력
   const pendingSubmission = getPendingSubmission(companyId);
   let pendingBudgetTree = null;
   if (pendingSubmission) {
+    // 제출자 이름 조인
+    const users = load(STORAGE_KEYS.USERS, []);
+    const submitter = users.find((u) => u.id === pendingSubmission.submitted_by);
+    pendingSubmission.submitted_by_name =
+      submitter?.raw_user_meta_data?.name || company.representative_name || "-";
     const requestedByBudgetId = new Map(
       pendingSubmission.items.map((it) => [it.support_program_budget_id, Number(it.requested_allocated_amount || 0)])
     );
@@ -602,15 +617,36 @@ export function mockGetAdminCompanyDetail(companyId) {
     budgets
   );
 
+  // 지출 검토 목록(§11.2)용: 비목 경로·첨부 제출률·위험 경고 수를 부가한다.
+  const uploadedFiles = load(STORAGE_KEYS.UPLOADED_FILES, []);
+  const uploadedTypesByExpense = new Map();
+  for (const f of uploadedFiles) {
+    if (!uploadedTypesByExpense.has(f.expense_request_id)) uploadedTypesByExpense.set(f.expense_request_id, new Set());
+    uploadedTypesByExpense.get(f.expense_request_id).add(f.document_type);
+  }
+  const decoratedExpenses = (expenses || []).map((e) => {
+    const required = generateChecklist(e).filter((d) => d.required);
+    const uploaded = uploadedTypesByExpense.get(e.id) || new Set();
+    const submitted = required.filter((d) => uploaded.has(d.document_type)).length;
+    const warns = generateWarnings(e);
+    return {
+      ...e,
+      doc_required: required.length,
+      doc_submitted: submitted,
+      warning_count: warns.filter((w) => w.severity === "warning" || w.severity === "danger").length,
+    };
+  });
+
   return {
     company: companyWithProgram,
     budgetSummary: calculateBudgetSummary(allocations, budgets, companyId, expenses),
     budgetTree,
     programBudgets: budgets,
+    committedByBudgetId,
     pendingSubmission,
     pendingBudgetTree,
     budgetSubmissions,
-    expenses: expenses || [],
+    expenses: decoratedExpenses,
     reviewHistory: reviewHistory.map((r) => {
       if (r.expense_request_id?.startsWith("budget-")) {
         return { ...r, title: "예산 및 비목 배정안" };
@@ -673,6 +709,24 @@ export function mockReviewBudgetSubmission(submissionId, decision, comment, revi
   const type = submission.type === "change" ? "change" : "initial";
   const newStatus = statusMap[type][decision];
   const now = new Date().toISOString();
+
+  // §10.6 승인 직전 재검증: 요청 배정액이 이미 커밋된(승인+검토중) 지출 금액보다 낮게 감액되면 승인 차단
+  if (decision === "approved") {
+    const committed = computeCommittedByBudgetId(submission.company_id);
+    const budgets = load(STORAGE_KEYS.BUDGETS, []);
+    const titleById = new Map(budgets.map((b) => [b.id, b.title]));
+    const subItems = load(STORAGE_KEYS.BUDGET_SUBMISSION_ITEMS, []).filter((it) => it.budget_submission_id === submissionId);
+    const violations = subItems
+      .filter((it) => Number(it.requested_allocated_amount || 0) < (committed.get(it.support_program_budget_id) || 0))
+      .map((it) => {
+        const used = committed.get(it.support_program_budget_id) || 0;
+        const req = Number(it.requested_allocated_amount || 0);
+        return `· ${titleById.get(it.support_program_budget_id) || "비목"}: 요청 ${req.toLocaleString()}원 < 집행/검토중 ${used.toLocaleString()}원`;
+      });
+    if (violations.length) {
+      throw new Error(`이미 집행(승인/검토중)된 금액보다 낮게 감액할 수 없습니다.\n${violations.join("\n")}`);
+    }
+  }
 
   submission.status = newStatus;
   submission.reviewed_by = reviewerId || null;
