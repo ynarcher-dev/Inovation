@@ -55,7 +55,7 @@
       .budget-matrix .budget-amount.danger { color: #b91c1c; }
       .budget-matrix .budget-amount.success { color: #047857; }
       .budget-matrix .subtotal-row td { background: #fef3c7; font-weight: 600; }
-      .budget-matrix .subtotal-row .subtotal-label { text-align: right; }
+      .budget-matrix .subtotal-row .subtotal-label { text-align: left; }
       .budget-tree-category { color: #6b7280; font-size: 12px; font-weight: 400; margin-left: 4px; }
       .budget-alloc-input { width: 100%; text-align: right; box-sizing: border-box; }
       .subtotal-tag {
@@ -81,28 +81,12 @@
   </head>
   <body>
     <div class="app-shell">
-      <aside class="sidebar">
-        <div class="brand">관리자</div>
-        <nav class="nav">
-          <a href="./dashboard.html">대시보드</a>
-          <a href="./signup-requests.html">가입 신청 관리</a>
-          <a href="./support-programs.html">참가 사업명 관리</a>
-          <a href="./program-management.html">참가 사업 관리</a>
-          <a href="./companies.html">기업 목록</a>
-          <button data-logout type="button">로그아웃</button>
-        </nav>
-      </aside>
+      <aside class="sidebar"></aside>
       <main class="main">
         <div class="topbar">
           <div>
             <h1 data-company-name>기업 상세 관리</h1>
             <p class="muted">기업의 가입·예산·지출 현황을 한 화면에서 확인하고 검토합니다.</p>
-          </div>
-          <div style="display:flex; gap:8px; align-items:center;">
-            <span class="muted" style="font-size:12px;">가입</span>
-            <strong data-approval-status>-</strong>
-            <span class="muted" style="font-size:12px; margin-left:8px;">예산안</span>
-            <strong data-budget-status>-</strong>
           </div>
         </div>
         <p class="error" data-error hidden></p>
@@ -142,14 +126,9 @@
                 <div class="card metric"><span>검토 중 지출</span><strong data-sum-pending>-</strong></div>
                 <div class="card metric"><span>잔액</span><strong data-sum-remaining>-</strong></div>
               </section>
-              <p class="muted" style="font-size:12px;">보완/반려 누적 <strong data-revision-count>0</strong>건</p>
-              <hr style="border: 0; border-top: 1px solid var(--line); margin: 12px 0;">
-              <label class="muted" style="font-size:12px;">총 지원금 (직접 조정)</label>
-              <form class="support-total-form" data-support-total-form style="margin-top:6px;">
-                <input data-support-total-input type="text" inputmode="numeric" placeholder="0">
-                <span>원</span>
-                <button class="button small" type="submit">저장</button>
-              </form>
+              <div class="grid-4" style="margin-top:12px; grid-template-columns: 1fr;">
+                <div class="card metric"><span>보완 요청</span><strong data-revision-requested-count>0건</strong></div>
+              </div>
             </div>
           </section>
         </div>
@@ -157,7 +136,7 @@
         <!-- Tab 2: 예산 현황 -->
         <div id="tab-budget-status" class="tab-content">
           <section class="card">
-            <h2>항목 및 비목별 잔액</h2>
+            <h2>예산 현황</h2>
             <p class="muted">참가 사업의 예산/비목 구조를 따릅니다. 잔액 = 배정 금액 - 승인 금액 - 검토 중 금액. 말단(리프) 항목에 배정 금액을 입력하면 자동 저장됩니다.</p>
             <div data-budget-tree></div>
           </section>
@@ -166,15 +145,14 @@
         <!-- Tab 3: 예산 검토 -->
         <div id="tab-budget-review" class="tab-content">
           <section class="card" id="budget-review-section">
-            <h2>배정 예산안 심사</h2>
-            <p class="muted">스타트업이 제출한 예산안(또는 변경 요청)을 검토하여 승인/보완요청/반려를 결정합니다. 승인 시에만 확정 예산에 반영됩니다.</p>
+            <h2>예산 심사</h2>
+            <p class="muted">스타트업이 제출한 최초 예산안 또는 예산 변경 요청을 검토하여 승인/보완요청을 결정합니다. 승인 시에만 확정 예산에 반영됩니다.</p>
             <div id="budget-review-detail" style="margin: 12px 0;"></div>
             <div id="budget-review-actions" style="display: flex; gap: 12px; margin-top: 12px; align-items: flex-start;">
-              <textarea id="budget-review-comment" placeholder="보완요청 또는 반려 시 구체적인 사유를 작성하세요." style="flex: 1; height: 64px; box-sizing: border-box;"></textarea>
+              <textarea id="budget-review-comment" placeholder="보완요청 시 구체적인 사유를 작성하세요." style="flex: 1; height: 64px; box-sizing: border-box;"></textarea>
               <div style="display: flex; gap: 8px;">
                 <button class="button" id="btn-approve-budget" type="button" style="background-color: #10b981; border-color: #10b981;">승인</button>
                 <button class="button warning" id="btn-revision-budget" type="button" style="background-color: #f59e0b; border-color: #f59e0b;">보완요청</button>
-                <button class="button danger" id="btn-reject-budget" type="button" style="background-color: #ef4444; border-color: #ef4444;">반려</button>
               </div>
             </div>
           </section>
@@ -191,21 +169,25 @@
 
         <!-- Tab 5: 사업계획서 -->
         <div id="tab-plan" class="tab-content">
+          <p class="muted" style="font-size:12px;">승인 대기 중인 예산 제출에 연결된 사업계획서는 최종 승인본으로 제공되지 않습니다. 다운로드는 승인 완료된 파일만 가능합니다.</p>
           <section class="grid grid-2">
             <div class="card">
-              <h2>최종 사업계획서</h2>
-              <p class="muted" style="font-size:12px;">정책 A: founder가 올린 제출본을 관리자가 검토 후 최종본으로 확정합니다.</p>
-              <p><strong>버전</strong> <span data-business-plan-version>-</span></p>
-              <p><strong>파일</strong> <span data-business-plan-file>-</span></p>
-              <p><strong>승인일</strong> <span data-business-plan-approved>-</span></p>
-              <hr style="border: 0; border-top: 1px solid var(--line); margin: 12px 0;">
-              <button class="button" id="btn-download-all-docs" type="button" style="width: 100%;">📦 증빙 서류 일괄 다운로드 (ZIP)</button>
+              <h2>1차 사업계획서</h2>
+              <p><strong>파일</strong> <span data-bp-round1-file>-</span></p>
+              <p><strong>상태</strong> <span data-bp-round1-status>-</span></p>
+              <p><strong>최종 수정</strong> <span data-bp-round1-updated>-</span></p>
+              <button class="button small secondary" data-bp-download="round1" type="button" hidden>다운로드</button>
             </div>
             <div class="card">
-              <h2>버전 이력</h2>
-              <p class="muted" style="font-size:12px;">사업계획서 업로드/교체 및 버전 이력 관리는 S4 단계에서 구현됩니다.</p>
-              <p class="empty" data-plan-history>아직 버전 이력이 없습니다.</p>
+              <h2>2차 수정 사업계획서</h2>
+              <p><strong>파일</strong> <span data-bp-round2-file>-</span></p>
+              <p><strong>상태</strong> <span data-bp-round2-status>-</span></p>
+              <p><strong>최종 수정</strong> <span data-bp-round2-updated>-</span></p>
+              <button class="button small secondary" data-bp-download="round2" type="button" hidden>다운로드</button>
             </div>
+          </section>
+          <section class="card" style="margin-top:16px;">
+            <button class="button" id="btn-download-all-docs" type="button" style="width: 100%;">📦 증빙 서류 일괄 다운로드 (ZIP)</button>
           </section>
         </div>
 
@@ -213,7 +195,7 @@
         <div id="tab-history" class="tab-content">
           <section class="card">
             <h2>검토 이력 히스토리</h2>
-            <p class="muted">이 기업의 예산 및 지출 검토 이력(승인, 보완 요청, 반려 등)이 최신순으로 나열됩니다.</p>
+            <p class="muted">이 기업의 예산 및 지출 검토 이력(승인, 보완 요청 등)이 최신순으로 나열됩니다.</p>
             <div data-review-history></div>
           </section>
         </div>
@@ -229,6 +211,6 @@
         </div>
       </main>
     </div>
-    <script type="module" src="../src/pages/adminCompanyDetail.js"></script>
+    <script type="module" src="../src/pages/admin/company-detail.js"></script>
   </body>
 </html>

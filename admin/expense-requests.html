@@ -1,38 +1,33 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="ko">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>신청 목록</title>
+    <title>예산사용 승인</title>
     <link rel="stylesheet" href="../src/styles.css">
   </head>
   <body>
     <div class="app-shell">
-      <aside class="sidebar">
-        <div class="brand">관리자</div>
-        <nav class="nav">
-          <a href="./dashboard.html">대시보드</a>
-          <a href="./signup-requests.html">가입 신청 관리</a>
-          <a href="./support-programs.html">참가 사업명 관리</a>
-          <a href="./program-management.html">참가 사업 관리</a>
-          <a class="active" href="./expense-requests.html">신청 목록</a>
-          <button data-logout type="button">로그아웃</button>
-        </nav>
-      </aside>
+      <aside class="sidebar"></aside>
       <main class="main">
         <div class="topbar">
           <div>
-            <h1>신청 목록</h1>
-            <p class="muted">현재 MVP에서는 대시보드와 같은 목록을 표시합니다.</p>
+            <h1>예산사용 승인</h1>
+            <p class="muted">검토 대기 중인 예산 사용 신청을 확인하고 처리합니다.</p>
           </div>
         </div>
         <p class="error" data-error hidden></p>
         <section class="card">
-          <div data-expense-table></div>
+          <h2>승인 대기</h2>
+          <div data-expense-approval-section></div>
+        </section>
+        <section class="card" style="margin-top:16px">
+          <h2>전체 지출 신청 현황</h2>
+          <div data-expense-toolbar></div>
+          <div data-expense-all></div>
         </section>
       </main>
     </div>
-    <script type="module" src="../src/pages/adminExpenseRequests.js"></script>
+    <script type="module" src="../src/pages/admin/expense-requests.js"></script>
   </body>
 </html>
-

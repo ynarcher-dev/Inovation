@@ -1,4 +1,4 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="ko">
   <head>
     <meta charset="utf-8">
@@ -8,17 +8,7 @@
   </head>
   <body>
     <div class="app-shell">
-      <aside class="sidebar">
-        <div class="brand">관리자</div>
-        <nav class="nav">
-          <a class="active" href="./dashboard.html">대시보드</a>
-          <a href="./signup-requests.html">가입 신청 관리</a>
-          <a href="./support-programs.html">참가 사업명 관리</a>
-          <a href="./program-management.html">참가 사업 관리</a>
-          <a href="./companies.html">기업 목록</a>
-          <button data-logout type="button">로그아웃</button>
-        </nav>
-      </aside>
+      <aside class="sidebar"></aside>
       <main class="main">
         <div class="topbar">
           <div>
@@ -32,24 +22,9 @@
           <h2 style="margin-bottom:8px">전체 통계</h2>
           <div class="grid grid-4" data-stats-section></div>
         </section>
-
-        <section class="card" style="margin-top:16px">
-          <h2>가입 승인</h2>
-          <div data-signup-approval-section></div>
-        </section>
-
-        <section class="card" style="margin-top:16px">
-          <h2>예산 사용 승인</h2>
-          <div data-expense-approval-section></div>
-        </section>
-
-        <section class="card" style="margin-top:16px">
-          <h2>예산 승인/변경</h2>
-          <div data-budget-approval-section></div>
-        </section>
       </main>
     </div>
-    <script type="module" src="../src/pages/adminDashboard.js"></script>
+    <script type="module" src="../src/pages/admin/dashboard.js"></script>
   </body>
 </html>
 

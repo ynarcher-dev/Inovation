@@ -18,6 +18,11 @@ import {
   mockCreateSupportProgramBudget,
   mockUpdateSupportProgramBudget,
   mockDeleteSupportProgramBudget,
+  mockGetAdminAccounts,
+  mockCreateAdminAccount,
+  mockDeleteAdminAccount,
+  mockResetAdminPassword,
+  mockUpdateAdminPrograms,
 } from "./mockApi.js";
 
 import {
@@ -34,11 +39,12 @@ import {
   mockReviewBudgetSubmission,
   mockUpsertCompanyBudgetAllocation,
   mockUpdateCompanySupportTotal,
+  mockUpdateCompanyInternalMemo,
   mockGetExpenseDetail,
   mockCreateExpense,
+  mockUpdateExpenseRequest,
   mockSubmitExpenseRequest,
   mockReviewExpenseRequest,
-  mockAdvanceExpenseStage,
   mockUploadDocumentFile,
   mockMarkDocumentUploaded,
   mockDeleteUploadedFile,
@@ -63,6 +69,12 @@ export const createSupportProgramBudget = mockCreateSupportProgramBudget;
 export const updateSupportProgramBudget = mockUpdateSupportProgramBudget;
 export const deleteSupportProgramBudget = mockDeleteSupportProgramBudget;
 
+export const getAdminAccounts = mockGetAdminAccounts;
+export const createAdminAccount = mockCreateAdminAccount;
+export const deleteAdminAccount = mockDeleteAdminAccount;
+export const resetAdminPassword = mockResetAdminPassword;
+export const updateAdminPrograms = mockUpdateAdminPrograms;
+
 export const getGuidanceItems = mockGetGuidanceItems;
 export const createGuidanceItem = mockCreateGuidanceItem;
 export const updateGuidanceItem = mockUpdateGuidanceItem;
@@ -86,12 +98,13 @@ export const rejectCompany = mockRejectCompany;
 export const reviewBudgetSubmission = mockReviewBudgetSubmission;
 export const upsertCompanyBudgetAllocation = mockUpsertCompanyBudgetAllocation;
 export const updateCompanySupportTotal = mockUpdateCompanySupportTotal;
+export const updateCompanyInternalMemo = mockUpdateCompanyInternalMemo;
 
 export const getExpenseDetail = mockGetExpenseDetail;
 export const createExpense = mockCreateExpense;
+export const updateExpenseRequest = mockUpdateExpenseRequest;
 export const submitExpenseRequest = mockSubmitExpenseRequest;
 export const reviewExpenseRequest = mockReviewExpenseRequest;
-export const advanceExpenseStage = mockAdvanceExpenseStage;
 
 // ----------------------------------------------------
 // File Upload / Download (mock: 실제 첨부 파일을 dataURL 로 보관·복원)
@@ -119,7 +132,7 @@ function dataUrlToBlob(dataUrl) {
 // 첨부 파일을 업로드(보관)하고 link_url 을 반환한다. 사업계획서/안내자료 공용.
 export async function uploadFile(file) {
   const dataUrl = await readFileAsDataUrl(file);
-  const link_url = mockStoreFile(dataUrl, file.name, file.type);
+  const link_url = await mockStoreFile(dataUrl, file.name, file.type);
   return { link_url, original_filename: file.name };
 }
 
@@ -128,14 +141,14 @@ export const uploadGuidanceFile = uploadFile;
 
 // 미리보기(새 탭 열기)용 URL. 보관된 실제 파일이 있으면 그 파일을, 없으면 더미를 돌려준다.
 export async function getGuidanceDownloadUrl(linkUrl) {
-  const stored = mockGetFile(linkUrl);
+  const stored = await mockGetFile(linkUrl);
   if (stored?.data) return URL.createObjectURL(dataUrlToBlob(stored.data));
   return DUMMY_PDF;
 }
 
 // 보관된 실제 첨부 파일을 원본 파일명으로 다운로드한다. 없으면 더미를 새 탭으로 연다.
 export async function downloadStoredFile(linkUrl, filename) {
-  const stored = mockGetFile(linkUrl);
+  const stored = await mockGetFile(linkUrl);
   if (!stored?.data) {
     window.open(DUMMY_PDF, "_blank", "noopener,noreferrer");
     return;

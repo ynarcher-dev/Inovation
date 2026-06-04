@@ -1,0 +1,427 @@
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 24px;
+  box-shadow: var(--shadow);
+}
+
+.metric {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.metric span {
+  color: var(--muted);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+.metric strong {
+  font-size: var(--text-2xl);
+  font-weight: 700;
+  letter-spacing: -0.5px;
+}
+/* 상단 정보 카드(기업/사업/집행/사업계획서)는 값이 텍스트라 작게·균일하게.
+   strong 안의 중첩 span(.metric span 규칙)까지 같은 크기·색상으로 강제해
+   지원금 집행현황 숫자가 기업명/사업명과 동일하게 보이도록 한다. */
+.info-metrics .metric strong,
+.info-metrics .metric strong span {
+  font-size: var(--text-lg);
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1.35;
+}
+/* 사업 계획서 카드: 첨부/수정 버튼 */
+.bp-card .bp-upload-btn {
+  margin-top: 10px;
+  width: fit-content;
+}
+/* 사업계획서 파일명: 클릭 시 다운로드 */
+.bp-name-link {
+  color: var(--primary, #16a34a);
+  cursor: pointer;
+  text-decoration: none;
+}
+.bp-name-link:hover { text-decoration: underline; }
+
+.button,
+button.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  border: 1px solid var(--primary);
+  border-radius: 8px;
+  padding: 0 20px;
+  background: var(--primary);
+  color: #fff;
+  font-weight: 700;
+  font-size: var(--text-base);
+  cursor: pointer;
+  box-shadow: 0 2px 4px rgba(13, 148, 136, 0.1);
+}
+
+.button:hover {
+  background: var(--primary-dark);
+}
+
+.button.secondary {
+  background: var(--surface);
+  color: var(--text);
+  border-color: var(--line);
+  box-shadow: none;
+}
+.button.secondary:hover {
+  background: var(--surface-muted);
+}
+
+.button.danger {
+  border-color: var(--danger);
+  background: var(--danger);
+}
+.button.danger:hover {
+  background: #dc2626;
+}
+
+.button.small {
+  min-height: 34px;
+  padding: 0 12px;
+  font-size: var(--text-caption);
+  border-radius: 6px;
+}
+
+.button.icon-button {
+  width: 36px;
+  min-width: 36px;
+  padding: 0;
+  font-size: var(--text-md);
+  line-height: 1;
+}
+
+.button.disabled,
+.button:disabled {
+  background: #cbd5e1 !important;
+  border-color: #cbd5e1 !important;
+  color: #fff !important;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th, td {
+  border-bottom: 1px solid var(--line);
+  padding: 16px 20px;
+  text-align: left;
+  white-space: nowrap;
+}
+
+th {
+  background: var(--surface-muted);
+  color: #475569;
+  font-weight: 700;
+  font-size: var(--text-sm);
+}
+
+tr:last-child td {
+  border-bottom: 0;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 9999px;
+  padding: 4px 12px;
+  font-size: var(--text-caption);
+  font-weight: 700;
+}
+
+.badge-neutral { background: #f1f5f9; color: #475569; }
+.badge-success { background: #d1fae5; color: #065f46; }
+.badge-danger { background: #fee2e2; color: #991b1b; }
+.badge-warning { background: #fef3c7; color: #92400e; }
+.badge-info { background: #dbeafe; color: #1e40af; }
+
+/* 프로필 — 기본/계정 정보를 한 블럭(읽기 전용)으로 표시 */
+.profile-card { max-width: 720px; padding: 0; overflow: hidden; }
+.profile-head {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 24px;
+  border-bottom: 1px solid var(--line);
+  background: linear-gradient(180deg, #f8fafc 0%, var(--surface) 100%);
+}
+.profile-avatar {
+  flex: none;
+  width: 52px;
+  height: 52px;
+  border-radius: 14px;
+  display: grid;
+  place-items: center;
+  background: var(--primary);
+  color: #fff;
+  font-size: var(--text-xl);
+  font-weight: 700;
+  line-height: 1;
+}
+.profile-identity { flex: 1 1 auto; min-width: 0; }
+.profile-identity h2 {
+  font-size: var(--text-xl);
+  font-weight: 700;
+  letter-spacing: -0.3px;
+  word-break: break-word;
+}
+.profile-identity .muted { font-size: var(--text-sm); margin-top: 2px; }
+.profile-head .badge { flex: none; }
+.profile-info { display: grid; }
+.profile-info-group { padding: 20px 24px; }
+.profile-info-group + .profile-info-group { border-top: 1px solid var(--line); }
+.profile-info-title {
+  font-size: var(--text-caption);
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 14px;
+}
+.profile-info .summary-list--wide .summary-row {
+  grid-template-columns: 140px minmax(0, 1fr);
+  padding: 11px 0;
+}
+
+/* 프로필 — 계정 관리(비밀번호 변경 / 회원 탈퇴) 카드 */
+.profile-manage { max-width: 720px; display: grid; gap: 24px; margin-top: 24px; }
+.profile-manage .form { gap: 16px; }
+.account-danger { border-color: #fecaca; }
+.account-danger h2 { color: #b91c1c; }
+.account-danger-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.account-danger-row p { color: var(--muted); font-size: var(--text-sm); }
+
+/* 회원 탈퇴 확인 모달 — 문구 입력 + 비밀번호 이중 확인 */
+/* .modal 은 자식 간격을 각 요소 margin 에 의존해 들쭉날쭉하므로,
+   이 모달은 grid+gap 으로 균일한 세로 간격을 잡고 개별 margin 을 0으로 정리한다. */
+.withdraw-modal { display: grid; gap: 18px; }
+.withdraw-modal .modal-header { margin-bottom: 0; }
+.withdraw-modal .notice { margin-bottom: 0; }
+.withdraw-modal .field { gap: 10px; }
+.withdraw-modal .actions { margin-top: 2px; }
+.withdraw-phrase {
+  font-weight: 700;
+  color: #b91c1c;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 6px;
+  padding: 1px 8px;
+}
+.form { display: grid; gap: 20px; }
+.form-block {
+  display: grid;
+  gap: 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 18px 16px;
+  margin: 0;
+  background: var(--surface-muted);
+}
+.form-block > legend {
+  font-weight: 800;
+  font-size: var(--text-base);
+  color: #0f172a;
+  padding: 0 8px;
+}
+.field { display: grid; gap: 8px; }
+label { font-weight: 700; font-size: var(--text-sm); color: #334155; }
+/* 필수 입력 라벨 — 빨간 별표(*) */
+label.required::after { content: " *"; color: #dc2626; font-weight: 800; }
+
+input, select, textarea {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  min-height: 44px;
+  padding: 10px 14px;
+  font: inherit;
+  background: #fff;
+  outline: none;
+}
+input:focus, select:focus, textarea:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(13, 148, 136, 0.15);
+}
+
+/* 목록 상단 필터 툴바 — admin 현황 목록(가입신청·기업목록·예산사용·예산승인) 공용.
+   검색 입력 + 드롭다운 N개 + 기간(from~to) 조합을 한 줄에 배치하고 좁은 화면에서 접는다.
+   마크업/동작은 src/components/admin/FilterToolbar.js 가 생성한다. */
+.list-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.list-toolbar .list-toolbar-search { flex: 1 1 280px; }
+.list-toolbar .list-toolbar-select { flex: 0 0 170px; }
+.list-toolbar .list-toolbar-date {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+.list-toolbar .list-toolbar-date input { width: 160px; }
+.list-toolbar .list-toolbar-date-sep { color: var(--muted); }
+@media (max-width: 720px) {
+  .list-toolbar .list-toolbar-select { flex: 1 1 calc(50% - 6px); }
+  .list-toolbar .list-toolbar-date { flex: 1 1 100%; }
+  .list-toolbar .list-toolbar-date input { flex: 1; width: auto; }
+}
+
+/* 비밀번호 입력 + 눈 아이콘 토글 (password-toggle.js가 input을 이 래퍼로 감싼다) */
+.password-field { position: relative; display: block; }
+.password-field input { padding-right: 46px; } /* 아이콘 영역만큼 우측 여백 확보 */
+.password-toggle {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 44px;
+  min-height: 44px;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: #64748b;
+  cursor: pointer;
+}
+.password-toggle:hover { color: var(--primary); }
+.password-toggle:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
+  border-radius: 8px;
+}
+
+/* 입력 가이드 문구 (예: 비밀번호 규칙 안내) */
+.field-hint { font-size: var(--text-sm); color: #64748b; font-weight: 500; margin: 0; }
+.field-hint.invalid { color: #dc2626; }
+
+.notice, .error {
+  border-radius: var(--radius);
+  padding: 16px 20px;
+  font-size: var(--text-base);
+  margin-bottom: 24px;
+}
+.notice { background: #fffbeb; border: 1px solid #fef3c7; color: #92400e; }
+.error { background: #fef2f2; border: 1px solid #fee2e2; color: #991b1b; }
+
+/* 배너 상태 색상(톤) — 배지 팔레트와 동일 계열 */
+.notice-info { background: #dbeafe; border-color: #bfdbfe; color: #1e40af; }
+.notice-success { background: #d1fae5; border-color: #a7f3d0; color: #065f46; }
+.notice-warning { background: #fef3c7; border-color: #fde68a; color: #92400e; }
+.notice-danger { background: #fee2e2; border-color: #fecaca; color: #991b1b; }
+
+/* X 닫기 버튼이 있는 배너 레이아웃 */
+.notice--dismissible { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+/* hidden 속성이 .notice--dismissible 의 display:flex 를 이기도록 명시한다.
+   (author 규칙의 display 가 UA 의 [hidden]{display:none} 을 덮어써 X 닫기가 안 먹던 문제) */
+.notice[hidden] { display: none; }
+.notice__text { flex: 1; }
+.notice__close {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 20px;
+  line-height: 1;
+  color: inherit;
+  opacity: 0.55;
+  padding: 0 4px;
+  flex-shrink: 0;
+}
+.notice__close:hover { opacity: 1; }
+
+/* Tabs CSS */
+.tabs-nav {
+  display: flex;
+  gap: 8px;
+  border-bottom: 2px solid var(--line);
+  margin: 32px 0 20px;
+}
+.tab-button {
+  background: none;
+  border: none;
+  border-bottom: 3px solid transparent;
+  padding: 12px 24px;
+  font-size: var(--text-base);
+  font-weight: 700;
+  color: var(--muted);
+  cursor: pointer;
+}
+.tab-button:hover { color: var(--text); }
+.tab-button.active { color: var(--primary); border-bottom-color: var(--primary); }
+.tab-content { display: none; }
+.tab-content.active { display: block; }
+
+/* Budget Matrix Tree */
+.budget-matrix th, .budget-matrix td {
+  border: 1px solid var(--line);
+  padding: 12px 16px;
+  font-size: var(--text-sm);
+}
+.budget-matrix thead th { background: #f8fafc; color: #475569; vertical-align: middle; line-height: 20px; }
+/* 2차 헤더는 체크박스 유무와 무관하게 같은 높이(20px 콘텐츠)로 유지한다. */
+.budget-matrix .round2-head label { display: inline-flex; align-items: center; gap: 6px; height: 20px; line-height: 20px; margin: 0; vertical-align: middle; }
+.budget-matrix .round2-head input[type="checkbox"] { width: 14px; height: 14px; margin: 0; flex: none; }
+.budget-matrix .hierarchy-cell { background: #fff; font-weight: 500; }
+.budget-matrix .hierarchy-level-1 { background: #f8fafc; font-weight: 700; color: var(--primary-dark); }
+.budget-matrix .hierarchy-level-2 { background: #fafafa; }
+.budget-matrix .budget-amount { text-align: right; }
+.budget-matrix .budget-amount input { min-height: 32px; padding: 4px 8px; }
+.budget-matrix .subtotal-row td { background: #f0fdf4; font-weight: 700; color: #166534; }
+.budget-matrix .hierarchy-empty { background: #fff; }
+.budget-matrix .hierarchy-level-3 { background: #fcfcfd; }
+.budget-matrix .hierarchy-level-4 { background: #fdfdfd; }
+.budget-matrix .budget-amount { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.budget-matrix .budget-amount.danger { color: var(--danger); }
+.budget-matrix .budget-amount.success { color: var(--success); }
+.budget-matrix .subtotal-row .subtotal-label { text-align: left; }
+.budget-matrix .grandtotal-row td { background: #ecfdf5; font-weight: 800; color: #065f46; border-top: 2px solid #34d399; }
+.budget-matrix .grandtotal-row .subtotal-label { text-align: left; }
+.subtotal-tag.grandtotal-tag { background: var(--primary, #16a34a); }
+.budget-matrix tr.leaf-row { transition: background 0.15s; }
+.budget-tree-category { color: var(--muted); font-size: var(--text-caption); font-weight: 400; margin-left: 4px; }
+.budget-alloc-input { width: 100%; text-align: right; box-sizing: border-box; }
+/* 2차 배정 입력 비활성(잠금) 상태: 회색 처리 */
+.budget-alloc-input:disabled { background: #f1f5f9; color: var(--muted); cursor: not-allowed; }
+.budget-matrix.round2-locked .round2-head { color: var(--muted); }
+.budget-matrix.round2-locked td[data-parent-round2] { color: var(--muted); background: #f8fafc; }
+.subtotal-tag {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--warning);
+  color: #fff;
+  font-size: var(--text-caption);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  vertical-align: middle;
+}
+

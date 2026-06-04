@@ -1,0 +1,186 @@
+/* Review history table */
+.review-history-section { margin-top: 8px; }
+.review-history-table .comment-header,
+.review-history-table .comment-cell {
+  white-space: normal;
+  min-width: 240px;
+  max-width: 420px;
+}
+.review-history-table .comment-cell { color: var(--muted); font-size: var(--text-sm); }
+.review-history-table .date-cell { color: var(--muted); white-space: nowrap; }
+
+/* Budget history — expandable rows */
+.budget-history-table .expand-col { width: 28px; text-align: center; }
+.budget-history-table .history-row { cursor: pointer; transition: background 0.15s; }
+.budget-history-table .history-row:hover { background: var(--surface-muted); }
+.budget-history-table .history-row:focus-visible { outline: 2px solid var(--accent, #2563eb); outline-offset: -2px; }
+.budget-history-table .expand-icon { display: inline-block; color: var(--muted); transition: transform 0.15s; }
+.budget-history-table .history-row.expanded .expand-icon { transform: rotate(90deg); }
+.budget-history-table .history-detail-row > td { padding: 0; background: var(--surface-muted); }
+.budget-history-table .history-detail { padding: 12px 16px 16px 40px; }
+.budget-history-table .history-detail-title {
+  margin: 0 0 8px;
+  font-size: var(--text-sm);
+  font-weight: 700;
+  color: var(--muted);
+}
+.budget-history-detail-table { width: 100%; border-collapse: collapse; font-size: var(--text-sm); }
+/* 모든 상세 테이블의 컬럼 폭을 colgroup 기준으로 고정해 행마다 정렬이 어긋나지 않게 한다. */
+.budget-history-detail-table.fixed-cols { table-layout: fixed; }
+.budget-history-detail-table.fixed-cols td:first-child,
+.budget-history-detail-table.fixed-cols th:first-child { word-break: keep-all; overflow-wrap: anywhere; }
+.budget-history-detail-table th,
+.budget-history-detail-table td {
+  padding: 6px 10px;
+  text-align: left;
+  border-bottom: 1px solid var(--line);
+}
+.budget-history-detail-table th { color: var(--muted); font-weight: 600; }
+.budget-history-detail-table .num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.budget-history-detail-table .delta-up { color: var(--success-text, #065f46); font-weight: 600; }
+.budget-history-detail-table .delta-down { color: var(--danger, #991b1b); font-weight: 600; }
+.budget-history-detail-table .delta-none { color: var(--muted); }
+
+/* Guidance links (founder dashboard) */
+.guidance-link {
+  display: inline-block;
+  padding: 2px 4px;
+  font-weight: 600;
+}
+.guidance-link:hover { text-decoration: underline; }
+.attachment-list { display: grid; gap: 10px; }
+.attachment-list .guidance-link { padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-muted); }
+/* 첨부파일: 필드 내용(좌) 과 파일 다운로드(우) 를 분리 */
+.attachment-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-muted);
+}
+.attachment-row .attachment-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.attachment-row .attachment-title { font-weight: 600; }
+.attachment-row .attachment-file { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.attachment-row .attachment-filename { color: var(--muted); font-size: var(--text-sm); max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.detail-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: 24px;
+}
+/* 좌측 본문 — 카드(신청 정보 / 검토 요약 / 검토 처리)를 균일 간격으로 쌓는다 */
+.detail-main,
+/* 우측 — 서류·이력 카드를 균일 간격으로 쌓는다 */
+.detail-side {
+  display: grid;
+  gap: 24px;
+  align-content: start;
+}
+.ai-panel { background: #f0fdfa; border-color: #ccfbf1; color: #115e59; }
+
+/* 신청 정보 — 라벨/값 정의 리스트 */
+.summary-list { display: grid; }
+.summary-row {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr);
+  align-items: baseline;
+  gap: 16px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--line);
+}
+.summary-row:first-child { padding-top: 0; }
+.summary-row:last-child { border-bottom: none; padding-bottom: 0; }
+.summary-row dt {
+  color: var(--muted);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+.summary-row dd {
+  color: var(--text);
+  font-size: var(--text-base);
+  font-weight: 600;
+  word-break: break-word;
+}
+.summary-amount {
+  font-size: var(--text-lg);
+  font-weight: 800;
+  color: var(--primary-dark);
+  font-variant-numeric: tabular-nums;
+}
+/* 검토 요약처럼 라벨이 긴 정의 리스트 — 라벨 열을 넓혀 줄바꿈을 막는다 */
+.summary-list--wide .summary-row { grid-template-columns: 168px minmax(0, 1fr); }
+/* 예산 수치 값 — 본문 톤 유지, 숫자만 정렬 */
+.summary-num { font-variant-numeric: tabular-nums; }
+/* 적합성 판정 — 톤 텍스트로만 강조 */
+.summary-fit { font-weight: 700; }
+.summary-fit.success { color: #047857; }
+.summary-fit.danger { color: #b91c1c; }
+.summary-fit .muted { font-weight: 600; }
+.summary-row-block {
+  grid-template-columns: 1fr;
+  gap: 6px;
+}
+.summary-row-block dd {
+  font-weight: 500;
+  line-height: 1.65;
+  white-space: pre-line;
+}
+
+/* 검토 이력 목록(상세 사이드) — review-row 카드들을 균일 간격으로 쌓는다 */
+.review-list { display: grid; gap: 12px; }
+
+/* 위험 경고 목록 — 배너 톤을 유지하되 기본 notice 여백을 압축해 촘촘히 쌓는다 */
+.warning-list { display: grid; gap: 8px; }
+.warning-list .notice { margin: 0; padding: 12px 14px; font-size: var(--text-sm); }
+/* 검토 요약 카드: 예산 표 아래 경고/안내를 한 칸 띄운다 */
+.budget-warnings:not(:empty) { margin-top: 16px; }
+
+/* 검토 결과(승인/보완요청/반려 + 코멘트) — 신청 정보와 별도 카드로 분리 */
+.review-section:not(:empty) {
+  display: grid;
+  gap: 12px;
+}
+.review-row {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 12px 14px;
+  display: grid;
+  gap: 8px;
+}
+.review-row-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.review-date {
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+.review-comment {
+  margin: 0;
+  color: var(--text);
+  font-size: var(--text-base);
+  line-height: 1.6;
+  white-space: pre-line;
+  word-break: break-word;
+}
+
+/* Utility helpers */
+.muted { color: var(--muted); }
+.caption { font-size: var(--text-caption); }
+.block { display: block; margin-top: 4px; }
+.empty { color: var(--muted); margin: 0; }
+.warning, .doc-missing { color: var(--warning); }
+.success, .doc-uploaded, .doc-verified { color: var(--success); }
+.danger, .doc-rejected { color: var(--danger); }
+
+/* 버튼 영역은 기본적으로 우측 정렬한다. */
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}

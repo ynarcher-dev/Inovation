@@ -8,14 +8,7 @@
   </head>
   <body>
     <div class="app-shell">
-      <aside class="sidebar">
-        <div class="brand">사업비 집행 도우미</div>
-        <nav class="nav">
-          <a class="active" href="./dashboard.html">대시보드</a>
-          <a href="./profile.html">프로필</a>
-          <button data-logout type="button">로그아웃</button>
-        </nav>
-      </aside>
+      <aside class="sidebar"></aside>
       <main class="main">
         <div class="topbar">
           <div>
@@ -32,10 +25,22 @@
           <div class="card metric"><span>지원금 집행현황</span><strong><span data-approved-total>-</span> / <span data-support-total>-</span></strong><span data-execution-rate class="muted caption">0% 집행</span></div>
           <div class="card metric bp-card">
             <span>사업 계획서</span>
-            <strong data-bp-name class="bp-name-link" id="bp-download-trigger" title="클릭하면 첨부한 파일을 다운로드합니다.">-</strong>
-            <span data-bp-updated class="muted caption">최종 수정일: -</span>
-            <button type="button" class="button small secondary bp-upload-btn" id="bp-upload-btn">파일 첨부/수정</button>
-            <input type="file" id="bp-file-input" hidden accept=".pdf,.doc,.docx,.hwp,.hwpx,.xls,.xlsx,.ppt,.pptx">
+            <!-- 1차 사업계획서 슬롯: 조회/다운로드 전용 (첨부/수정은 예산 관리 화면에서) -->
+            <div class="bp-slot" data-bp-slot="round1">
+              <span class="bp-slot-label">1차</span>
+              <div class="bp-slot-body">
+                <strong data-bp-name="round1" data-bp-download="round1">예산 배정 후 반영됩니다.</strong>
+                <span data-bp-updated="round1" class="muted caption"></span>
+              </div>
+            </div>
+            <!-- 2차 사업계획서 슬롯: 조회/다운로드 전용 -->
+            <div class="bp-slot bp-slot-disabled" data-bp-slot="round2">
+              <span class="bp-slot-label">2차</span>
+              <div class="bp-slot-body">
+                <strong data-bp-name="round2" data-bp-download="round2">예산 배정 후 반영됩니다.</strong>
+                <span data-bp-updated="round2" class="muted caption"></span>
+              </div>
+            </div>
           </div>
         </section>
         <!-- Tabs Navigation -->
@@ -48,15 +53,18 @@
 
         <!-- Tab 1: 지출 현황 -->
         <div id="tab-expense" class="tab-content active">
-          <section class="grid grid-4" style="margin-bottom: 16px;">
-            <div class="card metric status-pending"><span>검토 중</span><strong data-pending-count>0</strong></div>
-            <div class="card metric status-approved"><span>승인</span><strong data-approved-count>0</strong></div>
-            <div class="card metric status-revision"><span>보완 요청</span><strong data-revision-count>0</strong></div>
-            <div class="card metric status-rejected"><span>반려</span><strong data-rejected-count>0</strong></div>
-          </section>
+          <!-- 8단계 상태 요약 칩 (클릭 시 해당 상태로 필터) -->
+          <div class="status-chip-bar" data-status-chips></div>
           <section class="card">
             <h2>지출 현황</h2>
-            <p class="muted">신청명·금액(공급가액+부가세)·제출일·상태가 최신순으로 표시됩니다. 각 건은 독립적이며, 보완·반려된 건은 수정 대신 새 결재를 올려 주세요.</p>
+
+            <!-- 검색 / 결재 구간 필터 toolbar -->
+            <div class="expense-toolbar">
+              <input type="search" class="expense-search" data-expense-search
+                placeholder="신청명·비목·거래처·상태명 검색" aria-label="지출 검색">
+              <select class="expense-segment" data-expense-segment aria-label="결재 구간 필터"></select>
+              <span class="expense-filter-info muted caption" data-expense-filter-info></span>
+            </div>
             <div data-expense-table></div>
           </section>
         </div>
@@ -77,9 +85,7 @@
           <div id="budget-tree-container" hidden>
             <section class="card">
               <h2 id="budget-tree-title">예산 현황</h2>
-              <p class="muted" id="budget-tree-desc" style="margin-bottom: 16px;">
-                참가 사업의 예산/비목 구조에 따라 배정 금액을 입력하거나 조회할 수 있습니다.
-              </p>
+
               <form id="budget-form">
                 <div data-budget-tree></div>
               </form>
@@ -91,7 +97,7 @@
         <div id="tab-budget-history" class="tab-content">
           <section class="card">
             <h2>예산 히스토리</h2>
-            <p class="muted">예산안 제출과 예산 변경 요청, 그리고 관리자 검토 결과 이력이 최신순으로 표시됩니다.</p>
+
             <div data-budget-history></div>
           </section>
         </div>
@@ -100,19 +106,19 @@
         <div id="tab-overview" class="tab-content">
           <section class="card">
             <h2>사업 개요</h2>
-            <p class="muted" style="margin-bottom: 12px;">참가 사업에 대해 관리자가 등록한 개요입니다.</p>
+
             <p data-program-description style="white-space: pre-line;">-</p>
           </section>
           <section class="card" style="margin-top: 16px;">
             <h2>첨부파일</h2>
-            <p class="muted" style="margin-bottom: 12px;">관리자가 등록한 안내자료 및 첨부파일입니다.</p>
+
             <div data-program-attachments></div>
           </section>
         </div>
 
       </main>
     </div>
-    <script type="module" src="../src/pages/founderDashboard.js"></script>
+    <script type="module" src="../src/pages/founder/dashboard.js"></script>
   </body>
 </html>
 

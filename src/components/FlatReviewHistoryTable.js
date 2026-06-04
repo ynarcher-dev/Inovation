@@ -2,13 +2,11 @@ import { escapeHtml, formatDate } from "../utils.js";
 
 const decisionText = {
   approved: "승인 완료",
-  rejected: "반려",
   revision_requested: "보완 요청",
 };
 
 const decisionTone = {
   approved: "success",
-  rejected: "danger",
   revision_requested: "warning",
 };
 

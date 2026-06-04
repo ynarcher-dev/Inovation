@@ -1,5 +1,5 @@
 import { escapeHtml } from "../utils.js";
-import { getDocumentActionMeta } from "../rulesEngine.js";
+import { getDocumentActionMeta } from "../domains/expense/rules-engine.js";
 
 const statusText = {
   missing: "미제출",

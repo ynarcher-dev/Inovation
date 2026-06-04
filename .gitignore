@@ -3,3 +3,4 @@ docs/
 *.log
 desktop.ini
 **/desktop.ini
+.claude/

@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>예산 승인/변경</title>
+    <link rel="stylesheet" href="../src/styles.css">
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar"></aside>
+      <main class="main">
+        <div class="topbar">
+          <div>
+            <h1>예산 승인/변경</h1>
+            <p class="muted">기업이 제출한 예산안 및 변경 요청을 검토합니다.</p>
+          </div>
+        </div>
+        <p class="error" data-error hidden></p>
+        <section class="card">
+          <h2>검토 대기</h2>
+          <div data-budget-approval-section></div>
+        </section>
+        <section class="card" style="margin-top:16px">
+          <h2>전체 기업 예산 현황</h2>
+          <div data-budget-toolbar></div>
+          <div data-budget-all></div>
+        </section>
+      </main>
+    </div>
+    <script type="module" src="../src/pages/admin/budget-approvals.js"></script>
+  </body>
+</html>

@@ -19,8 +19,7 @@ export function ExpenseTable(rows, options = {}) {
             <th>비목</th>
             <th>공급가액</th>
             <th>상태</th>
-            <th>누락</th>
-            <th>위험</th>
+            ${options.hideChecklist ? "" : "<th>누락</th><th>위험</th>"}
             <th>제출일</th>
           </tr>
         </thead>
@@ -32,8 +31,7 @@ export function ExpenseTable(rows, options = {}) {
               <td>${escapeHtml(row.budget_category)}</td>
               <td>${formatCurrency(row.amount_supply)}</td>
               <td>${StatusBadge(row.status)}</td>
-              <td>${Number(row.missing_count || 0)}</td>
-              <td>${Number(row.warning_count || 0)}</td>
+              ${options.hideChecklist ? "" : `<td>${Number(row.missing_count || 0)}</td><td>${Number(row.warning_count || 0)}</td>`}
               <td>${formatDate(row.submitted_at)}</td>
             </tr>
           `).join("")}

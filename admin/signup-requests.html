@@ -1,49 +1,14 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="ko">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>가입 신청 관리</title>
     <link rel="stylesheet" href="../src/styles.css">
-    <style>
-      .signup-toolbar {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 12px;
-        margin-bottom: 16px;
-      }
-      .signup-toolbar .signup-search { flex: 1 1 280px; }
-      .signup-toolbar .signup-status,
-      .signup-toolbar .signup-program { flex: 0 0 180px; }
-      .signup-date {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        flex: 0 0 auto;
-      }
-      .signup-date input { width: 160px; }
-      .signup-date .signup-date-sep { color: var(--muted); }
-      @media (max-width: 720px) {
-        .signup-toolbar .signup-status,
-        .signup-toolbar .signup-program { flex: 1 1 calc(50% - 6px); }
-        .signup-date { flex: 1 1 100%; }
-        .signup-date input { flex: 1; width: auto; }
-      }
-    </style>
   </head>
   <body>
     <div class="app-shell">
-      <aside class="sidebar">
-        <div class="brand">관리자</div>
-        <nav class="nav">
-          <a href="./dashboard.html">대시보드</a>
-          <a class="active" href="./signup-requests.html">가입 신청 관리</a>
-          <a href="./support-programs.html">참가 사업명 관리</a>
-          <a href="./program-management.html">참가 사업 관리</a>
-          <a href="./companies.html">기업 목록</a>
-          <button data-logout type="button">로그아웃</button>
-        </nav>
-      </aside>
+      <aside class="sidebar"></aside>
       <main class="main">
         <div class="topbar">
           <div>
@@ -58,34 +23,12 @@
         </section>
         <section class="card" style="margin-top:16px">
           <h2>전체 가입 기업</h2>
-          <div class="signup-toolbar">
-            <input
-              class="signup-search"
-              type="search"
-              data-signup-search
-              placeholder="기업명 · 대표자 · 사업자등록번호 검색"
-              aria-label="가입 기업 검색"
-            >
-            <select class="signup-status" data-signup-status aria-label="승인 상태 필터">
-              <option value="all">전체 상태</option>
-              <option value="pending">승인 대기</option>
-              <option value="approved">승인 완료</option>
-              <option value="rejected">반려</option>
-            </select>
-            <select class="signup-program" data-signup-program aria-label="참가 사업 필터">
-              <option value="all">전체 참가 사업</option>
-            </select>
-            <div class="signup-date">
-              <input type="date" data-signup-date-from aria-label="가입일 시작">
-              <span class="signup-date-sep">~</span>
-              <input type="date" data-signup-date-to aria-label="가입일 종료">
-            </div>
-          </div>
+          <div data-signup-toolbar></div>
           <div data-all-signups></div>
         </section>
       </main>
     </div>
-    <script type="module" src="../src/pages/adminSignupRequests.js"></script>
+    <script type="module" src="../src/pages/admin/signup-requests.js"></script>
   </body>
 </html>
 

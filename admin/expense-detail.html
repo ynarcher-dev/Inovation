@@ -1,4 +1,4 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="ko">
   <head>
     <meta charset="utf-8">
@@ -8,17 +8,7 @@
   </head>
   <body>
     <div class="app-shell">
-      <aside class="sidebar">
-        <div class="brand">관리자</div>
-        <nav class="nav">
-          <a href="./dashboard.html">대시보드</a>
-          <a href="./signup-requests.html">가입 신청 관리</a>
-          <a href="./support-programs.html">참가 사업명 관리</a>
-          <a href="./program-management.html">참가 사업 관리</a>
-          <a href="./companies.html">기업 목록</a>
-          <button data-logout type="button">로그아웃</button>
-        </nav>
-      </aside>
+      <aside class="sidebar"></aside>
       <main class="main">
         <div class="topbar">
           <div>
@@ -38,23 +28,23 @@
               <div data-budget-check></div>
               <div data-warnings class="budget-warnings"></div>
             </section>
-          </div>
-          <div class="detail-side">
             <section class="card">
-              <h2>검토 처리</h2>
+              <h2 data-review-title>검토 처리</h2>
+              <p class="empty" data-review-empty hidden>현재 검토 대상 상태가 아닙니다.</p>
               <form class="form" data-review-form>
                 <div class="field">
                   <label for="comment">검토 의견</label>
-                  <textarea id="comment" placeholder="승인/보완요청/반려 사유를 입력하세요."></textarea>
+                  <textarea id="comment" placeholder="승인/보완요청 사유를 입력하세요."></textarea>
                 </div>
                 <div class="actions">
                   <button class="button" name="decision" value="approved" type="submit">승인</button>
                   <button class="button secondary" name="decision" value="revision_requested" type="submit">보완요청</button>
-                  <button class="button danger" name="decision" value="rejected" type="submit">반려</button>
                 </div>
-                <p class="muted" style="font-size:var(--text-caption); margin-top:6px;">보완요청 시 신청자는 같은 건을 수정하지 않고 새 지출 신청으로 다시 제출합니다.</p>
+                <p class="muted" style="font-size:var(--text-caption); margin-top:6px;">보완 요청 시 신청자는 같은 건을 수정해 다시 제출합니다.</p>
               </form>
             </section>
+          </div>
+          <div class="detail-side">
             <aside class="card">
               <h2>제출 서류 <span class="muted" style="font-size:12px;" data-doc-rate></span></h2>
               <div data-checklist></div>
@@ -69,7 +59,7 @@
         </div>
       </main>
     </div>
-    <script type="module" src="../src/pages/adminExpenseDetail.js"></script>
+    <script type="module" src="../src/pages/admin/expense-detail.js"></script>
   </body>
 </html>
 

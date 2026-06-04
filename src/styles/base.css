@@ -1,0 +1,175 @@
+@import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css');
+
+:root {
+  color-scheme: light;
+  --bg: #f8fafc;
+  --surface: #ffffff;
+  --surface-muted: #f1f5f9;
+  --text: #0f172a;
+  --muted: #64748b;
+  --line: #e2e8f0;
+  --primary: #0d9488;
+  --primary-dark: #0f766e;
+  --primary-light: #ccfbf1;
+  --danger: #ef4444;
+  --warning: #f59e0b;
+  --info: #3b82f6;
+  --success: #10b981;
+  --radius: 12px;
+  --shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.05);
+
+  /* 단일 폰트(한글·영문·숫자 모두 Pretendard) */
+  --font-sans: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont,
+    system-ui, "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", sans-serif;
+
+  /* 타입 스케일 — 화면 텍스트는 이 8단계만 사용한다 */
+  --text-caption: 12px;  /* 뱃지, 보조 캡션 */
+  --text-sm: 13px;       /* 라벨, 표 보조, muted 설명 */
+  --text-base: 14px;     /* 기본 본문/버튼 */
+  --text-md: 16px;       /* 강조 본문 */
+  --text-lg: 18px;       /* 소제목(h3) */
+  --text-xl: 20px;       /* 섹션 제목(h2)·카드 제목 */
+  --text-2xl: 28px;      /* 지표 값 */
+  --text-3xl: 32px;      /* 페이지 제목(h1) */
+
+  font-family: var(--font-sans);
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  transition: background-color 0.2s, border-color 0.2s;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  line-height: 1.6;
+  font-size: var(--text-base);
+}
+
+a {
+  color: var(--primary-dark);
+  text-decoration: none;
+  font-weight: 500;
+}
+a:hover {
+  color: var(--primary);
+}
+
+.app-shell {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr);
+}
+
+.sidebar {
+  background: #0f172a;
+  color: #f8fafc;
+  padding: 32px 24px;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.brand {
+  font-size: var(--text-xl);
+  font-weight: 800;
+  color: #2dd4bf;
+  margin-bottom: 36px;
+  letter-spacing: -0.5px;
+}
+
+.nav {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+}
+
+.nav-category {
+  font-size: var(--text-caption);
+  font-weight: 700;
+  color: #64748b;
+  padding: 12px 16px 4px;
+  letter-spacing: 0.5px;
+}
+
+.nav button[data-logout],
+.nav a[data-logout] {
+  margin-top: auto;
+}
+
+.nav a,
+.nav button {
+  color: #94a3b8;
+  background: transparent;
+  border: 0;
+  border-radius: 8px;
+  padding: 12px 16px;
+  text-align: left;
+  font: inherit;
+  font-size: var(--text-base);
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.nav a.active,
+.nav a:hover,
+.nav button:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+
+.main {
+  padding: 40px;
+  max-width: none;
+  width: 100%;
+  margin: 0 auto;
+}
+
+.topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 32px;
+}
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+h1 {
+  font-size: var(--text-3xl);
+  font-weight: 800;
+  letter-spacing: -0.8px;
+  margin-bottom: 6px;
+}
+
+h2 {
+  font-size: var(--text-xl);
+  font-weight: 700;
+  letter-spacing: -0.4px;
+  margin-bottom: 16px;
+}
+
+h3 {
+  font-size: var(--text-lg);
+  font-weight: 700;
+  letter-spacing: -0.2px;
+  margin-bottom: 8px;
+}
+
+.grid {
+  display: grid;
+  gap: 20px;
+}
+.grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.grid-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }

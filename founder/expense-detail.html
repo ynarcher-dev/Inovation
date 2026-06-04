@@ -1,4 +1,4 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="ko">
   <head>
     <meta charset="utf-8">
@@ -8,14 +8,7 @@
   </head>
   <body>
     <div class="app-shell">
-      <aside class="sidebar">
-        <div class="brand">사업비 집행 도우미</div>
-        <nav class="nav">
-          <a href="./dashboard.html">대시보드</a>
-          <a href="./profile.html">프로필</a>
-          <button data-logout type="button">로그아웃</button>
-        </nav>
-      </aside>
+      <aside class="sidebar"></aside>
       <main class="main">
         <div class="topbar">
           <div>
@@ -25,21 +18,23 @@
         </div>
         <p class="error" data-error hidden></p>
         <div class="detail-layout">
-          <section class="card">
-            <h2>신청 정보</h2>
-            <div data-summary></div>
-            <div class="review-section" data-reviews></div>
-          </section>
+          <div class="detail-main">
+            <section class="card">
+              <h2>신청 정보</h2>
+              <div data-summary></div>
+              <p class="muted" data-edit-guide style="font-size:var(--text-caption); margin-top:8px;"></p>
+              <div class="actions" data-cta style="margin-top:12px;"></div>
+            </section>
+            <section class="card review-section" data-reviews></section>
+          </div>
           <aside class="card">
             <h2>서류 제출</h2>
-            <div data-checklist></div>
-            <div data-advance-docs></div>
-            <div data-other-evidence-docs></div>
+            <p class="muted">첨부 서류 기능은 새로 설계 중입니다.</p>
           </aside>
         </div>
       </main>
     </div>
-    <script type="module" src="../src/pages/founderExpenseDetail.js"></script>
+    <script type="module" src="../src/pages/founder/expense-detail.js"></script>
   </body>
 </html>
 

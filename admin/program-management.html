@@ -3,241 +3,29 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>참가 사업 관리</title>
+    <title>운영사업 관리</title>
     <link rel="stylesheet" href="../src/styles.css">
-    <style>
-      .budget-panels {
-        display: flex;
-        border: 1px solid #e5e7eb;
-        border-radius: 8px;
-        overflow: hidden;
-      }
-      .budget-panel {
-        flex: 1;
-        border-right: 1px solid #e5e7eb;
-        display: flex;
-        flex-direction: column;
-        min-height: 360px;
-        max-height: 520px;
-      }
-      .budget-panel:last-child { border-right: none; }
-      .panel-header {
-        padding: 10px 14px;
-        font-size: 11px;
-        font-weight: 700;
-        letter-spacing: 0.06em;
-        text-transform: uppercase;
-        background: #f3f4f6;
-        border-bottom: 1px solid #e5e7eb;
-        color: #6b7280;
-      }
-      .panel-list { flex: 1; overflow-y: auto; }
-      .panel-empty {
-        padding: 20px 12px;
-        color: #9ca3af;
-        font-size: 13px;
-        text-align: center;
-      }
-      .panel-item {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        padding: 9px 14px;
-        cursor: pointer;
-        border-bottom: 1px solid #f3f4f6;
-        font-size: 14px;
-        gap: 4px;
-        user-select: none;
-      }
-      .panel-item:hover { background: #f9fafb; }
-      .panel-item.selected { background: #eff6ff; color: #1d4ed8; font-weight: 500; }
-      .panel-item-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-      .panel-delete-btn {
-        opacity: 0;
-        font-size: 15px;
-        color: #ef4444;
-        background: none;
-        border: none;
-        cursor: pointer;
-        padding: 0 2px;
-        line-height: 1;
-        flex-shrink: 0;
-      }
-      .panel-item:hover .panel-delete-btn { opacity: 1; }
-      .panel-footer {
-        padding: 8px;
-        border-top: 1px solid #e5e7eb;
-        background: #fafafa;
-      }
-      .panel-add-form { display: flex; gap: 4px; }
-      .panel-add-form input { flex: 1; min-width: 0; }
-      .panel-add-btn { width: 100%; }
-      .label-editor {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        margin-bottom: 14px;
-        padding: 12px 14px;
-        background: #f9fafb;
-        border: 1px solid #e5e7eb;
-        border-radius: 8px;
-        flex-wrap: wrap;
-      }
-      .label-editor-title {
-        font-size: 12px;
-        font-weight: 600;
-        color: #6b7280;
-        white-space: nowrap;
-        margin-right: 4px;
-      }
-      .label-item {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-      }
-      .label-num {
-        font-size: 12px;
-        color: #9ca3af;
-        white-space: nowrap;
-      }
-      .label-input { width: 80px; }
-      .label-arrow { color: #d1d5db; font-size: 16px; }
-      .label-remove-btn {
-        font-size: 13px;
-        color: #ef4444;
-        background: none;
-        border: 1px solid #fca5a5;
-        border-radius: 4px;
-        cursor: pointer;
-        padding: 1px 5px;
-        line-height: 1.4;
-      }
-      .label-remove-btn:hover { background: #fee2e2; }
-      .guidance-table-header {
-        display: grid;
-        grid-template-columns: 1fr 180px 64px;
-        gap: 10px;
-        padding: 6px 0 8px;
-        border-bottom: 2px solid #e5e7eb;
-        font-size: 11px;
-        font-weight: 700;
-        color: #9ca3af;
-        letter-spacing: 0.05em;
-        text-transform: uppercase;
-      }
-      .guidance-row {
-        display: grid;
-        grid-template-columns: 1fr 180px 64px;
-        align-items: center;
-        gap: 10px;
-        padding: 9px 0;
-        border-bottom: 1px solid #f3f4f6;
-      }
-      .guidance-col-text {
-        font-size: 14px;
-        min-width: 0;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-      }
-      .guidance-col-file {
-        display: flex;
-        align-items: center;
-        gap: 4px;
-        min-width: 0;
-      }
-      .guidance-filename {
-        flex: 1;
-        min-width: 0;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-        font-size: 13px;
-        color: #374151;
-        cursor: pointer;
-      }
-      .guidance-filename:hover { color: var(--primary); text-decoration: underline; }
-      .guidance-file-remove {
-        font-size: 15px;
-        color: #d1d5db;
-        background: none;
-        border: none;
-        cursor: pointer;
-        padding: 0;
-        line-height: 1;
-        flex-shrink: 0;
-      }
-      .guidance-file-remove:hover { color: #ef4444; }
-      .guidance-col-actions { display: flex; align-items: center; justify-content: flex-end; gap: 4px; }
-      .guidance-add-input { width: 100%; min-width: 0; font-size: 14px; }
-      .guidance-file-pick {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        cursor: pointer;
-        min-width: 0;
-        width: 100%;
-        overflow: hidden;
-      }
-      .guidance-file-pick-label {
-        flex: 1;
-        min-width: 0;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-        font-size: 13px;
-        color: #6b7280;
-      }
-      .guidance-icon-btn {
-        width: 28px;
-        height: 28px;
-        flex-shrink: 0;
-        border-radius: 6px;
-        border: 1px solid #e5e7eb;
-        background: #fff;
-        cursor: pointer;
-        font-size: 13px;
-        line-height: 1;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        padding: 0;
-      }
-      .guidance-icon-btn:hover { background: #f3f4f6; }
-      .guidance-icon-btn.confirm { background: var(--primary); color: #fff; border-color: var(--primary); }
-      .guidance-icon-btn.confirm:hover { background: var(--primary-dark); }
-      .save-row { display: flex; justify-content: flex-end; margin-top: 10px; }
-    </style>
+    <link rel="stylesheet" href="../src/styles/admin-program.css">
   </head>
   <body>
     <div class="app-shell">
-      <aside class="sidebar">
-        <div class="brand">관리자</div>
-        <nav class="nav">
-          <a href="./dashboard.html">대시보드</a>
-          <a href="./signup-requests.html">가입 신청 관리</a>
-          <a href="./support-programs.html">참가 사업명 관리</a>
-          <a class="active" href="./program-management.html">참가 사업 관리</a>
-          <a href="./companies.html">기업 목록</a>
-          <button data-logout type="button">로그아웃</button>
-        </nav>
-      </aside>
+      <aside class="sidebar"></aside>
       <main class="main">
         <div class="topbar">
           <div>
-            <h1>참가 사업 관리</h1>
-            <p class="muted">사업별 세부 내용을 관리합니다.</p>
+            <h1>운영사업 관리</h1>
+            <p class="muted">운영사업별 세부 내용을 관리합니다.</p>
           </div>
         </div>
         <p class="error" data-error hidden></p>
 
-        <!-- 참가 사업 선택 -->
+        <!-- 운영사업 선택 -->
         <section class="card">
-          <h2>참가 사업 선택</h2>
+          <h2>운영사업 선택</h2>
           <div class="field">
-            <label for="program-select">관리할 참가 사업을 선택하세요</label>
+            <label for="program-select">관리할 운영사업을 선택하세요</label>
             <select id="program-select">
-              <option value="">-- 참가 사업을 선택하세요 --</option>
+              <option value="">-- 운영사업을 선택하세요 --</option>
             </select>
           </div>
         </section>
@@ -245,13 +33,13 @@
         <!-- 프로그램 선택 시 표시되는 섹션들 -->
         <div data-program-sections hidden>
 
-          <!-- 1. 참가사업 설명 -->
+          <!-- 1. 운영사업 설명 -->
           <section class="card" style="margin-top:16px">
-            <h2>참가사업 설명</h2>
-            <p class="muted">이 사업에 대한 간략한 설명을 입력합니다.</p>
+            <h2>운영사업 설명</h2>
+            <p class="muted">이 운영사업에 대한 간략한 설명을 입력합니다.</p>
             <div style="margin-top:14px">
               <textarea id="program-description" rows="5"
-                placeholder="참가사업 설명을 입력하세요"
+                placeholder="운영사업 설명을 입력하세요"
                 style="width:100%;resize:vertical"></textarea>
             </div>
             <div class="save-row">
@@ -314,6 +102,6 @@
         </div>
       </main>
     </div>
-    <script type="module" src="../src/pages/adminProgramManagement.js"></script>
+    <script type="module" src="../src/pages/admin/program-management.js"></script>
   </body>
 </html>

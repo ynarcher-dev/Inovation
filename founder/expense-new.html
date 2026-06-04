@@ -1,4 +1,4 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="ko">
   <head>
     <meta charset="utf-8">
@@ -8,19 +8,12 @@
   </head>
   <body>
     <div class="app-shell">
-      <aside class="sidebar">
-        <div class="brand">사업비 집행 도우미</div>
-        <nav class="nav">
-          <a href="./dashboard.html">대시보드</a>
-          <a href="./profile.html">프로필</a>
-          <button data-logout type="button">로그아웃</button>
-        </nav>
-      </aside>
+      <aside class="sidebar"></aside>
       <main class="main">
         <div class="topbar">
           <div>
-            <h1>새 지출 신청</h1>
-            <p class="muted">입력값에 따라 필수서류와 위험 항목을 자동 계산합니다.</p>
+            <h1 data-page-title>새 지출 신청</h1>
+            <p class="muted" data-page-desc>임시저장 후 언제든 수정할 수 있으며, 사전승인 신청을 누르면 관리자 검토가 시작됩니다.</p>
           </div>
         </div>
         <p class="error" data-error hidden></p>
@@ -30,74 +23,61 @@
               <fieldset class="form-block">
                 <legend>예산 항목</legend>
                 <div class="field">
-                  <label for="title">지출 제목</label>
+                  <label class="required" for="title">지출 제목</label>
                   <input id="title" required placeholder="예: 홈페이지 개발 외주">
                 </div>
                 <div class="field">
-                  <label for="business_plan_item_id">예산 항목</label>
+                  <label class="required" for="business_plan_item_id">예산 항목</label>
                   <div class="amount-select" data-plan-select></div>
                   <select id="business_plan_item_id" hidden></select>
-                  <p class="muted">관리자가 설정한 비목 단계(뎁스)와 배정 금액 범위 안에서만 지출을 신청합니다.</p>
+
                 </div>
               </fieldset>
               <fieldset class="form-block">
                 <legend>지출 상세</legend>
                 <div class="field">
-                  <label for="vendor_name">거래처명</label>
+                  <label class="required" for="vendor_name">거래처명</label>
                   <input id="vendor_name" placeholder="예: 웹스튜디오">
                 </div>
                 <div class="field">
-                  <label for="vendor_business_number">거래처 사업자등록번호</label>
+                  <label class="required" for="vendor_business_number">거래처 사업자등록번호</label>
                   <input id="vendor_business_number" placeholder="000-00-00000">
                 </div>
                 <div class="grid grid-2">
                   <div class="field">
-                    <label for="amount_supply">공급가액</label>
+                    <label class="required" for="amount_supply">공급가액</label>
                     <input id="amount_supply" inputmode="numeric" data-money-input placeholder="예: 5,000,000">
                   </div>
                   <div class="field">
-                    <label for="vat_amount">부가세</label>
+                    <label class="required" for="vat_amount">부가세</label>
                     <input id="vat_amount" inputmode="numeric" data-money-input placeholder="예: 500,000">
                   </div>
                 </div>
                 <div class="field">
-                  <label for="expected_completion_date">지출 예정일자</label>
+                  <label class="required" for="expected_completion_date">지출 예정일자</label>
                   <input id="expected_completion_date" type="date">
                 </div>
                 <div class="field">
-                  <label for="purpose">신청 내용</label>
+                  <label class="required" for="purpose">신청 내용</label>
                   <textarea id="purpose" placeholder="예: 시제품 홍보용 홈페이지 개발"></textarea>
                 </div>
               </fieldset>
-              <button class="button" type="submit">신청하기</button>
+              <div class="actions">
+                <button class="button secondary" name="action" value="draft" type="submit" data-action-draft>임시저장</button>
+                <button class="button" name="action" value="submit" type="submit" data-action-submit>사전승인 신청</button>
+              </div>
             </form>
           </section>
           <aside class="grid">
-            <section class="card ai-panel">
-              <h2>집행 가이드</h2>
-              <div data-warnings></div>
-            </section>
             <section class="card">
               <h2>첨부 서류</h2>
-              <div data-checklist></div>
-              <label class="toggle-field" for="advance_payment_requested">
-                <span>선금 신청</span>
-                <input id="advance_payment_requested" type="checkbox">
-                <span class="toggle-track" aria-hidden="true"></span>
-              </label>
-              <div data-advance-checklist></div>
-              <label class="toggle-field" for="other_evidence_enabled">
-                <span>기타 증빙서류 첨부</span>
-                <input id="other_evidence_enabled" type="checkbox">
-                <span class="toggle-track" aria-hidden="true"></span>
-              </label>
-              <div data-other-evidence hidden></div>
+              <p class="muted">첨부 서류 기능은 새로 설계 중입니다.</p>
             </section>
           </aside>
         </div>
       </main>
     </div>
-    <script type="module" src="../src/pages/expenseNew.js"></script>
+    <script type="module" src="../src/pages/founder/expense-new.js"></script>
   </body>
 </html>
 

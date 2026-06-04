@@ -7,42 +7,17 @@
     <link rel="stylesheet" href="../src/styles.css">
     <style>
       /* 컬럼이 많아 표를 조밀하게(전체 폭은 .main 전역 설정 사용, 넘칠 때만 가로 스크롤) */
-      [data-company-table] table { table-layout: auto; }
+      [data-company-table] table { table-layout: auto; width: 100%; }
       [data-company-table] th,
       [data-company-table] td {
         padding: 12px 14px;
         font-size: var(--text-sm);
       }
-      .company-toolbar {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 12px;
-        margin-bottom: 16px;
-      }
-      .company-toolbar .company-search { flex: 1 1 280px; }
-      .company-toolbar .company-status,
-      .company-toolbar .company-budget,
-      .company-toolbar .company-program { flex: 0 0 180px; }
-      @media (max-width: 720px) {
-        .company-toolbar .company-status,
-        .company-toolbar .company-budget,
-        .company-toolbar .company-program { flex: 1 1 calc(50% - 6px); }
-      }
     </style>
   </head>
   <body>
     <div class="app-shell">
-      <aside class="sidebar">
-        <div class="brand">관리자</div>
-        <nav class="nav">
-          <a href="./dashboard.html">대시보드</a>
-          <a href="./signup-requests.html">가입 신청 관리</a>
-          <a href="./support-programs.html">참가 사업명 관리</a>
-          <a href="./program-management.html">참가 사업 관리</a>
-          <a class="active" href="./companies.html">기업 목록</a>
-          <button data-logout type="button">로그아웃</button>
-        </nav>
-      </aside>
+      <aside class="sidebar"></aside>
       <main class="main">
         <div class="topbar">
           <div>
@@ -52,31 +27,11 @@
         </div>
         <p class="error" data-error hidden></p>
         <section class="card">
-          <div class="company-toolbar">
-            <input
-              class="company-search"
-              type="search"
-              data-company-search
-              placeholder="기업명 · 대표자 · 사업자등록번호 검색"
-              aria-label="기업 검색"
-            >
-            <select class="company-status" data-company-status aria-label="가입 상태 필터">
-              <option value="all">전체 가입 상태</option>
-              <option value="pending">가입 승인 대기</option>
-              <option value="approved">가입 승인 완료</option>
-              <option value="rejected">가입 반려</option>
-            </select>
-            <select class="company-budget" data-company-budget aria-label="예산안 상태 필터">
-              <option value="all">전체 예산안 상태</option>
-            </select>
-            <select class="company-program" data-company-program aria-label="참가 사업 필터">
-              <option value="all">전체 참가 사업</option>
-            </select>
-          </div>
+          <div data-company-toolbar></div>
           <div data-company-table></div>
         </section>
       </main>
     </div>
-    <script type="module" src="../src/pages/adminCompanies.js"></script>
+    <script type="module" src="../src/pages/admin/companies.js"></script>
   </body>
 </html>

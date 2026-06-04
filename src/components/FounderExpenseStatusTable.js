@@ -1,13 +1,25 @@
 import { escapeHtml, formatCurrency, formatDate } from "../utils.js";
-import { getSimpleExpenseStatus } from "../status.js";
+import { getStatusLabel, getStatusTone, getProcessSteps } from "../domains/status.js";
 
-// 창업자 지출 현황 표.
-// - 금액: 공급가액 + 부가세(합산)
-// - 상태: 승인/보완/반려(검토 전은 검토 중)
-// - 각 건은 독립적이므로 자신의 id 로만 상세에 연결된다(보완/반려 시 새 결재를 올리는 형태).
-export function FounderExpenseStatusTable(rows) {
+// 4-스텝 미니 프로세스 UI(작성 → 사전승인 → 최종승인 → 완료). new.md §5.
+function ProcessSteps(status) {
+  const steps = getProcessSteps(status);
+  const dots = steps
+    .map((s, i) => {
+      const connector = i > 0 ? `<span class="proc-line proc-line-${steps[i - 1].state}"></span>` : "";
+      return `${connector}<span class="proc-step proc-${s.state}"><span class="proc-dot"></span><span class="proc-label">${escapeHtml(s.label)}</span></span>`;
+    })
+    .join("");
+  return `<div class="proc-track">${dots}</div>`;
+}
+
+// 창업자 지출 현황 표(new.md §5 권장 컬럼).
+// - 신청명 / 비목·사업계획서 항목 / 금액(공급가액+부가세) / 제출일 / 현재 단계(배지) / 진행 상태(미니 프로세스)
+// - 행 전체를 클릭하면 상세 페이지로 이동한다(보완 건은 같은 expense.id 를 유지).
+// rows 는 호출부에서 검색/필터를 거친 결과를 받는다. 비어 있으면 emptyMessage 를 표시한다.
+export function FounderExpenseStatusTable(rows, emptyMessage = "표시할 지출 신청 건이 없습니다.") {
   if (!rows?.length) {
-    return `<p class="empty">표시할 지출 신청 건이 없습니다.</p>`;
+    return `<p class="empty">${escapeHtml(emptyMessage)}</p>`;
   }
 
   const sorted = [...rows].sort((a, b) =>
@@ -16,13 +28,23 @@ export function FounderExpenseStatusTable(rows) {
 
   return `
     <div class="table-wrap">
-      <table>
+      <table class="founder-expense-table">
+        <colgroup>
+          <col style="width:24%">
+          <col style="width:20%">
+          <col style="width:12%">
+          <col style="width:11%">
+          <col style="width:12%">
+          <col style="width:21%">
+        </colgroup>
         <thead>
           <tr>
             <th>신청명</th>
-            <th>금액</th>
+            <th>비목 / 사업계획서 항목</th>
+            <th class="num">금액</th>
             <th>제출일</th>
-            <th>상태</th>
+            <th>현재 단계</th>
+            <th>진행 상태</th>
           </tr>
         </thead>
         <tbody>
@@ -32,14 +54,16 @@ export function FounderExpenseStatusTable(rows) {
                 ? row.total_amount
                 : Number(row.amount_supply || 0) + Number(row.vat_amount || 0)
             );
-            const state = getSimpleExpenseStatus(row.status);
+            const category = row.business_plan_item_label || row.budget_category || "-";
             const url = `expense-detail.html?id=${encodeURIComponent(row.id)}`;
             return `
-              <tr>
-                <td><a href="${url}">${escapeHtml(row.title)}</a></td>
-                <td>${formatCurrency(total)}</td>
-                <td>${formatDate(row.submitted_at)}</td>
-                <td><span class="badge badge-${state.tone}">${escapeHtml(state.label)}</span></td>
+              <tr class="clickable-row" data-expense-href="${url}" tabindex="0" role="link">
+                <td><span class="row-link">${escapeHtml(row.title)}</span></td>
+                <td class="muted">${escapeHtml(category)}</td>
+                <td class="num">${formatCurrency(total)}</td>
+                <td>${row.submitted_at ? formatDate(row.submitted_at) : "-"}</td>
+                <td><span class="badge badge-${getStatusTone(row.status)}">${escapeHtml(getStatusLabel(row.status))}</span></td>
+                <td>${ProcessSteps(row.status)}</td>
               </tr>
             `;
           }).join("")}

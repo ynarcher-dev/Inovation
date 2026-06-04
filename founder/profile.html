@@ -1,4 +1,4 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="ko">
   <head>
     <meta charset="utf-8">
@@ -8,52 +8,109 @@
   </head>
   <body>
     <div class="app-shell">
-      <aside class="sidebar">
-        <div class="brand">사업비 집행 도우미</div>
-        <nav class="nav">
-          <a href="./dashboard.html">대시보드</a>
-          <a class="active" href="./profile.html">프로필</a>
-          <button data-logout type="button">로그아웃</button>
-        </nav>
-      </aside>
+      <aside class="sidebar"></aside>
       <main class="main">
         <div class="topbar">
           <div>
             <h1>프로필</h1>
-            <p class="muted">대표자와 기업 기본정보를 관리합니다.</p>
+
           </div>
           <a class="button secondary" href="./dashboard.html">대시보드로 돌아가기</a>
         </div>
         <p class="error" data-error hidden></p>
-        <p class="notice" data-result hidden></p>
 
-        <section class="profile-section">
-          <form class="card form" id="profile-form">
-            <h2>기본 정보</h2>
-            <div class="field">
-              <label for="company_name">기업명</label>
-              <input id="company_name" required>
+        <div class="card profile-card">
+          <header class="profile-head">
+            <div class="profile-avatar" data-account-avatar>-</div>
+            <div class="profile-identity">
+              <h2 data-company-name>-</h2>
+              <p class="muted" data-account-subtitle>-</p>
             </div>
-            <div class="field">
-              <label for="representative_name">대표자명</label>
-              <input id="representative_name" required>
+            <span class="badge" data-account-status>-</span>
+          </header>
+
+          <div class="profile-info">
+            <section class="profile-info-group">
+              <h3 class="profile-info-title">기본 정보</h3>
+              <dl class="summary-list summary-list--wide">
+                <div class="summary-row">
+                  <dt>기업명</dt>
+                  <dd data-company-name-value>-</dd>
+                </div>
+                <div class="summary-row">
+                  <dt>대표자명</dt>
+                  <dd data-representative-name>-</dd>
+                </div>
+                <div class="summary-row">
+                  <dt>사업자등록번호</dt>
+                  <dd data-business-number>-</dd>
+                </div>
+                <div class="summary-row">
+                  <dt>연락처</dt>
+                  <dd data-phone>-</dd>
+                </div>
+              </dl>
+            </section>
+
+            <section class="profile-info-group">
+              <h3 class="profile-info-title">계정 정보</h3>
+              <dl class="summary-list summary-list--wide">
+                <div class="summary-row">
+                  <dt>이메일</dt>
+                  <dd data-account-email>-</dd>
+                </div>
+                <div class="summary-row">
+                  <dt>권한</dt>
+                  <dd data-account-role>-</dd>
+                </div>
+                <div class="summary-row">
+                  <dt>가입 승인 상태</dt>
+                  <dd><span class="badge" data-account-status-inline>-</span></dd>
+                </div>
+                <div class="summary-row">
+                  <dt>가입일</dt>
+                  <dd data-account-joined>-</dd>
+                </div>
+              </dl>
+            </section>
+          </div>
+        </div>
+
+        <div class="profile-manage">
+          <section class="card">
+            <h2>비밀번호 변경</h2>
+
+            <form class="form" id="password-form">
+              <div class="field">
+                <label for="current_password">현재 비밀번호</label>
+                <input id="current_password" type="password" autocomplete="current-password" required>
+              </div>
+              <div class="field">
+                <label for="new_password">새 비밀번호</label>
+                <input id="new_password" type="password" autocomplete="new-password" minlength="6" required>
+              </div>
+              <div class="field">
+                <label for="new_password_confirm">새 비밀번호 확인</label>
+                <input id="new_password_confirm" type="password" autocomplete="new-password" minlength="6" required>
+              </div>
+              <div class="actions">
+                <button class="button" type="submit">비밀번호 변경</button>
+              </div>
+            </form>
+          </section>
+
+          <section class="card account-danger">
+            <h2>회원 탈퇴</h2>
+
+            <div class="account-danger-row">
+              <p>탈퇴를 진행하려면 확인 문구 입력과 비밀번호 확인이 필요합니다.</p>
+              <button class="button danger" type="button" data-withdraw>회원 탈퇴</button>
             </div>
-            <div class="field">
-              <label for="business_number">사업자등록번호</label>
-              <input id="business_number" placeholder="000-00-00000">
-            </div>
-            <div class="field">
-              <label for="phone">연락처</label>
-              <input id="phone" autocomplete="tel">
-            </div>
-            <div class="actions">
-              <button class="button" type="submit">저장</button>
-            </div>
-          </form>
-        </section>
+          </section>
+        </div>
       </main>
     </div>
-    <script type="module" src="../src/pages/founderProfile.js"></script>
+    <script type="module" src="../src/pages/founder/profile.js"></script>
   </body>
 </html>
 

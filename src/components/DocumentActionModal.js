@@ -1,4 +1,4 @@
-import { getDocumentActionMeta } from "../rulesEngine.js";
+import { getDocumentActionMeta } from "../domains/expense/rules-engine.js";
 import { escapeHtml } from "../utils.js";
 
 const statusText = {
