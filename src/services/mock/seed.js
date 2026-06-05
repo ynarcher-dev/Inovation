@@ -14,6 +14,7 @@ export function initMockData() {
   if (seededVersion !== DATA_VERSION) {
     Object.values(STORAGE_KEYS).forEach((key) => localStorage.removeItem(key));
     localStorage.removeItem(STORAGE_KEYS.CURRENT_USER);
+    sessionStorage.removeItem(STORAGE_KEYS.CURRENT_USER);
   }
 
   // 1. Initial Users

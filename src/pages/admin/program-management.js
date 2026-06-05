@@ -19,6 +19,7 @@ import {
   deleteBudgetDocumentRequirement,
   getProgramAiCriteriaDocument,
   uploadProgramAiCriteriaDocument,
+  extractProgramAiCriteria,
   deleteProgramAiCriteriaDocument,
 } from "../../api.js";
 import { requireRole } from "../../auth.js";
@@ -33,6 +34,7 @@ let guidanceItems = [];
 let currentUser = null;
 let editingReqId = null;   // 첨부서류 요구사항 인라인 편집 대상 (null = 편집 안 함)
 let showReqAddForm = false; // 첨부서류 추가 폼 표시 여부
+let aiExtracting = false;   // AI 기준 문서 추출 진행 중 여부 (로딩 표시용)
 
 function parseLevelLabels(levelLabels) {
   if (!levelLabels) return ["depth.1"];
@@ -499,11 +501,29 @@ function attachBudgetEvents(container) {
 }
 
 const EXTRACTION_STATUS_LABELS = {
-  not_started: "추출 대기",
-  pending: "추출 중",
-  completed: "추출 완료",
-  failed: "추출 실패",
+  not_started: "파싱 대기",
+  pending: "파싱 중",
+  completed: "파싱 완료",
+  failed: "파싱 실패",
 };
+
+// 파싱 결과 지표(페이지 수/글자 수/텍스트 포함 페이지)와 이미지 PDF 경고를 렌더한다.
+function renderParseMetrics(doc) {
+  if (doc.parse_char_count == null) return "";
+  const pages = doc.parse_page_count ?? 0;
+  const chars = doc.parse_char_count ?? 0;
+  const withText = doc.parse_pages_with_text ?? 0;
+  const metric = `<p class="muted caption" style="margin:0 0 8px">
+    파싱 결과: 총 ${pages}페이지 · 텍스트 ${chars.toLocaleString()}자 추출 · 텍스트 포함 페이지 ${withText}/${pages}
+  </p>`;
+  const warn = doc.parse_image_likely
+    ? `<div class="ai-criteria-image-warn" style="margin:0 0 10px;padding:10px 12px;border:1px solid #fca5a5;background:#fef2f2;border-radius:8px;color:#b91c1c;font-size:13px;line-height:1.5">
+        ⚠ 이미지(스캔)로 된 PDF로 보입니다. 텍스트 레이어가 거의 없어 추출된 내용이 부족합니다.<br>
+        텍스트가 포함된 PDF로 다시 업로드하거나, OCR 처리 후 업로드해주세요.
+      </div>`
+    : "";
+  return metric + warn;
+}
 
 function renderAiCriteria() {
   const root = document.querySelector("[data-ai-criteria]");
@@ -520,6 +540,11 @@ function renderAiCriteria() {
       </label>
       ${guideNote}`;
   } else {
+    const isCompleted = doc.extraction_status === "completed";
+    // 추출 진행 중일 때는 '추출 중' 으로 표시한다.
+    const statusKey = aiExtracting ? "pending" : doc.extraction_status;
+    const statusLabel = EXTRACTION_STATUS_LABELS[statusKey] || statusKey;
+
     root.innerHTML = `
       <div class="ai-criteria-card">
         <div class="ai-criteria-row">
@@ -539,10 +564,33 @@ function renderAiCriteria() {
           <span class="ai-criteria-val">${formatDate(doc.updated_at)}</span>
         </div>
         <div class="ai-criteria-row">
-          <span class="ai-criteria-key">AI 기준 추출 상태</span>
-          <span class="ai-criteria-val doc-req-badge ${doc.extraction_status === "completed" ? "is-active" : ""}">${EXTRACTION_STATUS_LABELS[doc.extraction_status] || doc.extraction_status}</span>
+          <span class="ai-criteria-key">텍스트 파싱 상태</span>
+          <span class="ai-criteria-val doc-req-badge ${isCompleted && !aiExtracting ? "is-active" : ""}">
+            ${aiExtracting ? `<span class="ai-criteria-spinner"></span> ` : ""}${statusLabel}
+          </span>
         </div>
       </div>
+
+      ${isCompleted
+        ? `<div class="ai-criteria-extracted" style="margin-top:12px">
+            <div class="ai-criteria-extracted-head">
+              <span class="ai-criteria-key">파싱된 문서 텍스트</span>
+              <span class="muted caption">제출 서류 AI 검토 시 이 텍스트가 함께 적용됩니다.</span>
+            </div>
+            ${renderParseMetrics(doc)}
+            <pre class="ai-criteria-extracted-text">${escapeHtml(doc.extracted_criteria_text || "(추출된 텍스트가 없습니다.)")}</pre>
+          </div>`
+        : `<div class="ai-criteria-extract-cta" style="margin-top:12px">
+            <p class="muted caption" style="margin:0 0 8px">
+              ${aiExtracting
+                ? "문서에서 텍스트를 파싱하고 있습니다. 잠시만 기다려주세요…"
+                : "업로드한 문서의 텍스트를 파싱해야 제출 서류 AI 검토에 반영됩니다."}
+            </p>
+            <button class="button small" type="button" data-ai-criteria-extract ${aiExtracting ? "disabled" : ""}>
+              ${aiExtracting ? "파싱 중…" : "텍스트 파싱"}
+            </button>
+          </div>`}
+
       <div class="ai-criteria-actions" style="margin-top:12px;display:flex;gap:8px">
         <label class="button small secondary" style="cursor:pointer">
           새 문서로 교체<input type="file" hidden data-ai-criteria-upload>
@@ -556,9 +604,21 @@ function renderAiCriteria() {
     const file = e.target.files[0];
     if (!file) return;
     await runWithErrorBoundary(async () => {
+      // 새 문서를 올리면 추출 상태가 초기화되므로 진행 플래그도 해제한다.
+      aiExtracting = false;
       await uploadProgramAiCriteriaDocument(currentProgramId, file, currentUser);
       renderAiCriteria();
     }, {});
+  });
+
+  root.querySelector("[data-ai-criteria-extract]")?.addEventListener("click", async () => {
+    aiExtracting = true;
+    renderAiCriteria(); // 로딩 상태 즉시 표시
+    await runWithErrorBoundary(async () => {
+      await extractProgramAiCriteria(doc.id);
+    }, {});
+    aiExtracting = false;
+    renderAiCriteria(); // 추출 결과 표시
   });
 
   root.querySelector("[data-ai-criteria-open]")?.addEventListener("click", async (e) => {

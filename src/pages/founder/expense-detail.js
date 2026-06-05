@@ -1,4 +1,4 @@
-import { mountShell, runWithErrorBoundary, showError } from "../../app.js";
+import { mountShell, runWithErrorBoundary, showError, showToast, showConfirm, setPendingToast } from "../../app.js";
 import { requireRole } from "../../auth.js";
 import {
   getExpenseDetail,
@@ -81,7 +81,13 @@ try {
 
       container.querySelectorAll("[data-doc-delete]").forEach((btn) =>
         btn.addEventListener("click", async () => {
-          if (!confirm("첨부 파일을 삭제하시겠습니까?")) return;
+          const ok = await showConfirm("첨부 파일을 삭제하시겠습니까?", {
+            title: "첨부 파일 삭제",
+            confirmText: "삭제",
+            cancelText: "취소",
+            tone: "danger",
+          });
+          if (!ok) return;
           await runWithErrorBoundary(async () => {
             await deleteExpenseDocumentFile(btn.dataset.docDelete);
             renderDocPanels();
@@ -93,7 +99,7 @@ try {
         await runWithErrorBoundary(async () => {
           const { reviewed } = await requestAiBatchDocumentReview(id, phase);
           renderDocPanels();
-          if (!reviewed) window.alert("AI검토할 업로드 파일이 없습니다.");
+          if (!reviewed) showToast("AI검토할 업로드 파일이 없습니다.", { type: "info" });
         }, { button: e.currentTarget });
       });
 
@@ -191,22 +197,30 @@ try {
 
       const submitBtn = ctaRoot.querySelector("[data-submit-expense]");
       if (submitBtn) {
-        submitBtn.addEventListener("click", (event) => {
+        submitBtn.addEventListener("click", async (event) => {
+          const btn = event.currentTarget;
           const label = expense.status === "pre_approved" ? "최종승인" : "사전승인";
           // 제출 전 필수 첨부서류 검증 (§7). 누락 시 서류명을 안내하고 제출을 막는다.
           const phase = getSubmitDocumentPhase(expense.status);
           if (phase) {
             const { ok, missing } = validateRequiredDocuments(id, phase);
             if (!ok) {
-              window.alert(`다음 필수 첨부서류를 업로드해야 ${label} 신청을 진행할 수 있습니다.\n\n- ${missing.join("\n- ")}`);
+              showToast(`다음 필수 첨부서류를 업로드해야 ${label} 신청을 진행할 수 있습니다.\n- ${missing.join("\n- ")}`, { type: "warning", duration: 6000 });
               return;
             }
           }
-          if (!window.confirm(`${label} 신청을 진행하시겠습니까? 제출 후에는 관리자 검토가 시작됩니다.`)) return;
-          runWithErrorBoundary(async () => {
+          const confirmed = await showConfirm(`${label} 신청을 진행하시겠습니까? 제출 후에는 관리자 검토가 시작됩니다.`, {
+            title: `${label} 신청`,
+            confirmText: "신청",
+            cancelText: "취소",
+          });
+          if (!confirmed) return;
+          await runWithErrorBoundary(async () => {
             await submitExpenseRequest(id);
+            // reload 후 완료 토스트를 띄운다.
+            setPendingToast(`${label} 신청이 제출되었습니다. 관리자 검토 후 결과가 안내됩니다.`, "success");
             window.location.reload();
-          }, { button: event.currentTarget });
+          }, { button: btn });
         });
       }
     };

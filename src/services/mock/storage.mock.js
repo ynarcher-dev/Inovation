@@ -96,6 +96,35 @@ export function save(key, data) {
   localStorage.setItem(key, JSON.stringify(data));
 }
 
+// ----------------------------------------------------
+// 현재 사용자 세션: "로그인 유지" 여부에 따라 저장소를 달리한다.
+//  - 유지 O: localStorage  (브라우저를 닫아도 로그인 유지)
+//  - 유지 X: sessionStorage (탭/브라우저를 닫으면 로그아웃)
+// 읽을 때는 sessionStorage 를 우선 확인한다(미유지 로그인이 항상 우선).
+// ----------------------------------------------------
+export function saveCurrentUser(user, remember) {
+  const json = JSON.stringify(user);
+  if (remember) {
+    localStorage.setItem(STORAGE_KEYS.CURRENT_USER, json);
+    sessionStorage.removeItem(STORAGE_KEYS.CURRENT_USER);
+  } else {
+    sessionStorage.setItem(STORAGE_KEYS.CURRENT_USER, json);
+    localStorage.removeItem(STORAGE_KEYS.CURRENT_USER);
+  }
+}
+
+export function loadCurrentUser() {
+  const raw =
+    sessionStorage.getItem(STORAGE_KEYS.CURRENT_USER) ||
+    localStorage.getItem(STORAGE_KEYS.CURRENT_USER);
+  return raw ? JSON.parse(raw) : null;
+}
+
+export function clearCurrentUser() {
+  localStorage.removeItem(STORAGE_KEYS.CURRENT_USER);
+  sessionStorage.removeItem(STORAGE_KEYS.CURRENT_USER);
+}
+
 // UUID generator
 export function uuid() {
   return "uuid-" + Math.random().toString(36).substr(2, 9);

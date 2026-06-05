@@ -1,4 +1,4 @@
-import { mountShell, runWithErrorBoundary, showError } from "../../app.js";
+import { mountShell, runWithErrorBoundary, showError, showToast, showConfirm, setPendingToast } from "../../app.js";
 import { requireRole } from "../../auth.js";
 import {
   getExpenseDetail,
@@ -164,12 +164,34 @@ try {
 
     reviewForm.addEventListener("submit", async (event) => {
       event.preventDefault();
-      const decision = event.submitter.value;
-      const comment = document.querySelector("#comment").value;
+      const submitter = event.submitter;
+      const decision = submitter.value;
+      const commentInput = document.querySelector("#comment");
+      const comment = commentInput.value;
+      const meta = REVIEW_DECISIONS[decision];
+      const label = meta?.label || "처리";
+
+      // 보완요청 시에는 사유를 입력받는다.
+      if (decision === "revision_requested" && !comment.trim()) {
+        showToast("보완요청 시에는 사유를 입력해야 합니다.", { type: "warning" });
+        commentInput.focus();
+        return;
+      }
+
+      const ok = await showConfirm(`검토 결과를 '${label}'(으)로 처리하시겠습니까?`, {
+        title: `${label} 처리`,
+        confirmText: label,
+        cancelText: "취소",
+        tone: decision === "approved" ? "default" : "danger",
+      });
+      if (!ok) return;
+
       await runWithErrorBoundary(async () => {
         await reviewExpenseRequest(expense.id, decision, comment, user.id);
+        // reload 후 완료 토스트를 띄우기 위해 미리 예약한다(§6.2).
+        setPendingToast(`검토 결과가 저장되었습니다. (${label})`, "success");
         window.location.reload();
-      }, { button: event.submitter });
+      }, { button: submitter });
     });
   }
 } catch (error) {

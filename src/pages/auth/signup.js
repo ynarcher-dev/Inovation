@@ -1,4 +1,4 @@
-import { showError } from "../../app.js";
+import { showError, showToast } from "../../app.js";
 import { getSupportPrograms } from "../../api.js";
 import { signUpFounder } from "../../auth.js";
 import { escapeHtml } from "../../utils.js";
@@ -64,13 +64,12 @@ document.querySelector("#signup-form").addEventListener("submit", async (event) 
       ? result.message
       : "가입 신청이 완료되었습니다. 예산 및 비목 승인 후 지출 신청을 진행할 수 있습니다.";
 
-    if (!result.needsConfirmation) {
-      // 가입은 승인 대기 상태로 생성되며, 승인 전에는 로그인이 차단된다.
-      // 따라서 대시보드가 아니라 로그인 페이지로 안내한다.
-      window.setTimeout(() => {
-        window.location.href = "./login.html";
-      }, 1200);
-    }
+    // 자동 리다이렉트 대신 결과 메시지를 충분히 보여주고, 명시적 '로그인으로 이동' 버튼을 노출한다(§7.1).
+    showToast("가입 신청이 완료되었습니다.", { type: "success" });
+    const loginLink = document.querySelector("[data-login-after-signup]");
+    if (loginLink) loginLink.hidden = false;
+    // 중복 제출을 막기 위해 제출 버튼은 숨긴다.
+    document.querySelector("[data-signup-submit]")?.setAttribute("hidden", "");
   } catch (error) {
     showError(error);
   }

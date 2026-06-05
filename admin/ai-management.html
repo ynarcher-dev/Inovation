@@ -15,7 +15,7 @@
       <div class="topbar">
         <div>
           <h1>AI 관리</h1>
-          <p class="muted">AI 검토 기능 노출 여부와 운영 설정을 관리합니다.</p>
+          <p class="muted">AI 검토 기능 호출 여부와 운영 설정을 관리합니다.</p>
         </div>
       </div>
       <p class="error" data-error hidden></p>
@@ -28,7 +28,7 @@
             <span class="ai-toggle-switch" aria-hidden="true"></span>
             <span>
               <strong data-ai-enabled-label>비활성화</strong>
-              <span class="muted">꺼두면 창업자/관리자 화면의 AI 검토 버튼과 결과 UI가 숨겨집니다.</span>
+              <span class="muted">켜두면 예산 심사 화면에서 AI 검토 버튼과 결과 UI가 활성화됩니다.</span>
             </span>
           </label>
 
@@ -37,14 +37,14 @@
               <label for="ai-provider">Provider</label>
               <select id="ai-provider" data-ai-provider>
                 <option value="openai">OpenAI</option>
-                <option value="anthropic">Anthropic</option>
-                <option value="google">Google</option>
-                <option value="other">Other</option>
+                <option value="google">Google Gemini</option>
+                <option value="anthropic">Anthropic Claude</option>
               </select>
             </div>
             <div class="field">
               <label for="ai-model">Model</label>
-              <input id="ai-model" data-ai-model placeholder="예: gpt-4.1-mini">
+              <input id="ai-model" data-ai-model placeholder="예: gpt-4o-mini">
+              <p class="muted" data-ai-model-help style="margin:0;"></p>
             </div>
           </div>
 
@@ -63,17 +63,30 @@
             </div>
             <div class="field">
               <label for="ai-key-hint">Key 표시 힌트</label>
-              <input id="ai-key-hint" data-ai-key-hint placeholder="예: sk-...abcd">
+              <input id="ai-key-hint" data-ai-key-hint placeholder="예: sk-...abcd / AIza...abcd">
             </div>
           </div>
 
           <p class="notice">
-            API Key 원문은 브라우저나 Supabase public table에 저장하지 마세요. 실제 운영에서는 Supabase Edge Function Secrets에 저장하고, 이 화면은 등록 상태와 모델 설정만 관리하는 방식이 안전합니다.
+            API Key 원문은 브라우저나 Supabase public table에 저장하지 마세요. 실제 운영에서는 Supabase Edge Function Secrets에
+            OPENAI_API_KEY, GOOGLE_API_KEY, ANTHROPIC_API_KEY 중 사용할 provider의 키를 저장하고, 이 화면은 등록 상태와 모델 설정만 관리합니다.
           </p>
+
+          <div class="notice notice-info">
+            <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:12px; flex-wrap:wrap;">
+              <div>
+                <strong>AI 연결 테스트</strong>
+                <p class="muted" style="margin:4px 0 0;">현재 설정으로 Edge Function과 선택한 AI provider가 정상 응답하는지 확인합니다.</p>
+                <p class="muted" style="margin:4px 0 0; font-size:0.85rem; color:#8590a6;">※ 테스트 시 샘플용 더미데이터를 사용하여 AI API를 호출합니다. '테스트 성공' 박스에 예산 분석 요약글이 정상 표시되면 연동이 성공한 것입니다.</p>
+              </div>
+              <button class="button small secondary" type="button" data-ai-test-button>테스트 실행</button>
+            </div>
+            <div data-ai-test-result style="margin-top:12px;"></div>
+          </div>
 
           <div class="field">
             <label for="ai-memo">운영 메모</label>
-            <textarea id="ai-memo" data-ai-memo rows="4" placeholder="비용 승인 전 비활성화, 승인 후 재활성화 등"></textarea>
+            <textarea id="ai-memo" data-ai-memo rows="4" placeholder="비용 확인 후 활성화, 특정 기간만 사용 등"></textarea>
           </div>
 
           <div class="actions">

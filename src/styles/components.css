@@ -250,6 +250,16 @@ tr:last-child td {
 }
 .field { display: grid; gap: 8px; }
 label { font-weight: 700; font-size: var(--text-sm); color: #334155; }
+/* 체크박스 한 줄(예: 로그인 유지) — 전역 input 규칙(width:100%)을 무시하고 라벨과 인라인 배치 */
+.checkbox-row { display: flex; align-items: center; gap: 8px; font-weight: 500; cursor: pointer; }
+.checkbox-row input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  min-height: 0;
+  margin: 0;
+  flex: none;
+  cursor: pointer;
+}
 /* 필수 입력 라벨 — 빨간 별표(*) */
 label.required::after { content: " *"; color: #dc2626; font-weight: 800; }
 
@@ -379,6 +389,41 @@ input:focus, select:focus, textarea:focus {
 .tab-content { display: none; }
 .tab-content.active { display: block; }
 
+/* 탭 검토 대기 알림 배지 */
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background-color: var(--danger, #ef4444);
+  color: #ffffff;
+  border-radius: 9999px;
+  vertical-align: middle;
+  margin-left: 6px;
+  box-sizing: border-box;
+  line-height: 1;
+}
+.status-badge[hidden] {
+  display: none !important;
+}
+
+/* 빨간 점 형태 (단순 알림, 예: 예산 검토) */
+.status-badge.dot-badge {
+  width: 8px;
+  height: 8px;
+  min-width: 8px;
+  padding: 0;
+}
+
+/* 숫자 배지 형태 (건수 표시, 예: 지출 검토) */
+.status-badge.count-badge {
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  font-size: 11px;
+  font-weight: 700;
+  box-shadow: 0 2px 4px rgba(239, 68, 68, 0.25);
+}
+
 /* Budget Matrix Tree */
 .budget-matrix th, .budget-matrix td {
   border: 1px solid var(--line);
@@ -425,3 +470,91 @@ input:focus, select:focus, textarea:focus {
   vertical-align: middle;
 }
 
+
+/* ===========================================================================
+   공통 토스트 / 확인 모달 (ux-action-feedback-improvement-guide §8)
+   조용한 SaaS 톤. 과한 애니메이션을 피하고 모바일 좌우 여백을 유지한다.
+   =========================================================================== */
+
+/* ---- 토스트 ---- */
+.toast-container {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: min(360px, calc(100vw - 32px));
+  pointer-events: none;
+}
+
+.toast {
+  pointer-events: auto;
+  padding: 12px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--text);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.14);
+  border-left: 4px solid var(--muted);
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  opacity: 0;
+  transform: translateY(-6px);
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+.toast.toast-show {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.toast-success { border-left-color: var(--success); }
+.toast-info    { border-left-color: var(--primary); }
+.toast-warning { border-left-color: var(--warning); }
+.toast-danger  { border-left-color: var(--danger); }
+
+/* ---- 확인 모달 (공통 .modal-backdrop / .modal 재사용) ---- */
+.modal-title {
+  margin: 0 0 8px;
+  font-size: var(--text-lg);
+  font-weight: 700;
+  color: var(--text);
+}
+.ux-confirm-message {
+  margin: 0 0 20px;
+  color: var(--text);
+  font-size: var(--text-base);
+  line-height: 1.6;
+  white-space: pre-line;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.button.modal-danger {
+  border-color: var(--danger);
+  background: var(--danger);
+}
+.button.modal-danger:hover {
+  background: #dc2626;
+}
+
+@media (max-width: 640px) {
+  .toast-container {
+    left: 16px;
+    right: 16px;
+    max-width: none;
+  }
+  .modal-actions {
+    flex-direction: column-reverse;
+  }
+  .modal-actions .button {
+    width: 100%;
+  }
+}

@@ -1,18 +1,27 @@
 // Mock 인증: 현재 사용자/로그인/회원가입/로그아웃/비밀번호/탈퇴.
-import { STORAGE_KEYS, load, save, uuid } from "./storage.mock.js";
+import {
+  STORAGE_KEYS,
+  load,
+  save,
+  uuid,
+  saveCurrentUser,
+  loadCurrentUser,
+  clearCurrentUser,
+} from "./storage.mock.js";
 
 // ----------------------------------------------------
 // Mock Auth Functions
 // ----------------------------------------------------
 export function mockGetCurrentUser() {
-  const user = load(STORAGE_KEYS.CURRENT_USER, null);
+  const user = loadCurrentUser();
   if (!user) return null;
   const profiles = load(STORAGE_KEYS.PROFILES, []);
   const profile = profiles.find((p) => p.user_id === user.id) || { role: "founder", name: "임시" };
   return { ...user, profile };
 }
 
-export function mockSignIn(loginId, password) {
+// remember: "로그인 유지" 체크 여부. true 면 localStorage(영구), false 면 sessionStorage(탭 종료 시 만료).
+export function mockSignIn(loginId, password, remember = false) {
   const users = load(STORAGE_KEYS.USERS, []);
   const normalized = String(loginId || "").trim();
   const email = normalized === "super" ? "super@yna.local" : normalized === "admin" ? "admin@yna.local" : normalized === "founder" ? "founder@yna.local" : normalized;
@@ -39,7 +48,7 @@ export function mockSignIn(loginId, password) {
     }
   }
 
-  save(STORAGE_KEYS.CURRENT_USER, user);
+  saveCurrentUser(user, remember);
   return { user };
 }
 
@@ -92,7 +101,7 @@ export function mockSignUpFounder(input) {
 }
 
 export function mockSignOut() {
-  localStorage.removeItem(STORAGE_KEYS.CURRENT_USER);
+  clearCurrentUser();
 }
 
 export function mockVerifyCurrentPassword(password) {

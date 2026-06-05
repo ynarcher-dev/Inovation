@@ -1,4 +1,4 @@
-import { mountShell, runWithErrorBoundary, showError } from "../../app.js";
+import { mountShell, runWithErrorBoundary, showError, showToast, showConfirm } from "../../app.js";
 import { createSupportProgram, deleteSupportProgram, getSupportPrograms, updateSupportProgram } from "../../api.js";
 import { requireRole, verifyCurrentPassword } from "../../auth.js";
 import { escapeHtml } from "../../utils.js";
@@ -105,10 +105,9 @@ try {
       document.querySelector("[data-support-program-list]").innerHTML = SupportProgramList(supportPrograms);
       document.querySelectorAll("[data-delete-support-program]").forEach((button) => {
         button.addEventListener("click", async () => {
-          const confirmed = window.confirm(
-            "경고: 신규사업을 삭제하면 기존 가입 기업, 가입 신청, 이후 데이터 조회에 문제가 생길 수 있습니다.\n\n" +
-            "삭제 대신 비활성화 처리하지만 이미 연결된 데이터의 화면 표시가 사라질 수 있습니다.\n\n" +
-            "계속하면 관리자 비밀번호 확인이 필요합니다."
+          const confirmed = await showConfirm(
+            "신규사업을 삭제하면 기존 가입 기업, 가입 신청, 이후 데이터 조회에 문제가 생길 수 있습니다. 삭제 대신 비활성화 처리하지만 이미 연결된 데이터의 화면 표시가 사라질 수 있습니다. 계속하면 관리자 비밀번호 확인이 필요합니다.",
+            { title: "신규사업 삭제", confirmText: "삭제", cancelText: "취소", tone: "danger" },
           );
           if (!confirmed) return;
 
@@ -120,6 +119,7 @@ try {
             await deleteSupportProgram(button.dataset.deleteSupportProgram);
             supportPrograms = await getSupportPrograms();
             render();
+            showToast("신규사업이 삭제되었습니다.", { type: "success" });
           }, { button });
         });
       });
@@ -134,6 +134,7 @@ try {
             });
             supportPrograms = await getSupportPrograms();
             render();
+            showToast("저장되었습니다.", { type: "success" });
           }, { button });
         });
       });
@@ -150,6 +151,7 @@ try {
         form.reset();
         supportPrograms = await getSupportPrograms();
         render();
+        showToast("신규사업이 추가되었습니다.", { type: "success" });
       }, { button: event.submitter });
     });
 

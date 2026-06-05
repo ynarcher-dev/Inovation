@@ -1,4 +1,7 @@
-supabase/
+supabase/*
+!supabase/config.toml
+!supabase/functions/
+!supabase/functions/**
 docs/
 *.log
 desktop.ini

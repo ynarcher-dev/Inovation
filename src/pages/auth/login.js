@@ -10,15 +10,14 @@ document.querySelector("#login-form").addEventListener("submit", async (event) =
   try {
     const email = document.querySelector("#email").value;
     const password = document.querySelector("#password").value;
-    await signIn(email, password);
+    // "로그인 유지" 체크: 체크 시 브라우저를 닫아도 유지, 미체크 시 탭 종료하면 로그아웃.
+    const remember = document.querySelector("#remember-me")?.checked || false;
+    await signIn(email, password, remember);
     const { getCurrentUser } = await import("../../auth.js");
     const user = await getCurrentUser();
     redirectByRole(user.profile.role);
   } catch (error) {
-    if (error?.blocked) {
-      window.alert(error.message); // 가입 승인 대기/반려: 얼럿으로 안내하고 로그인 차단
-    } else {
-      showError(error);
-    }
+    // 가입 승인 대기/반려로 로그인이 차단된 경우도 브라우저 alert 대신 인라인 안내로 표시한다(§7.2).
+    showError(error);
   }
 });

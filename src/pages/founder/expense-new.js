@@ -1,4 +1,4 @@
-import { mountShell, runWithErrorBoundary, showError } from "../../app.js";
+import { mountShell, runWithErrorBoundary, showError, showToast, showConfirm, setPendingToast } from "../../app.js";
 import { requireRole } from "../../auth.js";
 import {
   createExpense,
@@ -35,6 +35,9 @@ function activeRequirementsFor(budgetId, phase) {
   return getBudgetDocumentRequirements(budgetId)
     .filter((r) => r.active && matchesPhase(r.phase, phase));
 }
+
+// 접근 차단 후 안내 토스트를 보여주고 짧은 지연 뒤 리다이렉트할 때, 에러 배너를 띄우지 않기 위한 신호용 예외.
+class RedirectSignal extends Error {}
 
 let planItems = [];
 
@@ -201,9 +204,9 @@ try {
     const { budgetSummary, company } = await getFounderDashboard();
     const aiSettings = await getAiSettings();
     if (company?.approval_status !== "approved" || !hasApprovedBudget(company?.budget_status)) {
-      window.alert("예산안 승인 완료 후 지출 신청을 생성할 수 있습니다.");
-      window.location.href = "dashboard.html";
-      throw new Error("예산안 승인 대기 중입니다.");
+      showToast("예산안 승인 완료 후 지출 신청을 생성할 수 있습니다.", { type: "warning" });
+      setTimeout(() => { window.location.href = "dashboard.html"; }, 800);
+      throw new RedirectSignal();
     }
     planItems = budgetSummary || [];
     renderBusinessPlanOptions(budgetSummary);
@@ -213,9 +216,9 @@ try {
     if (queryId) {
       const detail = await getExpenseDetail(queryId);
       if (!FOUNDER_EDITABLE_STATUSES.includes(detail.expense.status)) {
-        window.alert("현재 상태에서는 내용을 수정할 수 없습니다.");
-        window.location.href = `expense-detail.html?id=${encodeURIComponent(queryId)}`;
-        throw new Error("수정 불가 상태입니다.");
+        showToast("현재 상태에서는 내용을 수정할 수 없습니다.", { type: "warning" });
+        setTimeout(() => { window.location.href = `expense-detail.html?id=${encodeURIComponent(queryId)}`; }, 800);
+        throw new RedirectSignal();
       }
       editId = queryId;
       editStatus = detail.expense.status;
@@ -252,7 +255,7 @@ try {
     // 첨부를 위해 draft 가 보장된 id 를 반환한다(없으면 생성). 예산 항목 미선택 시 막는다.
     const ensureDraft = async () => {
       if (!getSelectedBusinessPlanItem()) {
-        window.alert("사업계획서 항목을 먼저 선택해주세요.");
+        showToast("사업계획서 항목을 먼저 선택해주세요.", { type: "warning" });
         return null;
       }
       return persist(readInput(company.id));
@@ -309,7 +312,13 @@ try {
 
       container.querySelectorAll("[data-doc-delete]").forEach((btn) =>
         btn.addEventListener("click", async () => {
-          if (!window.confirm("첨부 파일을 삭제하시겠습니까?")) return;
+          const ok = await showConfirm("첨부 파일을 삭제하시겠습니까?", {
+            title: "첨부 파일 삭제",
+            confirmText: "삭제",
+            cancelText: "취소",
+            tone: "danger",
+          });
+          if (!ok) return;
           await runWithErrorBoundary(async () => {
             await deleteExpenseDocumentFile(btn.dataset.docDelete);
             renderDocSection();
@@ -320,7 +329,7 @@ try {
         await runWithErrorBoundary(async () => {
           const { reviewed } = await requestAiBatchDocumentReview(editId, phase);
           renderDocSection();
-          if (!reviewed) window.alert("AI검토할 업로드 파일이 없습니다.");
+          if (!reviewed) showToast("AI검토할 업로드 파일이 없습니다.", { type: "info" });
         }, { button: e.currentTarget });
       });
 
@@ -376,7 +385,7 @@ try {
       const action = event.submitter?.value || "submit"; // draft(임시저장) | submit(제출)
       const planItem = getSelectedBusinessPlanItem();
       if (!planItem) {
-        window.alert("사업계획서 항목을 선택해야 합니다.");
+        showToast("사업계획서 항목을 선택해야 합니다.", { type: "warning" });
         return;
       }
 
@@ -386,7 +395,7 @@ try {
       if (action === "submit") {
         const missing = REQUIRED_FIELDS.find(({ id }) => !document.querySelector(`#${id}`).value.trim());
         if (missing) {
-          window.alert(`${missing.label}은(는) 필수 입력 항목입니다.`);
+          showToast(`${missing.label}은(는) 필수 입력 항목입니다.`, { type: "warning" });
           document.querySelector(`#${missing.id}`).focus();
           return;
         }
@@ -400,7 +409,7 @@ try {
             : 0;
         const available = Number(planItem.remaining_amount || 0) + ownContribution;
         if (inputVal.amount_supply > available) {
-          window.alert(`신청 금액(공급가액 기준 ${formatNumber(String(inputVal.amount_supply))}원)이 해당 비목의 집행 잔액(${formatNumber(String(available))}원)을 초과하여 신청할 수 없습니다.`);
+          showToast(`신청 금액(공급가액 기준 ${formatNumber(String(inputVal.amount_supply))}원)이 해당 비목의 집행 잔액(${formatNumber(String(available))}원)을 초과하여 신청할 수 없습니다.`, { type: "warning", duration: 5000 });
           return;
         }
         // 제출 단계의 필수 첨부서류 검증 (§7). 누락 시 같은 화면의 [필요 첨부 서류]에서 업로드하도록 안내한다.
@@ -418,23 +427,31 @@ try {
             await persist(inputVal);
             renderDocSection();
           }, { button: event.submitter });
-          window.alert(`이 예산 항목은 ${submitLabel} 필수 첨부서류가 있습니다.\n오른쪽 [필요 첨부 서류]에서 아래 서류를 업로드한 뒤 다시 신청해주세요.\n\n- ${missing.join("\n- ")}`);
+          showToast(`이 예산 항목은 ${submitLabel} 필수 첨부서류가 있습니다.\n[필요 첨부 서류]에서 아래 서류를 업로드한 뒤 다시 신청해주세요.\n- ${missing.join("\n- ")}`, { type: "warning", duration: 6000 });
           return;
         }
-        if (!window.confirm(`${submitLabel} 신청을 진행하시겠습니까? 제출 후에는 관리자 검토가 시작됩니다.`)) {
-          return;
-        }
+        const okSubmit = await showConfirm(`${submitLabel} 신청을 진행하시겠습니까? 제출 후에는 관리자 검토가 시작됩니다.`, {
+          title: `${submitLabel} 신청`,
+          confirmText: "신청",
+          cancelText: "취소",
+        });
+        if (!okSubmit) return;
       }
 
       await runWithErrorBoundary(async () => {
         const targetId = await persist(inputVal);
         if (action === "submit") {
           await submitExpenseRequest(targetId);
+          // 이동 후 상세 페이지에서 완료 토스트를 띄운다.
+          setPendingToast("지출 신청이 제출되었습니다. 관리자 검토 후 결과가 안내됩니다.", "success");
+        } else {
+          setPendingToast("임시저장되었습니다.", "info");
         }
         window.location.href = `expense-detail.html?id=${encodeURIComponent(targetId)}`;
       }, { button: event.submitter });
     });
   }
 } catch (error) {
-  showError(error);
+  // 안내 토스트 후 리다이렉트하는 정상 흐름은 에러 배너를 띄우지 않는다.
+  if (!(error instanceof RedirectSignal)) showError(error);
 }

@@ -1,4 +1,4 @@
-import { mountShell, runWithErrorBoundary, showError } from "../../app.js";
+import { mountShell, runWithErrorBoundary, showError, showToast, showConfirm } from "../../app.js";
 import {
   createAdminAccount,
   deleteAdminAccount,
@@ -176,7 +176,14 @@ try {
         button.addEventListener("click", async () => {
           const targetId = button.dataset.deleteAdmin;
           const target = admins.find((item) => item.user_id === targetId);
-          if (!window.confirm(`관리자 "${target?.name || target?.email}" 계정을 삭제합니다. 계속하면 내 비밀번호 확인이 필요합니다.`)) return;
+          const name = target?.name || target?.email;
+          const ok = await showConfirm(`관리자 "${name}" 계정을 삭제합니다. 계속하면 내 비밀번호 확인이 필요합니다.`, {
+            title: "관리자 계정 삭제",
+            confirmText: "삭제",
+            cancelText: "취소",
+            tone: "danger",
+          });
+          if (!ok) return;
 
           const password = await requestAdminPassword("관리자 삭제", "삭제를 진행하려면 내 비밀번호를 입력해 주세요.", "삭제");
           if (!password) return;
@@ -186,6 +193,7 @@ try {
             await deleteAdminAccount(user.id, targetId);
             admins = await getAdminAccounts();
             render();
+            showToast(`관리자 "${name}" 계정이 삭제되었습니다.`, { type: "success" });
           }, { button });
         });
       });
@@ -203,7 +211,7 @@ try {
           await runWithErrorBoundary(async () => {
             await verifyCurrentPassword(password);
             await resetAdminPassword(targetId, newPassword);
-            window.alert("비밀번호가 초기화되었습니다.");
+            showToast("비밀번호가 초기화되었습니다.", { type: "success" });
           }, { button });
         });
       });
@@ -219,6 +227,7 @@ try {
             await updateAdminPrograms(targetId, result);
             admins = await getAdminAccounts();
             render();
+            showToast("담당 사업이 저장되었습니다.", { type: "success" });
           }, { button });
         });
       });
@@ -236,6 +245,7 @@ try {
         form.reset();
         admins = await getAdminAccounts();
         render();
+        showToast("관리자 계정이 생성되었습니다.", { type: "success" });
       }, { button: event.submitter });
     });
 

@@ -124,6 +124,11 @@ export function mockGetProgramAiCriteriaDocument(programId) {
   return docs.find((d) => d.support_program_id === programId && d.active) || null;
 }
 
+export function mockGetProgramAiCriteriaDocumentById(criteriaId) {
+  const docs = load(STORAGE_KEYS.AI_CRITERIA, []);
+  return docs.find((d) => d.id === criteriaId) || null;
+}
+
 // 새 기준 문서를 올리면 기존 활성 문서는 비활성화하고 새 문서를 활성 기준으로 삼는다(§5.3).
 export function mockUploadProgramAiCriteriaDocument(programId, input) {
   const docs = load(STORAGE_KEYS.AI_CRITERIA, []);
@@ -138,7 +143,12 @@ export function mockUploadProgramAiCriteriaDocument(programId, input) {
     size_bytes: Number(input.size_bytes || 0),
     link_url: input.link_url || null,
     extracted_criteria_text: null,
-    extraction_status: "pending",
+    extraction_status: "not_started",
+    // 파싱 품질 지표 (텍스트 파싱 후 채워진다)
+    parse_page_count: null,
+    parse_char_count: null,
+    parse_pages_with_text: null,
+    parse_image_likely: false,
     active: true,
     uploaded_by: input.uploaded_by || null,
     created_at: now,
@@ -146,17 +156,32 @@ export function mockUploadProgramAiCriteriaDocument(programId, input) {
   };
   docs.push(rec);
   save(STORAGE_KEYS.AI_CRITERIA, docs);
-  // mock 환경: 업로드 직후 기준 추출이 완료된 것으로 처리한다(실제로는 OCR/문서분석 서버 필요, §9).
-  return mockExtractProgramAiCriteria(rec.id);
+  // 업로드 직후에는 파싱하지 않는다. 관리자가 '텍스트 파싱'을 눌러야 텍스트 추출을 수행한다(§9).
+  return rec;
 }
 
-export function mockExtractProgramAiCriteria(criteriaId) {
+// 파싱 진행/실패 상태만 갱신한다. (실제 파싱은 브라우저에서 pdf.js 로 수행)
+export function mockSetProgramAiCriteriaExtractionStatus(criteriaId, status) {
+  const docs = load(STORAGE_KEYS.AI_CRITERIA, []);
+  const idx = docs.findIndex((d) => d.id === criteriaId);
+  if (idx === -1) return null;
+  docs[idx].extraction_status = status;
+  docs[idx].updated_at = new Date().toISOString();
+  save(STORAGE_KEYS.AI_CRITERIA, docs);
+  return docs[idx];
+}
+
+// 파싱된 전체 텍스트와 품질 지표를 저장하고 완료 처리한다.
+export function mockSaveProgramAiCriteriaExtraction(criteriaId, extractedText, meta = {}) {
   const docs = load(STORAGE_KEYS.AI_CRITERIA, []);
   const idx = docs.findIndex((d) => d.id === criteriaId);
   if (idx === -1) throw new Error("기준 문서를 찾을 수 없습니다.");
   docs[idx].extraction_status = "completed";
-  docs[idx].extracted_criteria_text =
-    "사업비 집행 시 거래처명, 공급가액, 발행일자, 증빙 적합성을 확인한다. (mock 추출 결과)";
+  docs[idx].extracted_criteria_text = String(extractedText || "").trim();
+  docs[idx].parse_page_count = meta.page_count ?? null;
+  docs[idx].parse_char_count = meta.char_count ?? null;
+  docs[idx].parse_pages_with_text = meta.pages_with_text ?? null;
+  docs[idx].parse_image_likely = !!meta.image_likely;
   docs[idx].updated_at = new Date().toISOString();
   save(STORAGE_KEYS.AI_CRITERIA, docs);
   return docs[idx];
@@ -279,6 +304,58 @@ export function mockRequestAiDocumentReview(fileId) {
   const { status, comment, ai_check_result } = buildReviewResult(file, expense, req, criteria, 0);
   // 재검토로 새 AI 결과가 나오면 이전 '이상없음' 소명은 무효화한다.
   files[idx] = { ...file, ai_review_status: status, ai_review_comment: comment, ai_reviewed_at: new Date().toISOString(), ai_check_result, ...clearedUserReview() };
+  save(STORAGE_KEYS.UPLOADED_FILES, files);
+  return files[idx];
+}
+
+// ----------------------------------------------------
+// 실제 AI 문서검토 연동용 헬퍼 (api.js 가 오케스트레이션)
+// 저장소(파일/지출/기준) 접근은 mock 레이어에 두고, 실제 LLM 호출은 api.js + ai-agent.js 가 담당한다.
+// ----------------------------------------------------
+
+// 한 단계의 'AI검토 사용 + 파일 업로드' 서류 + 신청 정보 + 적용 기준을 한 번에 모은다(일괄검토용).
+export function mockGetAiDocumentReviewContext(expenseRequestId, phase) {
+  const expense = getExpenseById(expenseRequestId);
+  const criteria = mockGetProgramAiCriteriaDocument(getProgramIdForExpense(expense));
+  const targets = mockGetExpenseDocumentRequirements(expenseRequestId, phase)
+    .filter((r) => r.ai_review_enabled && r.file);
+  return {
+    expense,
+    criteriaText: String(criteria?.extracted_criteria_text || "").trim(),
+    criteriaTitle: String(criteria?.title || "").trim(),
+    targets,
+  };
+}
+
+// 파일 id 로 검토 대상(파일·요구사항·신청 정보·적용 기준)을 모은다(개별 재검토용).
+export function mockGetAiDocumentReviewTargetByFile(fileId) {
+  const file = load(STORAGE_KEYS.UPLOADED_FILES, []).find((f) => f.id === fileId);
+  if (!file) throw new Error("업로드된 파일을 찾을 수 없습니다.");
+  const expense = getExpenseById(file.expense_request_id);
+  const req = load(STORAGE_KEYS.DOC_REQUIREMENTS, []).find((r) => r.id === file.requirement_id) || null;
+  const criteria = mockGetProgramAiCriteriaDocument(getProgramIdForExpense(expense));
+  return {
+    file,
+    req,
+    expense,
+    criteriaText: String(criteria?.extracted_criteria_text || "").trim(),
+    criteriaTitle: String(criteria?.title || "").trim(),
+  };
+}
+
+// 실제 LLM 검토 결과를 보관 파일에 저장한다. 새 결과가 나오면 이전 '이상없음' 소명은 무효화한다.
+export function mockSaveAiDocumentReviewResult(fileId, { status, comment, ai_check_result } = {}) {
+  const files = load(STORAGE_KEYS.UPLOADED_FILES, []);
+  const idx = files.findIndex((f) => f.id === fileId);
+  if (idx === -1) throw new Error("업로드된 파일을 찾을 수 없습니다.");
+  files[idx] = {
+    ...files[idx],
+    ai_review_status: status === "passed" ? "passed" : "needs_revision",
+    ai_review_comment: String(comment || "").trim(),
+    ai_check_result: ai_check_result || {},
+    ai_reviewed_at: new Date().toISOString(),
+    ...clearedUserReview(),
+  };
   save(STORAGE_KEYS.UPLOADED_FILES, files);
   return files[idx];
 }

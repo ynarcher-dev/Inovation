@@ -1,4 +1,4 @@
-import { mountShell, runWithErrorBoundary, showError, setText } from "../../app.js";
+import { mountShell, runWithErrorBoundary, showError, setText, showToast, showConfirm } from "../../app.js";
 import { requireRole } from "../../auth.js";
 import {
   getAdminCompanyDetail,
@@ -8,6 +8,7 @@ import {
   approveCompany,
   rejectCompany,
   resetFounderPassword,
+  requestBudgetAiReview,
 } from "../../api.js";
 import { BudgetTreeView } from "../../components/BudgetTreeView.js";
 import { FlatReviewHistoryTable } from "../../components/FlatReviewHistoryTable.js";
@@ -38,6 +39,83 @@ try {
     const expenseTableEl = document.querySelector("[data-expense-table]");
     const reviewHistoryEl = document.querySelector("[data-review-history]");
     const internalMemoEl = document.getElementById("admin-internal-memo");
+    const aiBudgetReviewBtn = document.getElementById("btn-ai-budget-review");
+    const aiBudgetReviewResultEl = document.querySelector("[data-ai-budget-review-result]");
+
+    const budgetTitleById = () => new Map((detail.programBudgets || []).map((budget) => [budget.id, budget]));
+    const budgetPathOf = (budgetId) => {
+      const titleById = budgetTitleById();
+      const parts = [];
+      let current = titleById.get(budgetId);
+      while (current) {
+        parts.unshift(current.title);
+        current = current.parent_id ? titleById.get(current.parent_id) : null;
+      }
+      return parts.join(" > ");
+    };
+    const buildBudgetAiPayload = () => {
+      const pending = detail.pendingSubmission;
+      if (!pending) return null;
+      const committed = detail.committedByBudgetId || {};
+      return {
+        company: {
+          id: detail.company?.id,
+          name: detail.company?.name,
+          representative_name: detail.company?.representative_name,
+          support_program_name: detail.company?.support_programs?.name,
+          budget_status: detail.company?.budget_status,
+          support_total_amount: detail.company?.support_total_amount,
+          agreement_start_date: detail.company?.agreement_start_date,
+          agreement_end_date: detail.company?.agreement_end_date,
+        },
+        submission: {
+          id: pending.id,
+          type: pending.type,
+          status: pending.status,
+          reason: pending.reason,
+          submitted_at: pending.submitted_at,
+          submitted_by_name: pending.submitted_by_name,
+          items: (pending.items || []).map((item) => ({
+            budget_path: budgetPathOf(item.support_program_budget_id),
+            previous_allocated_amount: Number(item.previous_allocated_amount || 0),
+            requested_allocated_amount: Number(item.requested_allocated_amount || 0),
+            previous_round1_allocated_amount: Number(item.previous_round1_allocated_amount || 0),
+            requested_round1_allocated_amount: Number(item.requested_round1_allocated_amount || 0),
+            previous_round2_allocated_amount: Number(item.previous_round2_allocated_amount || 0),
+            requested_round2_allocated_amount: Number(item.requested_round2_allocated_amount || 0),
+            committed_or_pending_amount: Number(committed[item.support_program_budget_id] || 0),
+          })),
+        },
+      };
+    };
+    const aiToneClass = (level) => {
+      if (["danger", "error", "high"].includes(level)) return "notice-danger";
+      if (["warning", "medium"].includes(level)) return "notice-warning";
+      if (["success", "ok", "low"].includes(level)) return "notice-success";
+      return "notice-info";
+    };
+    const renderBudgetAiReviewResult = (result) => {
+      if (!aiBudgetReviewResultEl) return;
+      const risks = result.risks?.length
+        ? result.risks.map((risk) => `
+            <div class="notice ${aiToneClass(risk.level)}" style="margin:8px 0 0; padding:12px 14px;">
+              <strong>${escapeHtml(risk.title || "검토 항목")}</strong>
+              ${risk.detail ? `<p style="margin:6px 0 0;">${escapeHtml(risk.detail)}</p>` : ""}
+            </div>`).join("")
+        : `<div class="notice notice-success" style="margin-top:8px; padding:12px 14px;">특이 위험 항목이 감지되지 않았습니다.</div>`;
+      aiBudgetReviewResultEl.innerHTML = `
+        <div class="notice notice-info" style="padding:12px 14px;">
+          <strong>AI 제안: ${escapeHtml(result.decision_suggestion || "needs_review")}</strong>
+          ${result.summary ? `<p style="margin:6px 0 0;">${escapeHtml(result.summary)}</p>` : ""}
+        </div>
+        ${risks}
+        ${result.revision_comment_draft ? `
+          <div class="notice" style="margin-top:8px; padding:12px 14px;">
+            <strong>보완요청 코멘트 초안</strong>
+            <p style="margin:6px 0 0; white-space:pre-wrap;">${escapeHtml(result.revision_comment_draft)}</p>
+          </div>` : ""}
+      `;
+    };
 
     // Tabs switching logic
     const tabButtons = document.querySelectorAll(".tab-button");
@@ -142,11 +220,25 @@ try {
 
       // 탭 배지: 검토 대기 표시
       const budgetReviewBadge = document.querySelector("[data-badge-budget-review]");
-      if (budgetReviewBadge) budgetReviewBadge.hidden = !detail.pendingSubmission;
+      if (budgetReviewBadge) {
+        budgetReviewBadge.hidden = !detail.pendingSubmission;
+        if (detail.pendingSubmission) {
+          budgetReviewBadge.classList.add("dot-badge");
+          budgetReviewBadge.textContent = ""; // ● 글자 제거하여 순수 점으로 렌더링
+        }
+      }
       const expenseReviewBadge = document.querySelector("[data-badge-expense-review]");
       if (expenseReviewBadge) {
         expenseReviewBadge.hidden = pendingExpenses.length === 0;
-        expenseReviewBadge.textContent = pendingExpenses.length ? String(pendingExpenses.length) : "●";
+        if (pendingExpenses.length > 0) {
+          expenseReviewBadge.textContent = String(pendingExpenses.length);
+          expenseReviewBadge.classList.remove("dot-badge");
+          expenseReviewBadge.classList.add("count-badge");
+        } else {
+          expenseReviewBadge.textContent = "";
+          expenseReviewBadge.classList.add("dot-badge");
+          expenseReviewBadge.classList.remove("count-badge");
+        }
       }
 
       attachCategoryHighlight(budgetTreeEl, expenseTableEl);
@@ -172,6 +264,7 @@ try {
         });
         reviewButtons.forEach((b) => (b.disabled = false));
         if (commentInput) commentInput.disabled = false;
+        if (aiBudgetReviewBtn) aiBudgetReviewBtn.disabled = false;
         // 감액 불가 위반이 있으면 승인만 차단 (보완요청은 허용)
         const hasViolation = (pending.items || []).some(
           (it) => Number(it.requested_allocated_amount || 0) < Number(committed[it.support_program_budget_id] || 0)
@@ -186,6 +279,8 @@ try {
         detailEl.innerHTML = `<p class="empty">현재 검토할 예산 제출안이 없습니다. (예산안 상태: ${escapeHtml(getBudgetStatusLabel(status))})</p>`;
         reviewButtons.forEach((b) => (b.disabled = true));
         if (commentInput) commentInput.disabled = true;
+        if (aiBudgetReviewBtn) aiBudgetReviewBtn.disabled = true;
+        if (aiBudgetReviewResultEl) aiBudgetReviewResultEl.innerHTML = "";
       }
     };
 
@@ -195,64 +290,109 @@ try {
     const submitBudgetReview = async (decision, label, btn) => {
       const pending = detail.pendingSubmission;
       if (!pending) {
-        alert("검토할 예산 제출안이 없습니다.");
+        showToast("검토할 예산 제출안이 없습니다.", { type: "warning" });
         return;
       }
       const comment = commentInput.value.trim();
       if (decision !== "approved" && !comment) {
-        alert("보완요청 시에는 반드시 심사 의견을 작성해야 합니다.");
+        showToast("보완요청 시에는 사유를 입력해야 합니다.", { type: "warning" });
         commentInput.focus();
         return;
       }
-      if (!confirm(`이 예산안을 ${label} 처리하시겠습니까?`)) return;
+      const ok = await showConfirm(`이 예산안을 ${label} 처리하시겠습니까?`, {
+        title: `예산안 ${label}`,
+        confirmText: label,
+        cancelText: "취소",
+        tone: decision === "approved" ? "default" : "danger",
+      });
+      if (!ok) return;
 
       await runWithErrorBoundary(async () => {
         await reviewBudgetSubmission(pending.id, decision, comment, user.profile.name);
         commentInput.value = "";
         detail = await getAdminCompanyDetail(id);
         renderHeader();
-        alert(`예산안이 ${label} 처리되었습니다.`);
+        showToast(`예산안이 ${label} 처리되었습니다.`, { type: "success" });
       }, { button: btn });
     };
 
     document.getElementById("btn-approve-budget")?.addEventListener("click", (e) => submitBudgetReview("approved", "승인", e.currentTarget));
     document.getElementById("btn-revision-budget")?.addEventListener("click", (e) => submitBudgetReview("revision_requested", "보완요청", e.currentTarget));
+    aiBudgetReviewBtn?.addEventListener("click", async (e) => {
+      const payload = buildBudgetAiPayload();
+      if (!payload) {
+        showToast("AI로 검토할 예산 제출안이 없습니다.", { type: "warning" });
+        return;
+      }
+      if (aiBudgetReviewResultEl) {
+        aiBudgetReviewResultEl.innerHTML = `<p class="empty">AI가 예산 제출안을 검토하는 중입니다...</p>`;
+      }
+      await runWithErrorBoundary(async () => {
+        const result = await requestBudgetAiReview(payload);
+        renderBudgetAiReviewResult(result);
+        if (result.revision_comment_draft && commentInput && !commentInput.value.trim()) {
+          commentInput.value = result.revision_comment_draft;
+        }
+        showToast("AI 검토가 완료되었습니다.", { type: "success" });
+      }, { button: e.currentTarget });
+    });
 
     // 계정 가입 승인/반려: 처리 후 상세를 다시 불러와 현황을 갱신한다.
     const reloadDetail = async () => {
       detail = await getAdminCompanyDetail(id);
       renderHeader();
     };
-    document.getElementById("btn-approve-signup")?.addEventListener("click", (e) => {
-      if (!confirm("이 기업의 가입을 승인하시겠습니까?")) return;
-      runWithErrorBoundary(async () => {
+    document.getElementById("btn-approve-signup")?.addEventListener("click", async (e) => {
+      const btn = e.currentTarget;
+      const ok = await showConfirm("이 기업의 가입을 승인하시겠습니까?", {
+        title: "가입 승인",
+        confirmText: "승인",
+        cancelText: "취소",
+      });
+      if (!ok) return;
+      await runWithErrorBoundary(async () => {
         await approveCompany(id, user.id);
         await reloadDetail();
-      }, { button: e.currentTarget });
+        showToast("가입이 승인되었습니다.", { type: "success" });
+      }, { button: btn });
     });
-    document.getElementById("btn-reject-signup")?.addEventListener("click", (e) => {
-      if (!confirm("이 기업의 가입을 반려하시겠습니까?")) return;
-      runWithErrorBoundary(async () => {
+    document.getElementById("btn-reject-signup")?.addEventListener("click", async (e) => {
+      const btn = e.currentTarget;
+      const ok = await showConfirm("이 기업의 가입을 반려하시겠습니까?", {
+        title: "가입 반려",
+        confirmText: "반려",
+        cancelText: "취소",
+        tone: "danger",
+      });
+      if (!ok) return;
+      await runWithErrorBoundary(async () => {
         await rejectCompany(id);
         await reloadDetail();
-      }, { button: e.currentTarget });
+        showToast("가입이 반려되었습니다.", { type: "success" });
+      }, { button: btn });
     });
 
     // 기업 담당자 로그인 비밀번호 재설정
-    document.getElementById("btn-reset-founder-password")?.addEventListener("click", (e) => {
+    document.getElementById("btn-reset-founder-password")?.addEventListener("click", async (e) => {
+      const btn = e.currentTarget;
       const input = document.getElementById("founder-new-password");
       const next = input.value.trim();
       if (next.length < 6) {
-        alert("새 비밀번호는 6자 이상이어야 합니다.");
+        showToast("새 비밀번호는 6자 이상이어야 합니다.", { type: "warning" });
         input.focus();
         return;
       }
-      if (!confirm("기업 담당자의 로그인 비밀번호를 변경하시겠습니까?")) return;
-      runWithErrorBoundary(async () => {
+      const ok = await showConfirm("기업 담당자의 로그인 비밀번호를 변경하시겠습니까?", {
+        title: "비밀번호 변경",
+        confirmText: "변경",
+        cancelText: "취소",
+      });
+      if (!ok) return;
+      await runWithErrorBoundary(async () => {
         await resetFounderPassword(id, next);
         input.value = "";
-        alert("비밀번호가 변경되었습니다.");
-      }, { button: e.currentTarget });
+        showToast("비밀번호가 변경되었습니다.", { type: "success" });
+      }, { button: btn });
     });
 
     // Save internal memo
@@ -278,9 +418,9 @@ try {
       });
     });
 
-    // ZIP Download Mock
+    // ZIP Download — 아직 미구현. 실제 완료된 다운로드처럼 보이지 않도록 '준비 중' 안내만 한다.
     document.getElementById("btn-download-all-docs")?.addEventListener("click", () => {
-      alert("📦 [Mock ZIP 다운로드]\n최종 사업계획서 및 스타트업이 제출한 모든 지출 증빙 문서들이 ABC스포츠_증빙서류_일괄다운로드.zip 파일로 패키징되어 가상 다운로드되었습니다.");
+      showToast("전체 문서 ZIP 다운로드는 아직 준비 중입니다.", { type: "info" });
     });
 
     renderHeader();

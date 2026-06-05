@@ -59,17 +59,25 @@ import {
   mockDeactivateBudgetDocumentRequirement,
   mockDeleteBudgetDocumentRequirement,
   mockGetProgramAiCriteriaDocument,
+  mockGetProgramAiCriteriaDocumentById,
   mockUploadProgramAiCriteriaDocument,
-  mockExtractProgramAiCriteria,
+  mockSetProgramAiCriteriaExtractionStatus,
+  mockSaveProgramAiCriteriaExtraction,
   mockDeleteProgramAiCriteriaDocument,
   mockGetExpenseDocumentRequirements,
   mockUploadExpenseDocumentFile,
   mockDeleteExpenseDocumentFile,
-  mockRequestAiDocumentReview,
-  mockRequestAiBatchReview,
+  mockGetAiDocumentReviewContext,
+  mockGetAiDocumentReviewTargetByFile,
+  mockSaveAiDocumentReviewResult,
   mockSetExpenseDocumentUserReview,
   mockValidateRequiredDocuments,
 } from "./mockApi2.js";
+import {
+  requestBudgetAiReview as requestBudgetAiReviewFromEdge,
+  requestDocumentReview as requestDocumentReviewFromEdge,
+} from "./services/ai-agent.js";
+import { parsePdfText } from "./services/pdf-parse.js";
 
 // Initialize Mock Storage Data on load
 initMockData();
@@ -96,6 +104,7 @@ export const updateAdminPrograms = mockUpdateAdminPrograms;
 
 export const getAiSettings = mockGetAiSettings;
 export const updateAiSettings = mockUpdateAiSettings;
+export const requestBudgetAiReview = requestBudgetAiReviewFromEdge;
 
 export const getGuidanceItems = mockGetGuidanceItems;
 export const createGuidanceItem = mockCreateGuidanceItem;
@@ -140,14 +149,119 @@ export const deactivateBudgetDocumentRequirement = mockDeactivateBudgetDocumentR
 export const deleteBudgetDocumentRequirement = mockDeleteBudgetDocumentRequirement;
 
 export const getProgramAiCriteriaDocument = mockGetProgramAiCriteriaDocument;
-export const extractProgramAiCriteria = mockExtractProgramAiCriteria;
 export const deleteProgramAiCriteriaDocument = mockDeleteProgramAiCriteriaDocument;
+
+// 기준 문서 텍스트 파싱: 브라우저에 보관된 실제 PDF 바이트를 pdf.js 로 읽어
+// 전체 텍스트와 파싱 품질 지표(페이지 수/글자 수/이미지 PDF 여부)를 저장한다.
+// 저장된 전체 텍스트는 제출 서류 AI 검토에 그대로 적용된다.
+export async function extractProgramAiCriteria(criteriaId) {
+  const doc = mockGetProgramAiCriteriaDocumentById(criteriaId);
+  if (!doc) throw new Error("기준 문서를 찾을 수 없습니다.");
+  if (!doc.link_url) throw new Error("파싱할 문서 파일이 없습니다. 문서를 다시 업로드해주세요.");
+
+  mockSetProgramAiCriteriaExtractionStatus(criteriaId, "pending");
+  try {
+    const stored = await mockGetFile(doc.link_url);
+    if (!stored?.data) throw new Error("보관된 문서 파일을 찾을 수 없습니다. 문서를 다시 업로드해주세요.");
+
+    // 텍스트가 거의 없는 이미지(스캔) PDF 도 지표만 남기고 '완료'로 저장한다(화면에서 경고 표시).
+    const parsed = await parsePdfText(stored.data, {
+      mimeType: stored.type || doc.mime_type || "application/pdf",
+    });
+    return mockSaveProgramAiCriteriaExtraction(criteriaId, parsed.text, {
+      page_count: parsed.pageCount,
+      char_count: parsed.charCount,
+      pages_with_text: parsed.pagesWithText,
+      image_likely: parsed.imageLikely,
+    });
+  } catch (error) {
+    mockSetProgramAiCriteriaExtractionStatus(criteriaId, "failed");
+    throw error;
+  }
+}
 
 export const getExpenseDocumentRequirements = mockGetExpenseDocumentRequirements;
 export const deleteExpenseDocumentFile = mockDeleteExpenseDocumentFile;
-export const requestAiDocumentReview = mockRequestAiDocumentReview;
-export const requestAiBatchDocumentReview = mockRequestAiBatchReview;
 export const validateRequiredDocuments = mockValidateRequiredDocuments;
+
+// ----------------------------------------------------
+// 제출 서류 실제 AI 검토 (§2.4 / §4)
+// 보관된 첨부 파일 바이트(base64) + 신청 정보 + 적용 기준을 Edge Function 으로 보내
+// 설정된 provider 의 비전/문서 모델이 문서를 직접 읽어 검토한다. 결과는 보관 파일에 저장한다.
+// ----------------------------------------------------
+
+// dataURL → base64 페이로드(접두부 제거).
+function dataUrlToBase64(dataUrl) {
+  return String(dataUrl || "").split(",")[1] || "";
+}
+
+// AI 결과 코멘트에 적용 기준·교차검증 안내를 덧붙인다(기존 UX 유지).
+function buildDocumentReviewComment(result, { criteriaTitle, batchCount }) {
+  let comment = result.comment || "";
+  if (criteriaTitle) {
+    comment += `\n\n[적용 기준] ${criteriaTitle} 의 지침을 함께 참고했습니다.`;
+  } else {
+    comment += "\n\n[기본 검토] 공통 기준 문서가 없어 첨부서류명·신청 정보 기준으로 검토했습니다.";
+  }
+  if (batchCount > 1) {
+    comment += `\n\n[교차검증] 같은 단계 ${batchCount}건 문서를 함께 검토했습니다.`;
+  }
+  return comment;
+}
+
+// 보관된 첨부 파일 한 건을 실제 LLM 으로 검토하고 결과를 저장한다.
+async function reviewStoredDocument({ file, req, expense, criteriaText, criteriaTitle, batchCount }) {
+  const stored = await mockGetFile(file.link_url);
+  if (!stored?.data) throw new Error("보관된 첨부 파일을 찾을 수 없습니다. 파일을 다시 업로드해주세요.");
+
+  const result = await requestDocumentReviewFromEdge({
+    fileBase64: dataUrlToBase64(stored.data),
+    filename: file.original_filename || stored.filename || "document",
+    mimeType: stored.type || file.mime_type || "application/pdf",
+    context: {
+      doc_title: req?.title || file.original_filename || "첨부파일",
+      expense: {
+        title: expense.title || "",
+        vendor_name: expense.vendor_name || "",
+        vendor_business_number: expense.vendor_business_number || "",
+        amount_supply: Number(expense.amount_supply || 0),
+        vat_amount: Number(expense.vat_amount || 0),
+        expected_completion_date: expense.expected_completion_date || "",
+        purpose: expense.purpose || "",
+      },
+    },
+    criteriaText,
+    batchCount: batchCount || 1,
+  });
+
+  return mockSaveAiDocumentReviewResult(file.id, {
+    status: result.status,
+    comment: buildDocumentReviewComment(result, { criteriaTitle, batchCount }),
+    ai_check_result: {
+      findings: result.findings,
+      criteria_applied: !!criteriaText,
+      criteria_title: criteriaTitle || null,
+      batch_size: batchCount || 1,
+      raw_text: result.raw_text || "",
+    },
+  });
+}
+
+// 단일 파일 실제 AI 검토(개별 재검토).
+export async function requestAiDocumentReview(fileId) {
+  const { file, req, expense, criteriaText, criteriaTitle } = mockGetAiDocumentReviewTargetByFile(fileId);
+  return reviewStoredDocument({ file, req, expense, criteriaText, criteriaTitle, batchCount: 1 });
+}
+
+// 단계별 일괄 실제 AI 검토(§4): 해당 단계의 'AI검토 사용 + 파일 업로드' 서류를 순차 검토한다.
+export async function requestAiBatchDocumentReview(expenseRequestId, phase) {
+  const { expense, criteriaText, criteriaTitle, targets } = mockGetAiDocumentReviewContext(expenseRequestId, phase);
+  if (!targets.length) return { reviewed: 0 };
+  for (const req of targets) {
+    await reviewStoredDocument({ file: req.file, req, expense, criteriaText, criteriaTitle, batchCount: targets.length });
+  }
+  return { reviewed: targets.length };
+}
 
 // 창업자 'AI 보완 → 이상없음' 소명 처리/취소. AI 결과는 보존하고 소명만 덧붙인다.
 export function setExpenseDocumentUserReview(fileId, { cleared, comment, user }) {

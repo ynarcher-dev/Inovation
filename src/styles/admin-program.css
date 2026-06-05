@@ -286,3 +286,32 @@
       }
       .ai-criteria-row:last-child { border-bottom: none; }
       .ai-criteria-key { font-weight: 600; color: #6b7280; }
+
+      /* 추출 안내 / 추출하기 버튼 영역 */
+      .ai-criteria-extract-cta {
+        border: 1px dashed #d1d5db; border-radius: 8px;
+        padding: 14px; background: #fafafa;
+      }
+
+      /* 추출 결과 텍스트 */
+      .ai-criteria-extracted {
+        border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden;
+      }
+      .ai-criteria-extracted-head {
+        display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
+        padding: 10px 14px; background: #f9fafb; border-bottom: 1px solid #f3f4f6;
+      }
+      .ai-criteria-extracted-text {
+        margin: 0; padding: 14px; font-size: 13px; line-height: 1.6;
+        color: #374151; white-space: pre-wrap; word-break: break-word;
+        font-family: inherit; background: #fff;
+      }
+
+      /* 추출 중 스피너 */
+      .ai-criteria-spinner {
+        display: inline-block; width: 12px; height: 12px;
+        border: 2px solid #c7d2fe; border-top-color: #4f46e5;
+        border-radius: 50%; vertical-align: -1px;
+        animation: ai-criteria-spin 0.7s linear infinite;
+      }
+      @keyframes ai-criteria-spin { to { transform: rotate(360deg); } }

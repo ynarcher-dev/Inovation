@@ -1,4 +1,4 @@
-﻿import { mountShell, runWithErrorBoundary, showError, updateAdminNavBadges } from "../../app.js";
+﻿import { mountShell, runWithErrorBoundary, showError, updateAdminNavBadges, showToast, showConfirm } from "../../app.js";
 import { approveCompany, getAdminDashboard, rejectCompany } from "../../api.js";
 import { requireRole } from "../../auth.js";
 import { escapeHtml, formatDate } from "../../utils.js";
@@ -120,20 +120,35 @@ try {
 
       document.querySelectorAll("[data-approve-company]").forEach((button) => {
         button.addEventListener("click", async () => {
+          const ok = await showConfirm("이 기업의 가입을 승인하시겠습니까?", {
+            title: "가입 승인",
+            confirmText: "승인",
+            cancelText: "취소",
+          });
+          if (!ok) return;
           await runWithErrorBoundary(async () => {
             await approveCompany(button.dataset.approveCompany, user.id);
             dashboard = await getAdminDashboard();
             render();
+            showToast("가입이 승인되었습니다.", { type: "success" });
           }, { button });
         });
       });
 
       document.querySelectorAll("[data-reject-company]").forEach((button) => {
         button.addEventListener("click", async () => {
+          const ok = await showConfirm("이 기업의 가입을 반려하시겠습니까?", {
+            title: "가입 반려",
+            confirmText: "반려",
+            cancelText: "취소",
+            tone: "danger",
+          });
+          if (!ok) return;
           await runWithErrorBoundary(async () => {
             await rejectCompany(button.dataset.rejectCompany);
             dashboard = await getAdminDashboard();
             render();
+            showToast("가입이 반려되었습니다.", { type: "success" });
           }, { button });
         });
       });

@@ -1,4 +1,4 @@
-import { mountShell, runWithErrorBoundary, showError, setText } from "../../app.js";
+import { mountShell, runWithErrorBoundary, showError, setText, showToast, showConfirm } from "../../app.js";
 import { requireRole } from "../../auth.js";
 import { getFounderDashboard, submitFounderBudgetAllocations, downloadStoredFile, uploadFile, updateBusinessPlan } from "../../api.js";
 import { FounderExpenseStatusTable } from "../../components/FounderExpenseStatusTable.js";
@@ -195,9 +195,14 @@ try {
         // 2차 배정 신청 체크박스(최초 신청 전에만 노출): 선택 시 한 번 확인 후 2차 입력을 활성화하고 체크박스를 제거한다.
         const round2Toggle = document.getElementById("round2-toggle");
         if (round2Toggle) {
-          round2Toggle.addEventListener("change", (e) => {
+          round2Toggle.addEventListener("change", async (e) => {
             if (!e.target.checked) return;
-            if (!window.confirm("2차 예산을 신청하시겠습니까?")) {
+            const ok = await showConfirm("2차 예산을 신청하시겠습니까?", {
+              title: "2차 예산 배정 신청",
+              confirmText: "신청",
+              cancelText: "취소",
+            });
+            if (!ok) {
               e.target.checked = false;
               return;
             }
@@ -235,7 +240,7 @@ try {
 
           const reason = document.getElementById("budget-change-reason").value.trim();
           if (!reason) {
-            window.alert("예산 변경 사유를 입력해야 합니다.");
+            showToast("예산 변경 사유를 입력해야 합니다.", { type: "warning" });
             document.getElementById("budget-change-reason").focus();
             return;
           }
@@ -257,7 +262,7 @@ try {
           const violations = allocations.filter((a) => resultingTotalOf(a) < (floorByLeafId[a.support_program_budget_id] || 0));
           if (violations.length) {
             const lines = violations.map((v) => `· ${titleByLeafId[v.support_program_budget_id] || v.support_program_budget_id}: 최소 ${formatCurrency(floorByLeafId[v.support_program_budget_id] || 0)}`);
-            window.alert("이미 승인/제출된 지출보다 낮게 예산을 줄일 수 없습니다.\n\n" + lines.join("\n"));
+            showToast("이미 승인/제출된 지출보다 낮게 예산을 줄일 수 없습니다.\n" + lines.join("\n"), { type: "warning", duration: 5000 });
             return;
           }
 
@@ -265,7 +270,7 @@ try {
           const round1Changed = allocations.some((a) => a.allocated_amount !== Number(round1ByLeafId[a.support_program_budget_id] || 0));
           const round2Changed = round2On && allocations.some((a) => Number(a.round2_allocated_amount || 0) !== Number(round2ByLeafId[a.support_program_budget_id] || 0));
           if (!round1Changed && !round2Changed) {
-            window.alert("변경된 내용이 없습니다. 1차 배정금액을 수정하거나 2차 예산 배정을 신청해 주세요.");
+            showToast("변경된 내용이 없습니다. 1차 배정금액을 수정하거나 2차 예산 배정을 신청해 주세요.", { type: "warning" });
             return;
           }
 
@@ -274,9 +279,17 @@ try {
           const round2PlanFile = getRound2File();
           const existingRound2Plan = detail.company?.business_plans?.round2?.original_filename;
           if (round2On && !round2PlanFile && !existingRound2Plan) {
-            window.alert("2차 예산 배정 신청에는 수정 사업계획서 첨부가 필요합니다.");
+            showToast("2차 예산 배정 신청에는 수정 사업계획서 첨부가 필요합니다.", { type: "warning" });
             return;
           }
+
+          // 제출 전 최종 확인(되돌리기 어려운 요청).
+          const okSubmit = await showConfirm("예산 변경 요청을 제출하시겠습니까? 제출 후 관리자 승인 전까지는 변경 금액이 지출 예산에 반영되지 않습니다.", {
+            title: "예산 변경 요청",
+            confirmText: "제출",
+            cancelText: "취소",
+          });
+          if (!okSubmit) return;
 
           saveBtn.disabled = true;
           cancelBtn.disabled = true;
@@ -302,7 +315,7 @@ try {
                 { budget_submission_id: res?.submissionId },
               );
             }
-            window.alert("예산 변경 요청이 제출되었습니다. 관리자 승인 전까지는 변경한 금액이 지출 가능 예산에 반영되지 않습니다.");
+            showToast("예산 변경 요청이 제출되었습니다. 관리자 승인 전까지는 변경한 금액이 지출 가능 예산에 반영되지 않습니다.", { type: "success", duration: 5000 });
             detail = await getFounderDashboard();
             renderInitialState();
           }, { button: saveBtn });
@@ -368,7 +381,7 @@ try {
         const violations = allocations.filter((a) => a.allocated_amount < (floorByLeafId[a.support_program_budget_id] || 0));
         if (violations.length) {
           const lines = violations.map((v) => `· ${titleByLeafId[v.support_program_budget_id] || v.support_program_budget_id}: 최소 ${formatCurrency(floorByLeafId[v.support_program_budget_id] || 0)}`);
-          window.alert("이미 승인/제출된 지출보다 낮게 예산을 줄일 수 없습니다.\n\n" + lines.join("\n"));
+          showToast("이미 승인/제출된 지출보다 낮게 예산을 줄일 수 없습니다.\n" + lines.join("\n"), { type: "warning", duration: 5000 });
           return;
         }
 
@@ -376,9 +389,17 @@ try {
         const round1PlanFile = getRound1File();
         const existingRound1Plan = detail.company?.business_plans?.round1?.original_filename;
         if (!round1PlanFile && !existingRound1Plan) {
-          window.alert("예산안 제출에는 1차 사업계획서 첨부가 필요합니다.");
+          showToast("예산안 제출에는 1차 사업계획서 첨부가 필요합니다.", { type: "warning" });
           return;
         }
+
+        // 제출 전 최종 확인(승인 신청은 관리자 검토가 시작됨).
+        const okInitial = await showConfirm("예산안을 제출하시겠습니까? 제출 후 관리자 검토가 시작됩니다.", {
+          title: "예산안 승인 신청",
+          confirmText: "신청",
+          cancelText: "취소",
+        });
+        if (!okInitial) return;
 
         saveBtn.disabled = true;
         cancelBtn.disabled = true;
@@ -394,7 +415,7 @@ try {
               { budget_submission_id: res?.submissionId },
             );
           }
-          window.alert("예산안이 제출되었습니다. 관리자 승인 후 지출 신청이 가능합니다.");
+          showToast("예산안이 제출되었습니다. 관리자 승인 후 지출 신청이 가능합니다.", { type: "success", duration: 5000 });
           detail = await getFounderDashboard();
           renderInitialState();
         }, { button: saveBtn });
@@ -634,12 +655,23 @@ try {
         }
       }
 
+      // 비활성 시 클릭을 막지 않고, 왜 불가한지 토스트로 안내한다(§5.1).
       if (canRequestExpense) {
         newExpenseLink.classList.remove("disabled");
         newExpenseLink.style.pointerEvents = "auto";
+        newExpenseLink.removeAttribute("aria-disabled");
+        newExpenseLink.dataset.disabledReason = "";
       } else {
         newExpenseLink.classList.add("disabled");
-        newExpenseLink.style.pointerEvents = "none";
+        // pointer-events 로 막으면 사유를 알 수 없으므로 클릭은 허용하고 핸들러에서 차단한다.
+        newExpenseLink.style.pointerEvents = "auto";
+        newExpenseLink.setAttribute("aria-disabled", "true");
+        const reason = !signupApproved
+          ? "가입 승인 완료 후 지출 신청이 가능합니다."
+          : isBudgetPendingReview(budgetStatus)
+            ? "예산안 검토가 진행 중입니다. 승인 완료 후 지출 신청이 가능합니다."
+            : "예산 승인 완료 후 지출 신청이 가능합니다.";
+        newExpenseLink.dataset.disabledReason = reason;
       }
 
       // 예산 관리 탭: 확정 예산 > 검토 대기 제출안 > 미작성 순으로 표시한다.
@@ -700,6 +732,14 @@ try {
         });
       });
     };
+
+    // 새 지출 신청 링크: 비활성 상태면 이동을 막고 사유를 안내한다(1회 바인딩, 사유는 dataset 에서 클릭 시 읽는다).
+    newExpenseLink?.addEventListener("click", (event) => {
+      if (newExpenseLink.getAttribute("aria-disabled") === "true") {
+        event.preventDefault();
+        showToast(newExpenseLink.dataset.disabledReason || "현재 지출 신청을 할 수 없습니다.", { type: "info" });
+      }
+    });
 
     // 지출 표: 행 클릭 → 상세 페이지 이동(위임 바인딩, 표는 필터마다 다시 렌더되므로 컨테이너에 1회 바인딩)
     const expenseTableEl = document.querySelector("[data-expense-table]");
