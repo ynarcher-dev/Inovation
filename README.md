@@ -117,7 +117,29 @@ admin에서 새 관리 기능을 만들면 founder에서 다음 항목을 확인
 
 - 관련 페이지를 브라우저에서 직접 열어본다.
 - founder와 admin 양쪽의 데이터 반영을 확인한다.
-- `node --check`로 수정한 JS 파일의 문법을 확인한다.
+- `npm run check`로 전체 JS 문법을 확인한다(개별 파일은 `node --check <file>`).
+- 도메인 규칙을 바꿨으면 `npm test`로 회귀 테스트를 돌린다.
 - 새로 만든 helper나 component가 한 가지 책임만 가지는지 확인한다.
 - 임시로 둔 코드는 주석으로 표시하고 후속 작업 문서에 남긴다.
+
+## 로컬 검증 / 테스트
+
+별도 의존성 설치가 필요 없다(Node 내장 test runner 사용, Node 18+ 권장 / 개발은 v20+).
+
+| 명령 | 설명 |
+|------|------|
+| `npm test` | 도메인/서비스 단위 테스트(`tests/*.test.js`) 실행 |
+| `npm run check` | `src`/`scripts`/`tests` 전체 JS `node --check` 일괄 검사 |
+
+- 테스트 대상은 브라우저 전역(`window`/`document`)에 의존하지 않는 순수 도메인 모듈이다.
+  - `src/domains/expense/expense-validation.js` — 지출 상태 전이/필드·예산·첨부 검증
+  - `src/domains/expense/rules-engine.js` — 필수 서류/경고 규칙
+- 새 도메인 규칙을 추가하면 같은 위치에 테스트를 추가한다.
+- SQL 검증 절차는 [supabase/RLS_TEST_MATRIX.md](supabase/RLS_TEST_MATRIX.md) 참고.
+
+## 환경 설정 / 배포
+
+- 환경별 값은 배포 파일 수정이 아니라 `window.APP_CONFIG` 주입으로 덮어쓴다. 샘플은 [docs/deploy-config.md](docs/deploy-config.md).
+- mock/실제 Supabase 전환 순서는 [docs/api-migration.md](docs/api-migration.md).
+- 렌더링/XSS 가이드는 [docs/rendering-xss-guidelines.md](docs/rendering-xss-guidelines.md).
 

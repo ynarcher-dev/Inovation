@@ -92,6 +92,7 @@
   gap: 44px;
 }
 .home-hero-copy { display: grid; gap: 18px; }
+.home-hero-copy .actions { justify-content: flex-start; }
 .eyebrow {
   width: fit-content;
   margin: 0;

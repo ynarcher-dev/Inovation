@@ -1,28 +1,26 @@
 -- ==========================================
--- 1. 테이블 초기화 (필요시 기존 테이블 드롭)
+-- 운영용 스키마 (재실행 가능 / 비파괴)
 -- ==========================================
-DROP TABLE IF EXISTS public.uploaded_files CASCADE;
-DROP TABLE IF EXISTS public.ai_criteria_documents CASCADE;
-DROP TABLE IF EXISTS public.budget_document_requirements CASCADE;
-DROP TABLE IF EXISTS public.guidance_items CASCADE;
-DROP TABLE IF EXISTS public.expense_reviews CASCADE;
-DROP TABLE IF EXISTS public.expense_requests CASCADE;
-DROP TABLE IF EXISTS public.budget_submission_items CASCADE;
-DROP TABLE IF EXISTS public.budget_submissions CASCADE;
-DROP TABLE IF EXISTS public.company_budget_allocations CASCADE;
-DROP TABLE IF EXISTS public.company_members CASCADE;
-DROP TABLE IF EXISTS public.profiles CASCADE;
-DROP TABLE IF EXISTS public.companies CASCADE;
-DROP TABLE IF EXISTS public.support_program_budgets CASCADE;
-DROP TABLE IF EXISTS public.support_programs CASCADE;
-DROP TABLE IF EXISTS public.ai_settings CASCADE;
-
--- ==========================================
--- 2. 테이블 생성 (DDL)
+--
+-- 이 파일은 빈 DB 또는 기존 DB에 여러 번 실행해도 안전하도록 작성되었다.
+--   - 테이블: CREATE TABLE IF NOT EXISTS (기존 테이블은 건드리지 않음)
+--   - 인덱스: CREATE INDEX IF NOT EXISTS
+--   - 함수:   CREATE OR REPLACE
+--   - 트리거/정책: DROP ... IF EXISTS 후 재생성
+--
+-- 주의:
+--   - 이 파일에는 무조건적인 DROP TABLE 이 없다.
+--   - 개발 DB를 완전히 비우려면 supabase/reset_dev.sql 을 별도로 실행한다.
+--   - 이미 존재하는 테이블의 컬럼 변경은 supabase/migrations/* 로 처리한다.
 -- ==========================================
 
--- 2.1 AI 설정 테이블
-CREATE TABLE public.ai_settings (
+
+-- ==========================================
+-- 1. 테이블 생성 (DDL)
+-- ==========================================
+
+-- 1.1 AI 설정 테이블
+CREATE TABLE IF NOT EXISTS public.ai_settings (
     id integer PRIMARY KEY DEFAULT 1,
     openai_api_key_configured boolean NOT NULL DEFAULT false,
     openai_model text NOT NULL DEFAULT 'gpt-4o',
@@ -30,8 +28,8 @@ CREATE TABLE public.ai_settings (
     CONSTRAINT chk_single_row CHECK (id = 1)
 );
 
--- 2.2 운영사업 테이블
-CREATE TABLE public.support_programs (
+-- 1.2 운영사업 테이블
+CREATE TABLE IF NOT EXISTS public.support_programs (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     name text NOT NULL,
     code text NOT NULL UNIQUE,
@@ -43,8 +41,8 @@ CREATE TABLE public.support_programs (
     created_at timestamp with time zone NOT NULL DEFAULT now()
 );
 
--- 2.3 운영사업별 표준 예산 비목 템플릿 테이블
-CREATE TABLE public.support_program_budgets (
+-- 1.3 운영사업별 표준 예산 비목 템플릿 테이블
+CREATE TABLE IF NOT EXISTS public.support_program_budgets (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     support_program_id uuid NOT NULL REFERENCES public.support_programs(id) ON DELETE CASCADE,
     parent_id uuid REFERENCES public.support_program_budgets(id) ON DELETE CASCADE,
@@ -55,10 +53,10 @@ CREATE TABLE public.support_program_budgets (
     sort_order integer NOT NULL DEFAULT 0,
     created_at timestamp with time zone NOT NULL DEFAULT now()
 );
-CREATE INDEX idx_sp_budgets_program ON public.support_program_budgets(support_program_id);
+CREATE INDEX IF NOT EXISTS idx_sp_budgets_program ON public.support_program_budgets(support_program_id);
 
--- 2.4 기업 정보 테이블
-CREATE TABLE public.companies (
+-- 1.4 기업 정보 테이블
+CREATE TABLE IF NOT EXISTS public.companies (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     name text NOT NULL,
     representative_name text NOT NULL,
@@ -78,8 +76,8 @@ CREATE TABLE public.companies (
     approved_at timestamp with time zone
 );
 
--- 2.5 사용자 프로필 테이블 (Supabase Auth 연동)
-CREATE TABLE public.profiles (
+-- 1.5 사용자 프로필 테이블 (Supabase Auth 연동)
+CREATE TABLE IF NOT EXISTS public.profiles (
     id uuid PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
     role text NOT NULL DEFAULT 'founder' CONSTRAINT chk_user_role CHECK (role IN ('super_admin', 'admin', 'founder')),
     name text NOT NULL,
@@ -90,8 +88,8 @@ CREATE TABLE public.profiles (
     updated_at timestamp with time zone NOT NULL DEFAULT now()
 );
 
--- 2.6 기업 소속원 테이블
-CREATE TABLE public.company_members (
+-- 1.6 기업 소속원 테이블
+CREATE TABLE IF NOT EXISTS public.company_members (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     company_id uuid NOT NULL REFERENCES public.companies(id) ON DELETE CASCADE,
     user_id uuid NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
@@ -100,8 +98,8 @@ CREATE TABLE public.company_members (
     UNIQUE(company_id, user_id)
 );
 
--- 2.7 기업별 비목 확정 예산 배정 테이블
-CREATE TABLE public.company_budget_allocations (
+-- 1.7 기업별 비목 확정 예산 배정 테이블
+CREATE TABLE IF NOT EXISTS public.company_budget_allocations (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     company_id uuid NOT NULL REFERENCES public.companies(id) ON DELETE CASCADE,
     support_program_budget_id uuid NOT NULL REFERENCES public.support_program_budgets(id) ON DELETE CASCADE,
@@ -113,8 +111,8 @@ CREATE TABLE public.company_budget_allocations (
     UNIQUE(company_id, support_program_budget_id)
 );
 
--- 2.8 예산 제출 이력 테이블
-CREATE TABLE public.budget_submissions (
+-- 1.8 예산 제출 이력 테이블
+CREATE TABLE IF NOT EXISTS public.budget_submissions (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     company_id uuid NOT NULL REFERENCES public.companies(id) ON DELETE CASCADE,
     type text NOT NULL CONSTRAINT chk_submission_type CHECK (type IN ('initial', 'change')),
@@ -128,8 +126,8 @@ CREATE TABLE public.budget_submissions (
     created_at timestamp with time zone NOT NULL DEFAULT now()
 );
 
--- 2.9 예산 제출별 항목 요청 테이블
-CREATE TABLE public.budget_submission_items (
+-- 1.9 예산 제출별 항목 요청 테이블
+CREATE TABLE IF NOT EXISTS public.budget_submission_items (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     budget_submission_id uuid NOT NULL REFERENCES public.budget_submissions(id) ON DELETE CASCADE,
     support_program_budget_id uuid NOT NULL REFERENCES public.support_program_budgets(id) ON DELETE CASCADE,
@@ -141,8 +139,8 @@ CREATE TABLE public.budget_submission_items (
     UNIQUE(budget_submission_id, support_program_budget_id)
 );
 
--- 2.10 지출 신청 테이블
-CREATE TABLE public.expense_requests (
+-- 1.10 지출 신청 테이블
+CREATE TABLE IF NOT EXISTS public.expense_requests (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     company_id uuid NOT NULL REFERENCES public.companies(id) ON DELETE CASCADE,
     founder_id uuid REFERENCES public.profiles(id) ON DELETE SET NULL,
@@ -164,9 +162,10 @@ CREATE TABLE public.expense_requests (
     final_submitted_at timestamp with time zone,
     created_at timestamp with time zone NOT NULL DEFAULT now()
 );
+CREATE INDEX IF NOT EXISTS idx_expense_requests_company ON public.expense_requests(company_id);
 
--- 2.11 지출 결재/검토 이력 테이블
-CREATE TABLE public.expense_reviews (
+-- 1.11 지출 결재/검토 이력 테이블
+CREATE TABLE IF NOT EXISTS public.expense_reviews (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     expense_request_id uuid NOT NULL REFERENCES public.expense_requests(id) ON DELETE CASCADE,
     reviewer_id uuid REFERENCES public.profiles(id) ON DELETE SET NULL,
@@ -175,8 +174,8 @@ CREATE TABLE public.expense_reviews (
     created_at timestamp with time zone NOT NULL DEFAULT now()
 );
 
--- 2.12 운영사업 안내자료 테이블
-CREATE TABLE public.guidance_items (
+-- 1.12 운영사업 안내자료 테이블
+CREATE TABLE IF NOT EXISTS public.guidance_items (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     title text NOT NULL,
     content text,
@@ -187,8 +186,8 @@ CREATE TABLE public.guidance_items (
     created_at timestamp with time zone NOT NULL DEFAULT now()
 );
 
--- 2.13 비목별 첨부서류 요구조건 설정 테이블
-CREATE TABLE public.budget_document_requirements (
+-- 1.13 비목별 첨부서류 요구조건 설정 테이블
+CREATE TABLE IF NOT EXISTS public.budget_document_requirements (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     support_program_id uuid NOT NULL REFERENCES public.support_programs(id) ON DELETE CASCADE,
     support_program_budget_id uuid NOT NULL REFERENCES public.support_program_budgets(id) ON DELETE CASCADE,
@@ -204,8 +203,8 @@ CREATE TABLE public.budget_document_requirements (
     updated_at timestamp with time zone NOT NULL DEFAULT now()
 );
 
--- 2.14 운영사업 공통 AI 검토 기준 문서 테이블
-CREATE TABLE public.ai_criteria_documents (
+-- 1.14 운영사업 공통 AI 검토 기준 문서 테이블
+CREATE TABLE IF NOT EXISTS public.ai_criteria_documents (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     support_program_id uuid NOT NULL REFERENCES public.support_programs(id) ON DELETE CASCADE,
     title text NOT NULL,
@@ -221,8 +220,8 @@ CREATE TABLE public.ai_criteria_documents (
     updated_at timestamp with time zone NOT NULL DEFAULT now()
 );
 
--- 2.15 지출 신청별 업로드 파일 정보 테이블
-CREATE TABLE public.uploaded_files (
+-- 1.15 지출 신청별 업로드 파일 정보 테이블
+CREATE TABLE IF NOT EXISTS public.uploaded_files (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     expense_request_id uuid NOT NULL REFERENCES public.expense_requests(id) ON DELETE CASCADE,
     requirement_id uuid REFERENCES public.budget_document_requirements(id) ON DELETE SET NULL,
@@ -231,7 +230,7 @@ CREATE TABLE public.uploaded_files (
     original_filename text NOT NULL,
     mime_type text NOT NULL,
     size_bytes bigint NOT NULL,
-    link_url text NOT NULL, -- S3 URL 또는 Key
+    link_url text NOT NULL, -- Storage object path 또는 key
     uploaded_by uuid REFERENCES public.profiles(id) ON DELETE SET NULL,
     ai_review_status text NOT NULL DEFAULT 'not_requested' CONSTRAINT chk_ai_review_status CHECK (ai_review_status IN ('not_requested', 'pending', 'passed', 'failed')),
     ai_review_comment text,
@@ -241,6 +240,83 @@ CREATE TABLE public.uploaded_files (
     user_reviewed_by uuid REFERENCES public.profiles(id) ON DELETE SET NULL,
     created_at timestamp with time zone NOT NULL DEFAULT now()
 );
+CREATE INDEX IF NOT EXISTS idx_uploaded_files_expense ON public.uploaded_files(expense_request_id);
+
+
+-- ==========================================
+-- 2. 보안 헬퍼 함수 (RLS 재귀 방지)
+-- ==========================================
+-- RLS 정책 안에서 public.profiles 를 직접 조회하면, profiles 자신에 대한
+-- 정책이 다시 평가되어 "infinite recursion detected in policy" 오류가 난다.
+-- 아래 함수들은 SECURITY DEFINER 로 RLS 를 우회해 역할/소속을 판정한다.
+-- search_path 를 고정해 함수 하이재킹을 방지한다.
+
+CREATE OR REPLACE FUNCTION public.auth_role()
+RETURNS text
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT role FROM public.profiles WHERE id = auth.uid();
+$$;
+
+CREATE OR REPLACE FUNCTION public.is_admin()
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM public.profiles
+    WHERE id = auth.uid() AND role IN ('admin', 'super_admin')
+  );
+$$;
+
+CREATE OR REPLACE FUNCTION public.is_super_admin()
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM public.profiles
+    WHERE id = auth.uid() AND role = 'super_admin'
+  );
+$$;
+
+CREATE OR REPLACE FUNCTION public.is_company_member(cid uuid)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM public.company_members
+    WHERE company_id = cid AND user_id = auth.uid()
+  );
+$$;
+
+-- 일반관리자(admin)가 해당 운영사업 담당인지 판정. super_admin 은 항상 true.
+CREATE OR REPLACE FUNCTION public.admin_handles_program(pid uuid)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM public.profiles
+    WHERE id = auth.uid()
+      AND (
+        role = 'super_admin'
+        OR (role = 'admin' AND pid = ANY(COALESCE(program_ids, ARRAY[]::uuid[])))
+      )
+  );
+$$;
 
 
 -- ==========================================
@@ -248,22 +324,26 @@ CREATE TABLE public.uploaded_files (
 -- ==========================================
 
 -- 3.1 Supabase Auth 회원가입 시 public.profiles 자동 생성 트리거
+--  보안: 회원가입자가 raw_user_meta_data 로 role 을 직접 지정하지 못하게 한다.
+--  자가가입은 항상 'founder' 로 고정한다. admin/super_admin 승격은
+--  service_role(서버) 또는 관리자 콘솔 전용 경로에서만 수행한다.
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS trigger AS $$
 BEGIN
   INSERT INTO public.profiles (id, role, name, company_name, phone)
   VALUES (
     new.id,
-    COALESCE(new.raw_user_meta_data->>'role', 'founder'),
+    'founder',
     COALESCE(new.raw_user_meta_data->>'name', new.raw_user_meta_data->>'founder_name', '사용자'),
     new.raw_user_meta_data->>'company_name',
     new.raw_user_meta_data->>'phone'
   );
   RETURN new;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
-CREATE OR REPLACE TRIGGER on_auth_user_created
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
 
@@ -277,7 +357,8 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE OR REPLACE TRIGGER on_allocation_amount_change
+DROP TRIGGER IF EXISTS on_allocation_amount_change ON public.company_budget_allocations;
+CREATE TRIGGER on_allocation_amount_change
   BEFORE INSERT OR UPDATE ON public.company_budget_allocations
   FOR EACH ROW EXECUTE FUNCTION public.calculate_total_allocation();
 
@@ -285,6 +366,11 @@ CREATE OR REPLACE TRIGGER on_allocation_amount_change
 -- ==========================================
 -- 4. 로우 레벨 보안 정책 (Row Level Security - RLS)
 -- ==========================================
+-- 정책 분류 원칙
+--   - founder      : 본인이 소속된 회사의 데이터만 (company_members 기준)
+--   - admin        : 담당 운영사업(program_ids)에 속한 회사의 데이터만
+--   - super_admin  : 전체
+--   - anon(비로그인): 가입 화면에 필요한 '활성 운영사업/표준 비목'만 조회
 
 -- RLS 활성화
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
@@ -303,71 +389,168 @@ ALTER TABLE public.ai_criteria_documents ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.uploaded_files ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.ai_settings ENABLE ROW LEVEL SECURITY;
 
--- 4.1 공용 또는 비로그인 조회 허용 정책 (운영사업, 예산안 템플릿 등)
-CREATE POLICY "누구나 사업 목록을 볼 수 있음" ON public.support_programs FOR SELECT USING (true);
-CREATE POLICY "누구나 표준 비목을 볼 수 있음" ON public.support_program_budgets FOR SELECT USING (true);
+-- ---- 4.1 운영사업 / 표준 비목 (가입 화면용 공개 조회) ----
+-- 비로그인 사용자는 '활성' 사업과 그 표준 비목만 볼 수 있다.
+-- (memo 등 내부 컬럼은 클라이언트에서 조회하지 않는다. 추후 내부 메모는 별도 admin 전용 테이블로 분리 권장.)
+DROP POLICY IF EXISTS "support_programs_public_select_active" ON public.support_programs;
+CREATE POLICY "support_programs_public_select_active" ON public.support_programs
+    FOR SELECT USING (active = true);
+DROP POLICY IF EXISTS "support_programs_admin_all" ON public.support_programs;
+CREATE POLICY "support_programs_admin_all" ON public.support_programs
+    FOR ALL USING (public.is_admin()) WITH CHECK (public.is_admin());
 
--- 4.2 프로필 정책
-CREATE POLICY "자신의 프로필은 본인이 관리" ON public.profiles
-    FOR ALL USING (auth.uid() = id);
-
-CREATE POLICY "관리자는 모든 프로필을 볼 수 있음" ON public.profiles
+DROP POLICY IF EXISTS "sp_budgets_public_select" ON public.support_program_budgets;
+CREATE POLICY "sp_budgets_public_select" ON public.support_program_budgets
     FOR SELECT USING (
-        EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role IN ('admin', 'super_admin'))
+        EXISTS (SELECT 1 FROM public.support_programs sp WHERE sp.id = support_program_id AND sp.active = true)
     );
+DROP POLICY IF EXISTS "sp_budgets_admin_all" ON public.support_program_budgets;
+CREATE POLICY "sp_budgets_admin_all" ON public.support_program_budgets
+    FOR ALL USING (public.is_admin()) WITH CHECK (public.is_admin());
 
--- 4.3 기업(companies) RLS 정책
-CREATE POLICY "창업자는 본인 기업만 조회 및 수정" ON public.companies
+-- ---- 4.2 프로필 ----
+-- 본인 프로필은 본인이 조회/수정. 단, role/program_ids 자가 변경은 서버(service_role)로 제한 권장.
+DROP POLICY IF EXISTS "profiles_self_select" ON public.profiles;
+CREATE POLICY "profiles_self_select" ON public.profiles
+    FOR SELECT USING (auth.uid() = id);
+DROP POLICY IF EXISTS "profiles_self_update" ON public.profiles;
+CREATE POLICY "profiles_self_update" ON public.profiles
+    FOR UPDATE USING (auth.uid() = id);
+DROP POLICY IF EXISTS "profiles_admin_select" ON public.profiles;
+CREATE POLICY "profiles_admin_select" ON public.profiles
+    FOR SELECT USING (public.is_admin());
+DROP POLICY IF EXISTS "profiles_super_admin_all" ON public.profiles;
+CREATE POLICY "profiles_super_admin_all" ON public.profiles
+    FOR ALL USING (public.is_super_admin()) WITH CHECK (public.is_super_admin());
+
+-- ---- 4.3 기업 소속원 ----
+DROP POLICY IF EXISTS "company_members_self_select" ON public.company_members;
+CREATE POLICY "company_members_self_select" ON public.company_members
+    FOR SELECT USING (user_id = auth.uid());
+DROP POLICY IF EXISTS "company_members_admin_all" ON public.company_members;
+CREATE POLICY "company_members_admin_all" ON public.company_members
+    FOR ALL USING (public.is_admin()) WITH CHECK (public.is_admin());
+
+-- ---- 4.4 기업(companies) ----
+DROP POLICY IF EXISTS "companies_member_select" ON public.companies;
+CREATE POLICY "companies_member_select" ON public.companies
+    FOR SELECT USING (public.is_company_member(id));
+DROP POLICY IF EXISTS "companies_member_update" ON public.companies;
+CREATE POLICY "companies_member_update" ON public.companies
+    FOR UPDATE USING (public.is_company_member(id));
+DROP POLICY IF EXISTS "companies_admin_select" ON public.companies;
+CREATE POLICY "companies_admin_select" ON public.companies
+    FOR SELECT USING (public.is_admin());
+DROP POLICY IF EXISTS "companies_admin_update" ON public.companies;
+CREATE POLICY "companies_admin_update" ON public.companies
+    FOR UPDATE USING (public.admin_handles_program(support_program_id));
+DROP POLICY IF EXISTS "companies_super_admin_all" ON public.companies;
+CREATE POLICY "companies_super_admin_all" ON public.companies
+    FOR ALL USING (public.is_super_admin()) WITH CHECK (public.is_super_admin());
+
+-- ---- 4.5 확정 예산 배정 / 예산 제출 / 제출 항목 ----
+DROP POLICY IF EXISTS "allocations_member_select" ON public.company_budget_allocations;
+CREATE POLICY "allocations_member_select" ON public.company_budget_allocations
+    FOR SELECT USING (public.is_company_member(company_id));
+DROP POLICY IF EXISTS "allocations_admin_all" ON public.company_budget_allocations;
+CREATE POLICY "allocations_admin_all" ON public.company_budget_allocations
+    FOR ALL USING (public.is_admin()) WITH CHECK (public.is_admin());
+
+DROP POLICY IF EXISTS "budget_submissions_member_select" ON public.budget_submissions;
+CREATE POLICY "budget_submissions_member_select" ON public.budget_submissions
+    FOR SELECT USING (public.is_company_member(company_id));
+DROP POLICY IF EXISTS "budget_submissions_member_insert" ON public.budget_submissions;
+CREATE POLICY "budget_submissions_member_insert" ON public.budget_submissions
+    FOR INSERT WITH CHECK (public.is_company_member(company_id));
+DROP POLICY IF EXISTS "budget_submissions_admin_all" ON public.budget_submissions;
+CREATE POLICY "budget_submissions_admin_all" ON public.budget_submissions
+    FOR ALL USING (public.is_admin()) WITH CHECK (public.is_admin());
+
+DROP POLICY IF EXISTS "budget_submission_items_member_select" ON public.budget_submission_items;
+CREATE POLICY "budget_submission_items_member_select" ON public.budget_submission_items
     FOR SELECT USING (
         EXISTS (
-            SELECT 1 FROM public.company_members 
-            WHERE company_members.company_id = companies.id AND company_members.user_id = auth.uid()
+            SELECT 1 FROM public.budget_submissions bs
+            WHERE bs.id = budget_submission_id AND public.is_company_member(bs.company_id)
         )
     );
+DROP POLICY IF EXISTS "budget_submission_items_member_insert" ON public.budget_submission_items;
+CREATE POLICY "budget_submission_items_member_insert" ON public.budget_submission_items
+    FOR INSERT WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM public.budget_submissions bs
+            WHERE bs.id = budget_submission_id AND public.is_company_member(bs.company_id)
+        )
+    );
+DROP POLICY IF EXISTS "budget_submission_items_admin_all" ON public.budget_submission_items;
+CREATE POLICY "budget_submission_items_admin_all" ON public.budget_submission_items
+    FOR ALL USING (public.is_admin()) WITH CHECK (public.is_admin());
 
-CREATE POLICY "관리자는 전체 기업 조회 가능" ON public.companies
+-- ---- 4.6 지출 신청(expense_requests) ----
+DROP POLICY IF EXISTS "expense_requests_member_all" ON public.expense_requests;
+CREATE POLICY "expense_requests_member_all" ON public.expense_requests
+    FOR ALL USING (public.is_company_member(company_id))
+    WITH CHECK (public.is_company_member(company_id));
+DROP POLICY IF EXISTS "expense_requests_admin_all" ON public.expense_requests;
+CREATE POLICY "expense_requests_admin_all" ON public.expense_requests
+    FOR ALL USING (public.is_admin()) WITH CHECK (public.is_admin());
+
+-- ---- 4.7 지출 검토 이력(expense_reviews) ----
+DROP POLICY IF EXISTS "expense_reviews_member_select" ON public.expense_reviews;
+CREATE POLICY "expense_reviews_member_select" ON public.expense_reviews
     FOR SELECT USING (
-        EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role IN ('admin', 'super_admin'))
-    );
-
-CREATE POLICY "일반관리자는 담당 사업의 기업만 수정 가능" ON public.companies
-    FOR UPDATE USING (
         EXISTS (
-            SELECT 1 FROM public.profiles 
-            WHERE id = auth.uid() AND role = 'admin' AND (companies.support_program_id = ANY(program_ids))
+            SELECT 1 FROM public.expense_requests er
+            WHERE er.id = expense_request_id AND public.is_company_member(er.company_id)
         )
     );
+DROP POLICY IF EXISTS "expense_reviews_admin_all" ON public.expense_reviews;
+CREATE POLICY "expense_reviews_admin_all" ON public.expense_reviews
+    FOR ALL USING (public.is_admin()) WITH CHECK (public.is_admin());
 
-CREATE POLICY "최고관리자는 모든 기업 제어 허용" ON public.companies
-    FOR ALL USING (
-        EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'super_admin')
-    );
+-- ---- 4.8 안내자료(guidance_items) ----
+-- 로그인 사용자는 활성 안내자료 조회 가능, 관리자만 변경.
+DROP POLICY IF EXISTS "guidance_items_auth_select" ON public.guidance_items;
+CREATE POLICY "guidance_items_auth_select" ON public.guidance_items
+    FOR SELECT TO authenticated USING (active = true);
+DROP POLICY IF EXISTS "guidance_items_admin_all" ON public.guidance_items;
+CREATE POLICY "guidance_items_admin_all" ON public.guidance_items
+    FOR ALL USING (public.is_admin()) WITH CHECK (public.is_admin());
 
--- 4.4 지출 신청(expense_requests) RLS 정책
-CREATE POLICY "창업자는 본인 기업의 지출 신청 제어" ON public.expense_requests
-    FOR ALL USING (
-        EXISTS (
-            SELECT 1 FROM public.company_members 
-            WHERE company_members.company_id = expense_requests.company_id AND company_members.user_id = auth.uid()
-        )
-    );
+-- ---- 4.9 첨부서류 요구조건(budget_document_requirements) ----
+DROP POLICY IF EXISTS "doc_requirements_auth_select" ON public.budget_document_requirements;
+CREATE POLICY "doc_requirements_auth_select" ON public.budget_document_requirements
+    FOR SELECT TO authenticated USING (active = true);
+DROP POLICY IF EXISTS "doc_requirements_admin_all" ON public.budget_document_requirements;
+CREATE POLICY "doc_requirements_admin_all" ON public.budget_document_requirements
+    FOR ALL USING (public.is_admin()) WITH CHECK (public.is_admin());
 
-CREATE POLICY "관리자는 모든 지출 신청 조회 및 결재 가능" ON public.expense_requests
-    FOR ALL USING (
-        EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role IN ('admin', 'super_admin'))
-    );
+-- ---- 4.10 AI 검토 기준 문서(ai_criteria_documents) : 관리자 전용 ----
+DROP POLICY IF EXISTS "ai_criteria_admin_all" ON public.ai_criteria_documents;
+CREATE POLICY "ai_criteria_admin_all" ON public.ai_criteria_documents
+    FOR ALL USING (public.is_admin()) WITH CHECK (public.is_admin());
 
--- 4.5 첨부파일(uploaded_files) RLS 정책
-CREATE POLICY "창업자는 본인 기업의 업로드 파일 관리" ON public.uploaded_files
+-- ---- 4.11 첨부파일(uploaded_files) ----
+DROP POLICY IF EXISTS "uploaded_files_member_all" ON public.uploaded_files;
+CREATE POLICY "uploaded_files_member_all" ON public.uploaded_files
     FOR ALL USING (
         EXISTS (
             SELECT 1 FROM public.expense_requests er
-            JOIN public.company_members cm ON cm.company_id = er.company_id
-            WHERE er.id = uploaded_files.expense_request_id AND cm.user_id = auth.uid()
+            WHERE er.id = expense_request_id AND public.is_company_member(er.company_id)
+        )
+    )
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM public.expense_requests er
+            WHERE er.id = expense_request_id AND public.is_company_member(er.company_id)
         )
     );
+DROP POLICY IF EXISTS "uploaded_files_admin_all" ON public.uploaded_files;
+CREATE POLICY "uploaded_files_admin_all" ON public.uploaded_files
+    FOR ALL USING (public.is_admin()) WITH CHECK (public.is_admin());
 
-CREATE POLICY "관리자는 모든 업로드 파일 조회 및 심사 가능" ON public.uploaded_files
-    FOR ALL USING (
-        EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role IN ('admin', 'super_admin'))
-    );
+-- ---- 4.12 AI 설정(ai_settings) : 관리자 전용 ----
+-- 단일 행 설정. Secret 등록 여부 플래그만 보관하며, 실제 키는 저장하지 않는다.
+DROP POLICY IF EXISTS "ai_settings_admin_all" ON public.ai_settings;
+CREATE POLICY "ai_settings_admin_all" ON public.ai_settings
+    FOR ALL USING (public.is_admin()) WITH CHECK (public.is_admin());

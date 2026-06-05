@@ -1,0 +1,12 @@
+{
+  "name": "inovation",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "사업비 집행 도우미 — 정적 프론트엔드 + Supabase",
+  "scripts": {
+    "test": "node --test",
+    "test:watch": "node --test --watch",
+    "check": "node scripts/check-syntax.mjs"
+  }
+}

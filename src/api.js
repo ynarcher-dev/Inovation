@@ -78,9 +78,47 @@ import {
   requestDocumentReview as requestDocumentReviewFromEdge,
 } from "./services/ai-agent.js";
 import { parsePdfText } from "./services/pdf-parse.js";
+import { isMockApi, isProduction } from "./config.js";
+import { validateUploadFile, sanitizeFilename } from "./domains/upload-policy.js";
+
+// ----------------------------------------------------
+// mock / remote API 경계 (P0-03 / T6)
+// ----------------------------------------------------
+// 현재 이 파일은 모든 데이터 API 를 mock service 로 export 한다.
+// CONFIG.useMockApi(=isMockApi) 로 mock/remote 모드를 분기하며,
+// 실제 Supabase 어댑터 구현 순서는 docs/api-migration.md 를 따른다.
+//
+// 운영(production) 배포인데 mock 모드면 데이터가 브라우저 저장소에만 남는
+// 위험 상태이므로, 콘솔 + 화면 상단 배너로 경고한다.
+function warnIfMockInProduction() {
+  if (!isMockApi) return;
+  // eslint 환경이 없으므로 console 직접 사용. 모든 모드에서 1회 안내.
+  console.warn(
+    "[api] mock 모드로 동작 중입니다. 데이터는 브라우저(localStorage/IndexedDB)에만 저장되며 서버에 반영되지 않습니다."
+  );
+  if (!isProduction || typeof document === "undefined") return;
+
+  const show = () => {
+    if (document.getElementById("mock-mode-banner")) return;
+    const banner = document.createElement("div");
+    banner.id = "mock-mode-banner";
+    banner.textContent =
+      "⚠️ 임시(mock) 데이터 모드 — 입력한 내용은 이 브라우저에만 저장되고 서버에 반영되지 않습니다.";
+    banner.style.cssText =
+      "position:fixed;top:0;left:0;right:0;z-index:99999;background:#b91c1c;color:#fff;" +
+      "font-size:13px;line-height:1.4;padding:8px 12px;text-align:center;font-weight:600;";
+    document.body.appendChild(banner);
+  };
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", show, { once: true });
+  } else {
+    show();
+  }
+}
 
 // Initialize Mock Storage Data on load
-initMockData();
+if (isMockApi) initMockData();
+warnIfMockInProduction();
 
 // Export wrapped mock APIs
 export const getSupportPrograms = mockGetSupportPrograms;
@@ -318,26 +356,33 @@ function dataUrlToBlob(dataUrl) {
 }
 
 // 첨부 파일을 업로드(보관)하고 link_url 을 반환한다. 사업계획서/안내자료 공용.
-export async function uploadFile(file) {
+// 업로드 전 클라이언트 측 정책 검증(MIME/확장자/크기). 서버(Storage)에서도 동일 정책을 재검증해야 한다(T10).
+export async function uploadFile(file, policyOpts = {}) {
+  const check = validateUploadFile(file, policyOpts);
+  if (!check.valid) throw new Error(check.error);
   const dataUrl = await readFileAsDataUrl(file);
-  const link_url = await mockStoreFile(dataUrl, file.name, file.type);
-  return { link_url, original_filename: file.name };
+  const link_url = await mockStoreFile(dataUrl, sanitizeFilename(file.name), file.type);
+  return { link_url, original_filename: sanitizeFilename(file.name) };
 }
 
 // 기존 호출부 호환용 별칭
 export const uploadGuidanceFile = uploadFile;
 
-// 미리보기(새 탭 열기)용 URL. 보관된 실제 파일이 있으면 그 파일을, 없으면 더미를 돌려준다.
+// 미리보기(새 탭 열기)용 URL. 보관된 실제 파일이 있으면 그 파일을, 없으면(개발 한정) 더미를 돌려준다.
 export async function getGuidanceDownloadUrl(linkUrl) {
   const stored = await mockGetFile(linkUrl);
   if (stored?.data) return URL.createObjectURL(dataUrlToBlob(stored.data));
+  // 운영에서는 외부 더미 파일을 열지 않는다(혼란 방지). 개발에서만 fallback.
+  if (isProduction) throw new Error("파일을 찾을 수 없습니다.");
   return DUMMY_PDF;
 }
 
-// 보관된 실제 첨부 파일을 원본 파일명으로 다운로드한다. 없으면 더미를 새 탭으로 연다.
+// 보관된 실제 첨부 파일을 원본 파일명으로 다운로드한다. 없으면(개발 한정) 더미를 새 탭으로 연다.
 export async function downloadStoredFile(linkUrl, filename) {
   const stored = await mockGetFile(linkUrl);
   if (!stored?.data) {
+    // 운영에서는 외부 더미 파일을 열지 않는다.
+    if (isProduction) throw new Error("파일을 찾을 수 없습니다.");
     window.open(DUMMY_PDF, "_blank", "noopener,noreferrer");
     return;
   }

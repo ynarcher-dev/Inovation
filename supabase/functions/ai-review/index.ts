@@ -1,10 +1,5 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-};
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 
 type Provider = "openai" | "google" | "anthropic";
 
@@ -14,17 +9,163 @@ const DEFAULT_MODEL_BY_PROVIDER: Record<Provider, string> = {
   anthropic: "claude-3-5-sonnet-latest",
 };
 
-function jsonResponse(body: unknown, status = 200) {
+// ==========================================
+// 보안 설정 (모두 환경 변수로 운영 환경별 조정 가능)
+// ==========================================
+
+// 허용 origin allowlist. 콤마로 구분. 미설정 시에는 모든 origin을 허용하되 경고 로그를 남긴다.
+// 운영에서는 반드시 ALLOWED_ORIGINS 를 명시한다. 예: "https://app.example.com,https://admin.example.com"
+const ALLOWED_ORIGINS = (Deno.env.get("ALLOWED_ORIGINS") || "")
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
+
+// AI 기능을 호출할 수 있는 역할. 기본은 관리자 전용.
+const AI_ALLOWED_ROLES = (Deno.env.get("AI_ALLOWED_ROLES") || "admin,super_admin")
+  .split(",")
+  .map((s) => s.trim().toLowerCase())
+  .filter(Boolean);
+
+// 문서 base64 최대 길이(문자 수 기준). 기본 ~7MB (실제 바이너리 약 5MB).
+const MAX_BASE64_LEN = Number(Deno.env.get("AI_MAX_BASE64_LEN") || 7_000_000);
+
+// 허용 MIME allowlist.
+const ALLOWED_MIME = new Set(
+  (Deno.env.get("AI_ALLOWED_MIME") ||
+    "application/pdf,image/png,image/jpeg,image/jpg,image/webp")
+    .split(",")
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean),
+);
+
+// provider 별 허용 model allowlist. 클라이언트가 임의 model을 보내도 목록 밖이면 거절한다.
+const MODEL_ALLOWLIST: Record<Provider, Set<string>> = {
+  openai: new Set(["gpt-4o", "gpt-4o-mini", "gpt-4.1", "gpt-4.1-mini"]),
+  google: new Set(["gemini-2.5-flash", "gemini-2.5-pro", "gemini-1.5-flash", "gemini-1.5-pro"]),
+  anthropic: new Set(["claude-3-5-sonnet-latest", "claude-3-5-haiku-latest", "claude-sonnet-4-5"]),
+};
+
+// 사용자별 분당 요청 제한(베스트 에포트, 인메모리). 영속 보장은 아니며 인스턴스별로 동작한다.
+const RATE_PER_MIN = Number(Deno.env.get("AI_RATE_PER_MIN") || 10);
+const rateBucket = new Map<string, number[]>();
+
+// 권한/입력 검증 실패를 사용자 메시지 + HTTP status 로 분리해 던지기 위한 에러 타입.
+class HttpError extends Error {
+  status: number;
+  constructor(status: number, message: string) {
+    super(message);
+    this.status = status;
+  }
+}
+
+function corsHeadersFor(origin: string | null): Record<string, string> {
+  // 허용 origin이 명시되지 않았으면(개발) 모두 허용하되, 운영 경고를 남긴다.
+  let allowOrigin = "*";
+  if (ALLOWED_ORIGINS.length > 0) {
+    allowOrigin = origin && ALLOWED_ORIGINS.includes(origin) ? origin : "null";
+  } else {
+    console.warn("[ai-review] ALLOWED_ORIGINS 가 설정되지 않았습니다. 운영에서는 origin allowlist를 지정하세요.");
+  }
+  return {
+    "Access-Control-Allow-Origin": allowOrigin,
+    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Vary": "Origin",
+  };
+}
+
+function isOriginAllowed(origin: string | null): boolean {
+  if (ALLOWED_ORIGINS.length === 0) return true; // 개발 기본값(경고와 함께 허용)
+  return !!origin && ALLOWED_ORIGINS.includes(origin);
+}
+
+// 요청자를 인증하고(JWT) 역할을 확인한다. 실패 시 HttpError(401/403).
+async function authenticateRequest(req: Request): Promise<{ userId: string; role: string }> {
+  const authHeader = req.headers.get("Authorization") || "";
+  const token = authHeader.replace(/^Bearer\s+/i, "").trim();
+  if (!token) {
+    throw new HttpError(401, "로그인이 필요합니다. (인증 토큰 없음)");
+  }
+
+  const supabaseUrl = Deno.env.get("SUPABASE_URL");
+  const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
+  if (!supabaseUrl || !anonKey) {
+    // 서버 구성 오류는 사용자에게 자세히 노출하지 않는다.
+    console.error("[ai-review] SUPABASE_URL/ANON_KEY 환경변수가 없습니다.");
+    throw new HttpError(500, "서버 구성 오류로 요청을 처리할 수 없습니다.");
+  }
+
+  const supabase = createClient(supabaseUrl, anonKey, {
+    global: { headers: { Authorization: `Bearer ${token}` } },
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+
+  const { data: userData, error: userErr } = await supabase.auth.getUser();
+  if (userErr || !userData?.user) {
+    throw new HttpError(401, "인증에 실패했습니다. 다시 로그인해주세요.");
+  }
+  const userId = userData.user.id;
+
+  // 역할은 profiles 에서 확인한다(RLS: 본인 프로필 조회 허용).
+  const { data: profile, error: profileErr } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", userId)
+    .single();
+  if (profileErr || !profile) {
+    throw new HttpError(403, "사용자 프로필을 확인할 수 없습니다.");
+  }
+  const role = String(profile.role || "").toLowerCase();
+  if (!AI_ALLOWED_ROLES.includes(role)) {
+    throw new HttpError(403, "이 기능을 사용할 권한이 없습니다.");
+  }
+
+  return { userId, role };
+}
+
+// 사용자별 분당 요청 제한. 초과 시 HttpError(429).
+function enforceRateLimit(userId: string, nowMs: number) {
+  const windowStart = nowMs - 60_000;
+  const hits = (rateBucket.get(userId) || []).filter((t) => t > windowStart);
+  if (hits.length >= RATE_PER_MIN) {
+    throw new HttpError(429, "요청이 너무 많습니다. 잠시 후 다시 시도해주세요.");
+  }
+  hits.push(nowMs);
+  rateBucket.set(userId, hits);
+}
+
+// 문서 입력(크기/MIME)을 검증한다. 실패 시 HttpError(400/413).
+function validateDocument(document: any) {
+  const base64 = String(document?.data_base64 || "");
+  if (!base64) throw new HttpError(400, "문서 데이터가 없습니다.");
+  if (base64.length > MAX_BASE64_LEN) {
+    throw new HttpError(413, "첨부 파일이 허용 크기를 초과했습니다.");
+  }
+  const mime = String(document?.mime_type || "application/pdf").toLowerCase();
+  if (!ALLOWED_MIME.has(mime)) {
+    throw new HttpError(415, `허용되지 않는 파일 형식입니다: ${mime}`);
+  }
+}
+
+// provider/model allowlist 검증. 실패 시 HttpError(400).
+function validateModel(provider: Provider, model: string) {
+  const allow = MODEL_ALLOWLIST[provider];
+  if (!allow || !allow.has(model)) {
+    throw new HttpError(400, `허용되지 않은 모델입니다: ${provider}/${model}`);
+  }
+}
+
+function jsonResponse(body: unknown, status = 200, origin: string | null = null) {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { ...corsHeaders, "Content-Type": "application/json; charset=utf-8" },
+    headers: { ...corsHeadersFor(origin), "Content-Type": "application/json; charset=utf-8" },
   });
 }
 
 function normalizeProvider(value: unknown): Provider {
   const provider = String(value || "openai").toLowerCase();
   if (provider === "google" || provider === "anthropic" || provider === "openai") return provider;
-  throw new Error(`지원하지 않는 provider입니다: ${provider}`);
+  throw new HttpError(400, `지원하지 않는 provider입니다: ${provider}`);
 }
 
 function parseJsonObject(text: string) {
@@ -311,20 +452,41 @@ async function callProvider(provider: Provider, model: string, instructions: str
 }
 
 serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
-  if (req.method !== "POST") return jsonResponse({ error: "POST 요청만 지원합니다." }, 405);
+  const origin = req.headers.get("Origin");
+
+  if (req.method === "OPTIONS") {
+    if (!isOriginAllowed(origin)) {
+      return new Response("origin not allowed", { status: 403, headers: corsHeadersFor(origin) });
+    }
+    return new Response("ok", { headers: corsHeadersFor(origin) });
+  }
+  if (req.method !== "POST") return jsonResponse({ error: "POST 요청만 지원합니다." }, 405, origin);
+  if (!isOriginAllowed(origin)) {
+    return jsonResponse({ error: "허용되지 않은 origin입니다." }, 403, origin);
+  }
 
   try {
+    // 1) 인증 + 역할 확인
+    const { userId } = await authenticateRequest(req);
+    // 2) 사용자별 rate limit
+    enforceRateLimit(userId, Date.now());
+
+    // 3) 요청 본문 크기 1차 방어(Content-Length).
+    const contentLength = Number(req.headers.get("Content-Length") || 0);
+    if (contentLength && contentLength > MAX_BASE64_LEN + 100_000) {
+      throw new HttpError(413, "요청 본문이 허용 크기를 초과했습니다.");
+    }
+
     const { type, provider: providerInput, model: modelInput, payload } = await req.json();
     const provider = normalizeProvider(providerInput);
     const model = String(modelInput || DEFAULT_MODEL_BY_PROVIDER[provider]).trim();
+    // 4) provider/model allowlist 검증
+    validateModel(provider, model);
 
     // 운영사업 공통 AI 검토 기준 문서 → 검토 기준 텍스트 추출
     if (type === "criteria_extraction") {
       const document = payload?.document;
-      if (!document?.data_base64) {
-        return jsonResponse({ error: "추출할 문서 데이터가 없습니다." }, 400);
-      }
+      validateDocument(document);
       const { instructions, input } = buildCriteriaPrompt();
       const extractedText = await callProvider(provider, model, instructions, input, {
         document: {
@@ -338,15 +500,13 @@ serve(async (req) => {
         provider,
         model,
         result: { extracted_text: String(extractedText || "").trim() },
-      });
+      }, 200, origin);
     }
 
     // 제출 서류 한 건을 신청 정보·검토 기준과 대조해 검토
     if (type === "document_review") {
       const document = payload?.document;
-      if (!document?.data_base64) {
-        return jsonResponse({ error: "검토할 문서 데이터가 없습니다." }, 400);
-      }
+      validateDocument(document);
       const { instructions, input } = buildDocumentReviewPrompt(payload);
       const rawText = await callProvider(provider, model, instructions, input, {
         document: {
@@ -362,14 +522,14 @@ serve(async (req) => {
         provider,
         model,
         result: normalizeDocumentReviewResult(parsed, rawText),
-      });
+      }, 200, origin);
     }
 
     if (type !== "budget_submission_review") {
-      return jsonResponse({ error: "지원하지 않는 AI 검토 타입입니다." }, 400);
+      throw new HttpError(400, "지원하지 않는 AI 검토 타입입니다.");
     }
     if (!payload?.submission?.items?.length) {
-      return jsonResponse({ error: "검토할 예산 제출 항목이 없습니다." }, 400);
+      throw new HttpError(400, "검토할 예산 제출 항목이 없습니다.");
     }
 
     const { instructions, input } = buildPrompt(payload);
@@ -385,8 +545,16 @@ serve(async (req) => {
       provider,
       model,
       result: normalizeReviewResult(parsed, rawText),
-    });
+    }, 200, origin);
   } catch (error) {
-    return jsonResponse({ error: error?.message || "AI 검토 처리 중 오류가 발생했습니다." }, 500);
+    // 권한/입력 검증 오류(HttpError)는 사용자에게 해당 status + 메시지로 그대로 반환한다.
+    if (error instanceof HttpError) {
+      return jsonResponse({ error: error.message }, error.status, origin);
+    }
+    // 그 외(provider 오류, 예기치 못한 오류)는 내부 로그에만 상세를 남기고
+    // 사용자에게는 일반 메시지만 노출한다.
+    console.error("[ai-review] 처리 실패:", error instanceof Error ? error.stack || error.message : error);
+    const message = error instanceof Error ? error.message : "AI 검토 처리 중 오류가 발생했습니다.";
+    return jsonResponse({ error: message }, 502, origin);
   }
 });

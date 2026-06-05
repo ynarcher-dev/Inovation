@@ -1,2 +1,9 @@
+# ai-review Edge Function 설정
+#
+# verify_jwt = true 로 게이트웨이 단계에서 JWT 를 검증한다.
+# 추가로 함수 코드(index.ts) 안에서도 Authorization 토큰과 역할(profiles.role)을
+# 직접 확인하므로, 인증/권한 없는 요청은 401/403 으로 차단된다.
+#
+# 절대 verify_jwt = false 로 배포하지 않는다. (AI provider 비용 남용 방지)
 [functions.ai-review]
-verify_jwt = false
+verify_jwt = true

@@ -20,6 +20,43 @@ function resolveEdgeFunctionUrl(value) {
   return raw;
 }
 
+// Edge Function 호출용 인증 토큰을 가져온다.
+// 실제 Supabase Auth 전환 시 세션 access_token 을 반환하도록 window.APP_CONFIG.getSupabaseAccessToken
+// 를 주입한다. mock 인증 단계에서는 토큰이 없어 null 이며, 이 경우 AI 기능은 서버에서 401 로 차단된다(의도된 동작).
+async function getEdgeAccessToken() {
+  try {
+    const provider = window.APP_CONFIG?.getSupabaseAccessToken;
+    if (typeof provider === "function") return (await provider()) || null;
+  } catch (_) {
+    /* 토큰 조회 실패는 무시하고 미인증으로 처리한다 */
+  }
+  return null;
+}
+
+// ai-review Edge Function 공용 호출 헬퍼.
+// 인증 토큰을 첨부하고, status 별 사용자 메시지를 일관되게 처리한다.
+async function callEdgeFunction(url, body) {
+  const token = await getEdgeAccessToken();
+  const headers = { "Content-Type": "application/json", apikey: CONFIG.supabaseAnonKey };
+  if (token) headers.Authorization = `Bearer ${token}`;
+
+  const response = await fetch(url, { method: "POST", headers, body: JSON.stringify(body) });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    if (response.status === 401 || response.status === 403) {
+      throw new Error(data.error || "AI 기능을 사용할 권한이 없습니다. 관리자 계정으로 로그인했는지 확인해주세요.");
+    }
+    if (response.status === 429) {
+      throw new Error(data.error || "요청이 너무 많습니다. 잠시 후 다시 시도해주세요.");
+    }
+    if (response.status === 413 || response.status === 415) {
+      throw new Error(data.error || "첨부 파일 형식 또는 크기가 허용되지 않습니다.");
+    }
+    throw new Error(data.error || "AI 요청에 실패했습니다.");
+  }
+  return data;
+}
+
 function normalizeAiReviewResult(result = {}) {
   const risks = Array.isArray(result.risks) ? result.risks : [];
   return {
@@ -65,27 +102,12 @@ export async function requestBudgetAiReview(input = {}) {
   }
 
   const provider = settings.provider || "openai";
-  const response = await fetch(url, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      apikey: CONFIG.supabaseAnonKey,
-    },
-    body: JSON.stringify({
-      type: "budget_submission_review",
-      provider,
-      model: settings.model || DEFAULT_MODEL_BY_PROVIDER[provider] || DEFAULT_MODEL_BY_PROVIDER.openai,
-      payload: input,
-    }),
+  const data = await callEdgeFunction(url, {
+    type: "budget_submission_review",
+    provider,
+    model: settings.model || DEFAULT_MODEL_BY_PROVIDER[provider] || DEFAULT_MODEL_BY_PROVIDER.openai,
+    payload: input,
   });
-
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    if (response.status === 401) {
-      throw new Error("Edge Function 인증에서 401이 발생했습니다. ai-review 함수의 verify_jwt=false 설정을 반영해 다시 배포해주세요.");
-    }
-    throw new Error(data.error || "AI 검토 요청에 실패했습니다.");
-  }
   return normalizeAiReviewResult(data.result || data);
 }
 
@@ -110,36 +132,21 @@ export async function requestDocumentReview(input = {}) {
   }
 
   const provider = settings.provider || "openai";
-  const response = await fetch(url, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      apikey: CONFIG.supabaseAnonKey,
-    },
-    body: JSON.stringify({
-      type: "document_review",
-      provider,
-      model: settings.model || DEFAULT_MODEL_BY_PROVIDER[provider] || DEFAULT_MODEL_BY_PROVIDER.openai,
-      payload: {
-        document: {
-          filename: input.filename || "document",
-          mime_type: input.mimeType || "application/pdf",
-          data_base64: input.fileBase64,
-        },
-        context: input.context || {},
-        criteria_text: input.criteriaText || "",
-        batch_count: input.batchCount || 1,
+  const data = await callEdgeFunction(url, {
+    type: "document_review",
+    provider,
+    model: settings.model || DEFAULT_MODEL_BY_PROVIDER[provider] || DEFAULT_MODEL_BY_PROVIDER.openai,
+    payload: {
+      document: {
+        filename: input.filename || "document",
+        mime_type: input.mimeType || "application/pdf",
+        data_base64: input.fileBase64,
       },
-    }),
+      context: input.context || {},
+      criteria_text: input.criteriaText || "",
+      batch_count: input.batchCount || 1,
+    },
   });
-
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    if (response.status === 401) {
-      throw new Error("Edge Function 인증에서 401이 발생했습니다. ai-review 함수의 verify_jwt=false 설정을 반영해 다시 배포해주세요.");
-    }
-    throw new Error(data.error || "문서 AI 검토 요청에 실패했습니다.");
-  }
   return normalizeDocumentReviewResult(data.result || data);
 }
 
@@ -164,32 +171,17 @@ export async function requestCriteriaExtraction(input = {}) {
   }
 
   const provider = settings.provider || "openai";
-  const response = await fetch(url, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      apikey: CONFIG.supabaseAnonKey,
-    },
-    body: JSON.stringify({
-      type: "criteria_extraction",
-      provider,
-      model: settings.model || DEFAULT_MODEL_BY_PROVIDER[provider] || DEFAULT_MODEL_BY_PROVIDER.openai,
-      payload: {
-        document: {
-          filename: input.filename || "criteria",
-          mime_type: input.mimeType || "application/pdf",
-          data_base64: input.fileBase64,
-        },
+  const data = await callEdgeFunction(url, {
+    type: "criteria_extraction",
+    provider,
+    model: settings.model || DEFAULT_MODEL_BY_PROVIDER[provider] || DEFAULT_MODEL_BY_PROVIDER.openai,
+    payload: {
+      document: {
+        filename: input.filename || "criteria",
+        mime_type: input.mimeType || "application/pdf",
+        data_base64: input.fileBase64,
       },
-    }),
+    },
   });
-
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    if (response.status === 401) {
-      throw new Error("Edge Function 인증에서 401이 발생했습니다. ai-review 함수의 verify_jwt=false 설정을 반영해 다시 배포해주세요.");
-    }
-    throw new Error(data.error || "기준 문서 추출 요청에 실패했습니다.");
-  }
   return String(data.result?.extracted_text || data.extracted_text || "").trim();
 }

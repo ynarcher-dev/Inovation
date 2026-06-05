@@ -2,6 +2,17 @@
 import { STORAGE_KEYS, load, save, uuid } from "./storage.mock.js";
 import { FOUNDER_EDITABLE_STATUSES } from "../../domains/status.js";
 import { generateChecklist, generateWarnings } from "../../domains/expense/rules-engine.js";
+import {
+  nextSubmitStatus,
+  nextReviewStatus,
+  EXPENSE_REVIEW_TRANSITIONS,
+  isInitialCommitStatus,
+  computeExpenseTotals,
+  validateExpenseFields,
+  validateBudgetWithinLimit,
+  ExpenseValidationError,
+  firstErrorMessage,
+} from "../../domains/expense/expense-validation.js";
 import { computeExpenseBudgetCheck } from "./_shared.mock.js";
 import { resolveBusinessPlanItemLabel } from "./company.mock.js";
 import { mockAdminCanAccessProgram } from "./admin-account.mock.js";
@@ -54,6 +65,7 @@ export function mockGetExpenseDetail(id) {
 
 export function mockCreateExpense(input, user) {
   const expenses = load(STORAGE_KEYS.EXPENSES, []);
+  const totals = computeExpenseTotals(input);
   const newExpense = {
     id: uuid(),
     company_id: input.company_id,
@@ -62,9 +74,9 @@ export function mockCreateExpense(input, user) {
     title: input.title,
     expense_type: input.expense_type,
     budget_category: input.budget_category,
-    amount_supply: Number(input.amount_supply || 0),
-    vat_amount: Number(input.vat_amount || 0),
-    total_amount: Number(input.amount_supply || 0) + Number(input.vat_amount || 0),
+    amount_supply: totals.amount_supply,
+    vat_amount: totals.vat_amount,
+    total_amount: totals.total_amount,
     vendor_name: input.vendor_name || "",
     vendor_business_number: input.vendor_business_number || "",
     purpose: input.purpose || "",
@@ -104,7 +116,10 @@ export function mockUpdateExpenseRequest(id, input) {
   if (input.advance_payment_requested !== undefined) next.advance_payment_requested = !!input.advance_payment_requested;
   if (input.amount_supply !== undefined) next.amount_supply = Number(input.amount_supply || 0);
   if (input.vat_amount !== undefined) next.vat_amount = Number(input.vat_amount || 0);
-  next.total_amount = Number(next.amount_supply || 0) + Number(next.vat_amount || 0);
+  const totals = computeExpenseTotals(next);
+  next.amount_supply = totals.amount_supply;
+  next.vat_amount = totals.vat_amount;
+  next.total_amount = totals.total_amount;
   next.updated_at = new Date().toISOString();
   expenses[idx] = next;
   save(STORAGE_KEYS.EXPENSES, expenses);
@@ -118,15 +133,31 @@ export function mockSubmitExpenseRequest(id) {
   const expenses = load(STORAGE_KEYS.EXPENSES, []);
   const idx = expenses.findIndex((e) => e.id === id);
   if (idx === -1) throw new Error("지출 신청을 찾을 수 없습니다.");
-  const current = expenses[idx].status;
-  const transitions = {
-    draft: "pre_approval_submitted",
-    pre_approval_revision: "pre_approval_submitted",
-    pre_approved: "final_approval_submitted",
-    final_approval_revision: "final_approval_submitted",
-  };
-  const nextStatus = transitions[current];
+  const expense = expenses[idx];
+  const current = expense.status;
+
+  // 1) 상태 전이 가능 여부(도메인 단일 소스)
+  const nextStatus = nextSubmitStatus(current);
   if (!nextStatus) throw new Error("현재 상태에서는 제출할 수 없습니다.");
+
+  // 2) 필드 검증 — 화면을 우회해 호출해도 잘못된 신청은 제출되지 않는다.
+  const { valid, errors } = validateExpenseFields(expense, { forSubmit: true });
+  if (!valid) {
+    throw new ExpenseValidationError(firstErrorMessage(errors), errors);
+  }
+
+  // 3) 예산 초과 검증 — 처음 예산을 점유하는 제출(사전승인 제출) 시점에 확인.
+  if (isInitialCommitStatus(nextStatus)) {
+    const check = computeExpenseBudgetCheck(expense);
+    const budget = validateBudgetWithinLimit({
+      requested: check.requested,
+      remainingBefore: check.remaining_before,
+    });
+    if (!budget.valid) {
+      throw new ExpenseValidationError(budget.error, { amount_supply: budget.error });
+    }
+  }
+
   const now = new Date().toISOString();
   expenses[idx].status = nextStatus;
   if (nextStatus === "pre_approval_submitted") expenses[idx].submitted_at = now;
@@ -140,25 +171,14 @@ export function mockSubmitExpenseRequest(id) {
 //  - 검토 결과는 승인/보완요청 두 가지다(반려 없음).
 //  - 보완요청 시 검토 의견을 필수로 요구한다.
 export function mockReviewExpenseRequest(id, decision, comment, reviewerId) {
-  const decisionMap = {
-    pre_approval_submitted: {
-      approved: "pre_approved",
-      revision_requested: "pre_approval_revision",
-    },
-    final_approval_submitted: {
-      approved: "final_approved",
-      revision_requested: "final_approval_revision",
-    },
-  };
-
   const expenses = load(STORAGE_KEYS.EXPENSES, []);
   const idx = expenses.findIndex((e) => e.id === id);
   if (idx === -1) throw new Error("지출 신청을 찾을 수 없습니다.");
 
   const current = expenses[idx].status;
-  const branch = decisionMap[current];
-  if (!branch) throw new Error("현재 상태는 검토 대상이 아닙니다.");
-  const nextStatus = branch[decision];
+  // 상태 전이 규칙은 founder 제출과 함께 도메인 단일 소스를 공유한다.
+  if (!EXPENSE_REVIEW_TRANSITIONS[current]) throw new Error("현재 상태는 검토 대상이 아닙니다.");
+  const nextStatus = nextReviewStatus(current, decision);
   if (!nextStatus) throw new Error("현재 단계에서 허용되지 않는 검토 결과입니다.");
   if (decision !== "approved" && !String(comment || "").trim()) {
     throw new Error("보완 요청 시에는 검토 의견을 입력해야 합니다.");
