@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="ko">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AI 관리</title>
+  <link rel="stylesheet" href="../src/styles.css">
+</head>
+
+<body>
+  <div class="app-shell">
+    <aside class="sidebar"></aside>
+    <main class="main">
+      <div class="topbar">
+        <div>
+          <h1>AI 관리</h1>
+          <p class="muted">AI 검토 기능 노출 여부와 운영 설정을 관리합니다.</p>
+        </div>
+      </div>
+      <p class="error" data-error hidden></p>
+
+      <section class="card">
+        <h2>AI 기능 상태</h2>
+        <form class="form" data-ai-settings-form>
+          <label class="ai-toggle-row">
+            <input type="checkbox" data-ai-enabled>
+            <span class="ai-toggle-switch" aria-hidden="true"></span>
+            <span>
+              <strong data-ai-enabled-label>비활성화</strong>
+              <span class="muted">꺼두면 창업자/관리자 화면의 AI 검토 버튼과 결과 UI가 숨겨집니다.</span>
+            </span>
+          </label>
+
+          <div class="grid grid-2">
+            <div class="field">
+              <label for="ai-provider">Provider</label>
+              <select id="ai-provider" data-ai-provider>
+                <option value="openai">OpenAI</option>
+                <option value="anthropic">Anthropic</option>
+                <option value="google">Google</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="ai-model">Model</label>
+              <input id="ai-model" data-ai-model placeholder="예: gpt-4.1-mini">
+            </div>
+          </div>
+
+          <div class="field">
+            <label for="ai-edge-function-url">Supabase Edge Function URL</label>
+            <input id="ai-edge-function-url" data-ai-edge-function-url placeholder="예: /functions/v1/ai-review">
+          </div>
+
+          <div class="grid grid-2">
+            <div class="field">
+              <label for="ai-key-status">API Key 등록 상태</label>
+              <select id="ai-key-status" data-ai-key-configured>
+                <option value="false">미등록</option>
+                <option value="true">등록됨</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="ai-key-hint">Key 표시 힌트</label>
+              <input id="ai-key-hint" data-ai-key-hint placeholder="예: sk-...abcd">
+            </div>
+          </div>
+
+          <p class="notice">
+            API Key 원문은 브라우저나 Supabase public table에 저장하지 마세요. 실제 운영에서는 Supabase Edge Function Secrets에 저장하고, 이 화면은 등록 상태와 모델 설정만 관리하는 방식이 안전합니다.
+          </p>
+
+          <div class="field">
+            <label for="ai-memo">운영 메모</label>
+            <textarea id="ai-memo" data-ai-memo rows="4" placeholder="비용 승인 전 비활성화, 승인 후 재활성화 등"></textarea>
+          </div>
+
+          <div class="actions">
+            <button class="button" type="submit">저장</button>
+          </div>
+        </form>
+      </section>
+    </main>
+  </div>
+  <script type="module" src="../src/pages/admin/ai-management.js"></script>
+</body>
+
+</html>

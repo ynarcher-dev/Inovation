@@ -44,3 +44,8 @@ export {
   mockResetAdminPassword,
   mockUpdateAdminPrograms,
 } from "./services/mock/admin-account.mock.js";
+
+export {
+  mockGetAiSettings,
+  mockUpdateAiSettings,
+} from "./services/mock/ai-settings.mock.js";

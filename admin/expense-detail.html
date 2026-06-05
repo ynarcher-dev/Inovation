@@ -23,11 +23,7 @@
               <h2>신청 정보</h2>
               <div data-summary></div>
             </section>
-            <section class="card">
-              <h2>검토 요약</h2>
-              <div data-budget-check></div>
-              <div data-warnings class="budget-warnings"></div>
-            </section>
+            <section class="card review-section" data-reviews hidden></section>
             <section class="card">
               <h2 data-review-title>검토 처리</h2>
               <p class="empty" data-review-empty hidden>현재 검토 대상 상태가 아닙니다.</p>
@@ -45,16 +41,8 @@
             </section>
           </div>
           <div class="detail-side">
-            <aside class="card">
-              <h2>제출 서류 <span class="muted" style="font-size:12px;" data-doc-rate></span></h2>
-              <div data-checklist></div>
-              <div data-advance-docs></div>
-              <div data-other-evidence-docs></div>
-              <h2>AI 분석 <span class="muted" style="font-size:12px">(참고용)</span></h2>
-              <div data-ai></div>
-              <h2>검토 이력</h2>
-              <div data-reviews></div>
-            </aside>
+            <aside class="card" data-doc-panel-pre></aside>
+            <aside class="card" data-doc-panel-final></aside>
           </div>
         </div>
       </main>

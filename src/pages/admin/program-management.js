@@ -13,9 +13,16 @@ import {
   updateGuidanceItem,
   uploadGuidanceFile,
   getGuidanceDownloadUrl,
+  getBudgetDocumentRequirements,
+  createBudgetDocumentRequirement,
+  updateBudgetDocumentRequirement,
+  deleteBudgetDocumentRequirement,
+  getProgramAiCriteriaDocument,
+  uploadProgramAiCriteriaDocument,
+  deleteProgramAiCriteriaDocument,
 } from "../../api.js";
 import { requireRole } from "../../auth.js";
-import { escapeHtml } from "../../utils.js";
+import { escapeHtml, formatDate } from "../../utils.js";
 
 let programs = [];
 let selectedIds = [null, null, null, null];
@@ -24,6 +31,8 @@ let currentProgramId = null;
 let currentLabels = ["depth.1", "depth.2", "depth.3", "depth.4"];
 let guidanceItems = [];
 let currentUser = null;
+let editingReqId = null;   // 첨부서류 요구사항 인라인 편집 대상 (null = 편집 안 함)
+let showReqAddForm = false; // 첨부서류 추가 폼 표시 여부
 
 function parseLevelLabels(levelLabels) {
   if (!levelLabels) return ["depth.1"];
@@ -132,6 +141,225 @@ function render(container) {
     </div>
   `;
   attachBudgetEvents(container);
+  // 선택한 예산 항목이 바뀔 때마다 첨부서류 설정 패널을 갱신한다.
+  renderDocRequirements();
+}
+
+// 현재 패널에서 가장 깊게 선택된 예산 비목 id (없으면 null).
+function getSelectedBudgetId() {
+  for (let i = selectedIds.length - 1; i >= 0; i--) {
+    if (selectedIds[i]) return selectedIds[i];
+  }
+  return null;
+}
+
+const PHASE_LABELS = { pre: "사전승인", final: "최종승인", both: "공통" };
+
+// 첨부서류 추가/수정 공용 폼 마크업. values 가 있으면 편집 모드(수정), 없으면 추가 모드.
+function requirementFormHtml(values = {}) {
+  const v = {
+    title: values.title || "",
+    description: values.description || "",
+    phase: values.phase || "both",
+    required: values.required === undefined ? true : !!values.required,
+    ai: values.ai_review_enabled === undefined ? true : !!values.ai_review_enabled,
+    sort_order: values.sort_order ?? "",
+  };
+  const opt = (val, label, sel) => `<option value="${val}" ${sel ? "selected" : ""}>${label}</option>`;
+  return `
+    <div class="doc-req-form">
+      <div class="doc-req-form-grid">
+        <label class="doc-req-field doc-req-field--wide">
+          <span>서류명</span>
+          <input data-req-title value="${escapeHtml(v.title)}" placeholder="예: 견적서">
+        </label>
+        <label class="doc-req-field doc-req-field--wide">
+          <span>설명</span>
+          <input data-req-desc value="${escapeHtml(v.description)}" placeholder="예: 거래처가 발행한 견적서를 첨부해주세요.">
+        </label>
+        <label class="doc-req-field">
+          <span>제출 단계</span>
+          <select data-req-phase>
+            ${opt("pre", "사전승인", v.phase === "pre")}
+            ${opt("final", "최종승인", v.phase === "final")}
+            ${opt("both", "공통", v.phase === "both")}
+          </select>
+        </label>
+        <label class="doc-req-field">
+          <span>필수 여부</span>
+          <select data-req-required>
+            ${opt("true", "필수첨부", v.required)}
+            ${opt("false", "선택첨부", !v.required)}
+          </select>
+        </label>
+        <label class="doc-req-field">
+          <span>AI 검토</span>
+          <select data-req-ai>
+            ${opt("true", "사용", v.ai)}
+            ${opt("false", "미사용", !v.ai)}
+          </select>
+        </label>
+        <label class="doc-req-field">
+          <span>정렬 순서</span>
+          <input data-req-sort type="number" value="${escapeHtml(String(v.sort_order))}" placeholder="자동">
+        </label>
+      </div>
+      <div class="doc-req-form-actions">
+        <button class="button small" type="button" data-req-save>저장</button>
+        <button class="button small secondary" type="button" data-req-cancel>취소</button>
+      </div>
+    </div>`;
+}
+
+function readRequirementForm(root) {
+  return {
+    title: root.querySelector("[data-req-title]").value.trim(),
+    description: root.querySelector("[data-req-desc]").value.trim(),
+    phase: root.querySelector("[data-req-phase]").value,
+    required: root.querySelector("[data-req-required]").value === "true",
+    ai_review_enabled: root.querySelector("[data-req-ai]").value === "true",
+    sort_order: root.querySelector("[data-req-sort]").value === ""
+      ? undefined : Number(root.querySelector("[data-req-sort]").value),
+  };
+}
+
+function renderDocRequirements() {
+  const panel = document.querySelector("[data-doc-req-panel]");
+  if (!panel) return;
+
+  const budgetId = getSelectedBudgetId();
+  if (!budgetId) {
+    panel.innerHTML = `<div class="doc-req-empty muted">예산 항목을 선택하면 해당 항목의 첨부서류를 설정할 수 있습니다.</div>`;
+    return;
+  }
+
+  const node = budgetItems.find((b) => b.id === budgetId);
+  const requirements = getBudgetDocumentRequirements(budgetId);
+
+  const rows = requirements.length
+    ? requirements.map((r) => {
+        if (editingReqId === r.id) {
+          return `<div class="doc-req-row doc-req-row--editing" data-req-edit-row="${escapeHtml(r.id)}">
+            ${requirementFormHtml(r)}
+          </div>`;
+        }
+        const canDelete = !r.upload_count;
+        return `
+          <div class="doc-req-row ${r.active ? "" : "is-inactive"}" data-req-row="${escapeHtml(r.id)}">
+            <div class="doc-req-cell doc-req-cell--title">
+              <strong>${escapeHtml(r.title)}</strong>
+              ${r.description ? `<span class="muted caption">${escapeHtml(r.description)}</span>` : ""}
+            </div>
+            <span class="doc-req-cell doc-req-badge">${PHASE_LABELS[r.phase] || r.phase}</span>
+            <span class="doc-req-cell doc-req-badge ${r.required ? "is-required" : ""}">${r.required ? "필수" : "선택"}</span>
+            <span class="doc-req-cell doc-req-badge">AI ${r.ai_review_enabled ? "사용" : "미사용"}</span>
+            <span class="doc-req-cell doc-req-badge ${r.active ? "is-active" : "is-off"}">${r.active ? "활성" : "비활성"}</span>
+            <div class="doc-req-cell doc-req-actions">
+              <button class="doc-req-link" type="button" data-req-editbtn="${escapeHtml(r.id)}">수정</button>
+              <button class="doc-req-link" type="button" data-req-toggle="${escapeHtml(r.id)}" data-active="${r.active}">${r.active ? "비활성화" : "활성화"}</button>
+              ${canDelete
+                ? `<button class="doc-req-link is-danger" type="button" data-req-delete="${escapeHtml(r.id)}">삭제</button>`
+                : `<span class="muted caption" title="업로드 이력이 있어 삭제 대신 비활성화만 가능합니다.">이력 있음</span>`}
+            </div>
+          </div>`;
+      }).join("")
+    : `<div class="doc-req-empty muted">등록된 첨부서류가 없습니다.</div>`;
+
+  panel.innerHTML = `
+    <div class="doc-req-head">
+      <h3>첨부서류 설정 <span class="muted">— ${escapeHtml(node?.title || "선택한 항목")}</span></h3>
+      ${showReqAddForm
+        ? ""
+        : `<button class="button small secondary" type="button" data-req-show-add>+ 첨부서류 추가</button>`}
+    </div>
+    <div class="doc-req-table-header">
+      <span>서류명</span><span>단계</span><span>필수</span><span>AI</span><span>상태</span><span></span>
+    </div>
+    <div class="doc-req-list">${rows}</div>
+    ${showReqAddForm ? `<div data-req-add-root>${requirementFormHtml()}</div>` : ""}
+  `;
+
+  attachDocRequirementEvents(panel, budgetId);
+}
+
+function attachDocRequirementEvents(panel, budgetId) {
+  panel.querySelector("[data-req-show-add]")?.addEventListener("click", () => {
+    showReqAddForm = true;
+    editingReqId = null;
+    renderDocRequirements();
+    panel.querySelector("[data-req-title]")?.focus();
+  });
+
+  // 추가 폼 저장/취소
+  const addRoot = panel.querySelector("[data-req-add-root]");
+  if (addRoot) {
+    addRoot.querySelector("[data-req-cancel]").addEventListener("click", () => {
+      showReqAddForm = false;
+      renderDocRequirements();
+    });
+    addRoot.querySelector("[data-req-save]").addEventListener("click", async (e) => {
+      const input = readRequirementForm(addRoot);
+      if (!input.title) { addRoot.querySelector("[data-req-title]").focus(); return; }
+      await runWithErrorBoundary(async () => {
+        await createBudgetDocumentRequirement({
+          ...input,
+          support_program_id: currentProgramId,
+          support_program_budget_id: budgetId,
+          created_by: currentUser.id,
+        });
+        showReqAddForm = false;
+        renderDocRequirements();
+      }, { button: e.currentTarget });
+    });
+  }
+
+  // 인라인 편집 저장/취소
+  const editRow = panel.querySelector("[data-req-edit-row]");
+  if (editRow) {
+    const reqId = editRow.dataset.reqEditRow;
+    editRow.querySelector("[data-req-cancel]").addEventListener("click", () => {
+      editingReqId = null;
+      renderDocRequirements();
+    });
+    editRow.querySelector("[data-req-save]").addEventListener("click", async (e) => {
+      const input = readRequirementForm(editRow);
+      if (!input.title) { editRow.querySelector("[data-req-title]").focus(); return; }
+      await runWithErrorBoundary(async () => {
+        await updateBudgetDocumentRequirement(reqId, input);
+        editingReqId = null;
+        renderDocRequirements();
+      }, { button: e.currentTarget });
+    });
+  }
+
+  panel.querySelectorAll("[data-req-editbtn]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      editingReqId = btn.dataset.reqEditbtn;
+      showReqAddForm = false;
+      renderDocRequirements();
+    });
+  });
+
+  panel.querySelectorAll("[data-req-toggle]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const id = btn.dataset.reqToggle;
+      const isActive = btn.dataset.active === "true";
+      await runWithErrorBoundary(async () => {
+        await updateBudgetDocumentRequirement(id, { active: !isActive });
+        renderDocRequirements();
+      }, { button: btn });
+    });
+  });
+
+  panel.querySelectorAll("[data-req-delete]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      if (!confirm("이 첨부서류 요구사항을 삭제하시겠습니까?")) return;
+      await runWithErrorBoundary(async () => {
+        await deleteBudgetDocumentRequirement(btn.dataset.reqDelete);
+        renderDocRequirements();
+      }, { button: btn });
+    });
+  });
 }
 
 function attachBudgetEvents(container) {
@@ -189,6 +417,9 @@ function attachBudgetEvents(container) {
       const level = Number(el.dataset.itemLevel);
       selectedIds[level - 1] = id;
       for (let i = level; i < 4; i++) selectedIds[i] = null;
+      // 선택 항목이 바뀌면 첨부서류 편집/추가 상태를 초기화한다.
+      editingReqId = null;
+      showReqAddForm = false;
       render(container);
     });
   });
@@ -264,6 +495,85 @@ function attachBudgetEvents(container) {
       if (e.key === "Enter") panel.querySelector(`[data-confirm-panel-add="${level}"]`).click();
       else if (e.key === "Escape") panel.querySelector(`[data-cancel-panel-add="${level}"]`).click();
     });
+  });
+}
+
+const EXTRACTION_STATUS_LABELS = {
+  not_started: "추출 대기",
+  pending: "추출 중",
+  completed: "추출 완료",
+  failed: "추출 실패",
+};
+
+function renderAiCriteria() {
+  const root = document.querySelector("[data-ai-criteria]");
+  if (!root) return;
+  const doc = getProgramAiCriteriaDocument(currentProgramId);
+
+  const guideNote = `<p class="muted caption" style="margin-top:10px">공통 기준 문서가 등록되면 AI검토가 해당 사업의 지침을 함께 참고합니다. 기준 문서가 없을 경우 기본 항목 일치 여부만 검토합니다.</p>`;
+
+  if (!doc) {
+    root.innerHTML = `
+      <div class="ai-criteria-empty muted">등록된 공통 기준 문서가 없습니다.</div>
+      <label class="button small secondary" style="margin-top:12px;cursor:pointer">
+        📎 기준 문서 업로드<input type="file" hidden data-ai-criteria-upload>
+      </label>
+      ${guideNote}`;
+  } else {
+    root.innerHTML = `
+      <div class="ai-criteria-card">
+        <div class="ai-criteria-row">
+          <span class="ai-criteria-key">기준 문서명</span>
+          <span class="ai-criteria-val">${escapeHtml(doc.title)}</span>
+        </div>
+        <div class="ai-criteria-row">
+          <span class="ai-criteria-key">업로드 파일</span>
+          <span class="ai-criteria-val">
+            ${doc.link_url
+              ? `<button type="button" class="doc-req-link" data-ai-criteria-open>${escapeHtml(doc.original_filename || "파일 열기")}</button>`
+              : `<span class="muted">파일 없음</span>`}
+          </span>
+        </div>
+        <div class="ai-criteria-row">
+          <span class="ai-criteria-key">최근 업데이트</span>
+          <span class="ai-criteria-val">${formatDate(doc.updated_at)}</span>
+        </div>
+        <div class="ai-criteria-row">
+          <span class="ai-criteria-key">AI 기준 추출 상태</span>
+          <span class="ai-criteria-val doc-req-badge ${doc.extraction_status === "completed" ? "is-active" : ""}">${EXTRACTION_STATUS_LABELS[doc.extraction_status] || doc.extraction_status}</span>
+        </div>
+      </div>
+      <div class="ai-criteria-actions" style="margin-top:12px;display:flex;gap:8px">
+        <label class="button small secondary" style="cursor:pointer">
+          새 문서로 교체<input type="file" hidden data-ai-criteria-upload>
+        </label>
+        <button class="button small secondary" type="button" data-ai-criteria-delete style="color:#ef4444;border-color:#fca5a5">삭제</button>
+      </div>
+      ${guideNote}`;
+  }
+
+  root.querySelector("[data-ai-criteria-upload]")?.addEventListener("change", async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    await runWithErrorBoundary(async () => {
+      await uploadProgramAiCriteriaDocument(currentProgramId, file, currentUser);
+      renderAiCriteria();
+    }, {});
+  });
+
+  root.querySelector("[data-ai-criteria-open]")?.addEventListener("click", async (e) => {
+    await runWithErrorBoundary(async () => {
+      const url = await getGuidanceDownloadUrl(doc.link_url);
+      window.open(url, "_blank", "noopener,noreferrer");
+    }, { button: e.currentTarget });
+  });
+
+  root.querySelector("[data-ai-criteria-delete]")?.addEventListener("click", async (e) => {
+    if (!confirm("공통 AI 검토 기준 문서를 삭제하시겠습니까?")) return;
+    await runWithErrorBoundary(async () => {
+      await deleteProgramAiCriteriaDocument(doc.id);
+      renderAiCriteria();
+    }, { button: e.currentTarget });
   });
 }
 
@@ -372,6 +682,8 @@ try {
     currentProgramId = programId;
     currentLabels = parseLevelLabels(program?.level_labels);
     selectedIds = [null, null, null, null];
+    editingReqId = null;
+    showReqAddForm = false;
 
     const [budgets, guidance] = await Promise.all([
       getSupportProgramBudgets(programId),
@@ -386,6 +698,7 @@ try {
 
     render(budgetEl);
     renderGuidance();
+    renderAiCriteria();
   };
 
   programSelect.addEventListener("change", async () => {

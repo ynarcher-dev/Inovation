@@ -1,4 +1,4 @@
-﻿import { mountShell, runWithErrorBoundary, showError } from "../../app.js";
+﻿import { mountShell, runWithErrorBoundary, showError, updateAdminNavBadges } from "../../app.js";
 import { approveCompany, getAdminDashboard, rejectCompany } from "../../api.js";
 import { requireRole } from "../../auth.js";
 import { escapeHtml, formatDate } from "../../utils.js";
@@ -116,6 +116,7 @@ try {
       const pending = dashboard.companies.filter((company) => company.approval_status === "pending");
       document.querySelector("[data-pending-signups]").innerHTML = SignupTable(pending, { actions: true });
       renderAll();
+      updateAdminNavBadges();
 
       document.querySelectorAll("[data-approve-company]").forEach((button) => {
         button.addEventListener("click", async () => {

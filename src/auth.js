@@ -31,7 +31,7 @@ export function redirectByRole(role) {
   const isSubFolder = window.location.pathname.includes("/admin/") || window.location.pathname.includes("/founder/") || window.location.pathname.includes("/auth/");
   const base = isSubFolder ? "../" : "./";
   window.location.href = role === "admin" || role === "super_admin"
-    ? `${base}admin/dashboard.html`
+    ? `${base}admin/companies.html`
     : `${base}founder/dashboard.html`;
 }
 

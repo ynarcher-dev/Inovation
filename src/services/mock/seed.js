@@ -3,7 +3,7 @@ import { STORAGE_KEYS, save } from "./storage.mock.js";
 
 // localStorage 시드 데이터 버전. 데이터 구조가 바뀌면 올린다.
 // 버전이 다르면 mock 데이터를 재시드한다(개발용 로컬 데이터만 초기화).
-const DATA_VERSION = "7";
+const DATA_VERSION = "8";
 const DATA_VERSION_KEY = "mock_data_version";
 
 // Initialize Mock Data
@@ -266,6 +266,62 @@ export function initMockData() {
     { id: "guid-1", title: "사업비 집행 지침 안내", content: "사업비는 규정에 맞게 집행해야 합니다.", link_url: "storage:sample_manual.pdf", active: true, sort_order: 1, support_program_id: "prog-1" },
   ];
   save(STORAGE_KEYS.GUIDANCE, guidance);
+
+  // 8. 예산 항목별 커스텀 첨부서류 요구사항 (custom-document-requirements-plan.md §5.1)
+  //    b-1(일반수용비), b-2-2(CTO) 비목에 사전/최종 단계 서류를 시드한다.
+  const now = "2026-06-01T09:00:00Z";
+  const mkReq = (id, budgetId, title, phase, required, ai, sort, description = "") => ({
+    id, support_program_id: "prog-1", support_program_budget_id: budgetId,
+    title, description, phase, required, ai_review_enabled: ai, active: true,
+    sort_order: sort, created_by: "admin-uid", created_at: now, updated_at: now,
+  });
+  const docRequirements = [
+    mkReq("req-1", "b-1", "견적서", "pre", true, true, 10, "거래처가 발행한 견적서를 첨부해주세요."),
+    mkReq("req-2", "b-1", "계약서", "pre", true, true, 20, "거래처와 체결한 계약서를 첨부해주세요."),
+    mkReq("req-3", "b-1", "참고자료", "pre", false, false, 30, "필요 시 참고할 자료를 첨부해주세요."),
+    mkReq("req-4", "b-1", "세금계산서", "final", true, true, 40, "발행된 세금계산서를 첨부해주세요."),
+    mkReq("req-5", "b-1", "검수확인서", "final", true, true, 50, "용역/물품 검수 확인서를 첨부해주세요."),
+    mkReq("req-6", "b-1", "사업자등록증", "both", false, false, 60, "거래처 사업자등록증(공통)."),
+    mkReq("req-7", "b-2-2", "견적서", "pre", true, true, 10, "자문 견적서를 첨부해주세요."),
+    mkReq("req-8", "b-2-2", "세금계산서", "final", true, true, 20, "발행된 세금계산서를 첨부해주세요."),
+  ];
+  save(STORAGE_KEYS.DOC_REQUIREMENTS, docRequirements);
+
+  // 9. 운영사업 공통 AI 검토 기준 문서 (custom-document-requirements-plan.md §5.3)
+  const aiCriteria = [
+    {
+      id: "criteria-1", support_program_id: "prog-1", title: "사업비 집행 지침",
+      original_filename: "사업비_집행_지침.pdf", mime_type: "application/pdf", size_bytes: 1240000,
+      link_url: "storage:sample_criteria.pdf",
+      extracted_criteria_text: "사업비 집행 시 거래처명, 공급가액, 발행일자, 증빙 적합성을 확인한다.",
+      extraction_status: "completed", active: true, uploaded_by: "admin-uid",
+      created_at: now, updated_at: now,
+    },
+  ];
+  save(STORAGE_KEYS.AI_CRITERIA, aiCriteria);
+
+  // 10. 창업자 업로드 파일 시드 — exp-1(사전승인 완료)의 사전승인 서류를 제출 완료로 둔다.
+  const uploadedFiles = [
+    {
+      id: "ufile-1", expense_request_id: "exp-1", requirement_id: "req-1",
+      support_program_budget_id: "b-1", phase: "pre",
+      original_filename: "견적서_디자인나라.pdf", mime_type: "application/pdf", size_bytes: 412000,
+      link_url: "storage:sample_quote.pdf", uploaded_by: "founder-uid",
+      ai_review_status: "passed",
+      ai_review_comment: "제출 가능:\n업로드된 파일에서 주요 항목이 확인되었습니다.\n관리자 최종 검토 전 참고용 결과입니다.",
+      ai_check_result: { vendor_name: "디자인나라", amount: 4500000, criteria_applied: true },
+      created_at: "2026-05-10T11:00:00Z",
+    },
+    {
+      id: "ufile-2", expense_request_id: "exp-1", requirement_id: "req-2",
+      support_program_budget_id: "b-1", phase: "pre",
+      original_filename: "계약서.pdf", mime_type: "application/pdf", size_bytes: 388000,
+      link_url: "storage:sample_contract.pdf", uploaded_by: "founder-uid",
+      ai_review_status: "not_requested", ai_review_comment: null, ai_check_result: {},
+      created_at: "2026-05-10T11:05:00Z",
+    },
+  ];
+  save(STORAGE_KEYS.UPLOADED_FILES, uploadedFiles);
 
   localStorage.setItem(DATA_VERSION_KEY, DATA_VERSION);
 }

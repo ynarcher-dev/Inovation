@@ -23,6 +23,8 @@ import {
   mockDeleteAdminAccount,
   mockResetAdminPassword,
   mockUpdateAdminPrograms,
+  mockGetAiSettings,
+  mockUpdateAiSettings,
 } from "./mockApi.js";
 
 import {
@@ -36,6 +38,7 @@ import {
   mockGetAdminCompanyDetail,
   mockApproveCompany,
   mockRejectCompany,
+  mockResetFounderPassword,
   mockReviewBudgetSubmission,
   mockUpsertCompanyBudgetAllocation,
   mockUpdateCompanySupportTotal,
@@ -50,6 +53,22 @@ import {
   mockDeleteUploadedFile,
   mockUpdateFounderProfile,
   mockUpdateBusinessPlan,
+  mockGetBudgetDocumentRequirements,
+  mockCreateBudgetDocumentRequirement,
+  mockUpdateBudgetDocumentRequirement,
+  mockDeactivateBudgetDocumentRequirement,
+  mockDeleteBudgetDocumentRequirement,
+  mockGetProgramAiCriteriaDocument,
+  mockUploadProgramAiCriteriaDocument,
+  mockExtractProgramAiCriteria,
+  mockDeleteProgramAiCriteriaDocument,
+  mockGetExpenseDocumentRequirements,
+  mockUploadExpenseDocumentFile,
+  mockDeleteExpenseDocumentFile,
+  mockRequestAiDocumentReview,
+  mockRequestAiBatchReview,
+  mockSetExpenseDocumentUserReview,
+  mockValidateRequiredDocuments,
 } from "./mockApi2.js";
 
 // Initialize Mock Storage Data on load
@@ -75,6 +94,9 @@ export const deleteAdminAccount = mockDeleteAdminAccount;
 export const resetAdminPassword = mockResetAdminPassword;
 export const updateAdminPrograms = mockUpdateAdminPrograms;
 
+export const getAiSettings = mockGetAiSettings;
+export const updateAiSettings = mockUpdateAiSettings;
+
 export const getGuidanceItems = mockGetGuidanceItems;
 export const createGuidanceItem = mockCreateGuidanceItem;
 export const updateGuidanceItem = mockUpdateGuidanceItem;
@@ -95,6 +117,7 @@ export const getAdminDashboard = mockGetAdminDashboard;
 export const getAdminCompanyDetail = mockGetAdminCompanyDetail;
 export const approveCompany = mockApproveCompany;
 export const rejectCompany = mockRejectCompany;
+export const resetFounderPassword = mockResetFounderPassword;
 export const reviewBudgetSubmission = mockReviewBudgetSubmission;
 export const upsertCompanyBudgetAllocation = mockUpsertCompanyBudgetAllocation;
 export const updateCompanySupportTotal = mockUpdateCompanySupportTotal;
@@ -105,6 +128,57 @@ export const createExpense = mockCreateExpense;
 export const updateExpenseRequest = mockUpdateExpenseRequest;
 export const submitExpenseRequest = mockSubmitExpenseRequest;
 export const reviewExpenseRequest = mockReviewExpenseRequest;
+
+// ----------------------------------------------------
+// 예산 항목별 커스텀 첨부서류 / 운영사업 공통 AI 검토 기준 문서 / 창업자 업로드·AI검토
+// (custom-document-requirements-plan.md §6)
+// ----------------------------------------------------
+export const getBudgetDocumentRequirements = mockGetBudgetDocumentRequirements;
+export const createBudgetDocumentRequirement = mockCreateBudgetDocumentRequirement;
+export const updateBudgetDocumentRequirement = mockUpdateBudgetDocumentRequirement;
+export const deactivateBudgetDocumentRequirement = mockDeactivateBudgetDocumentRequirement;
+export const deleteBudgetDocumentRequirement = mockDeleteBudgetDocumentRequirement;
+
+export const getProgramAiCriteriaDocument = mockGetProgramAiCriteriaDocument;
+export const extractProgramAiCriteria = mockExtractProgramAiCriteria;
+export const deleteProgramAiCriteriaDocument = mockDeleteProgramAiCriteriaDocument;
+
+export const getExpenseDocumentRequirements = mockGetExpenseDocumentRequirements;
+export const deleteExpenseDocumentFile = mockDeleteExpenseDocumentFile;
+export const requestAiDocumentReview = mockRequestAiDocumentReview;
+export const requestAiBatchDocumentReview = mockRequestAiBatchReview;
+export const validateRequiredDocuments = mockValidateRequiredDocuments;
+
+// 창업자 'AI 보완 → 이상없음' 소명 처리/취소. AI 결과는 보존하고 소명만 덧붙인다.
+export function setExpenseDocumentUserReview(fileId, { cleared, comment, user }) {
+  return mockSetExpenseDocumentUserReview(fileId, { cleared, comment, user });
+}
+
+// 운영사업 공통 AI 기준 문서 업로드: 실제 파일을 보관(link_url)한 뒤 메타데이터를 등록한다.
+export async function uploadProgramAiCriteriaDocument(programId, file, user) {
+  const upload = await uploadFile(file);
+  return mockUploadProgramAiCriteriaDocument(programId, {
+    title: file.name,
+    original_filename: upload.original_filename,
+    mime_type: file.type,
+    size_bytes: file.size,
+    link_url: upload.link_url,
+    uploaded_by: user?.id || null,
+  });
+}
+
+// 창업자 첨부서류 업로드: 실제 파일을 보관(link_url)한 뒤 요구사항에 연결한다.
+export async function uploadExpenseDocumentFile(expenseRequestId, requirement, phase, file, user) {
+  const upload = await uploadFile(file);
+  return mockUploadExpenseDocumentFile(expenseRequestId, requirement.id, phase, {
+    support_program_budget_id: requirement.support_program_budget_id || null,
+    original_filename: upload.original_filename,
+    mime_type: file.type,
+    size_bytes: file.size,
+    link_url: upload.link_url,
+    uploaded_by: user?.id || null,
+  });
+}
 
 // ----------------------------------------------------
 // File Upload / Download (mock: 실제 첨부 파일을 dataURL 로 보관·복원)

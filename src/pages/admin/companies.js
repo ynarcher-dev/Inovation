@@ -5,9 +5,30 @@ import { escapeHtml, formatCurrency, formatDate } from "../../utils.js";
 import { getRound1StatusLabel, getRound2StatusLabel, isChangeStatus } from "../../domains/budget/budget-status.js";
 import { FilterToolbar, bindFilters, fillFilterSelect, readFilters } from "../../components/admin/FilterToolbar.js";
 
+// 예산 승인 완료로 보는 상태
+const BUDGET_APPROVED_STATUSES = ["budget_approved", "change_approved"];
+
 // 1차 예산 필터 키: change_* 단계는 1차가 이미 승인된 이후이므로 budget_approved 로 묶는다.
 const round1KeyOf = (company) =>
   isChangeStatus(company.budget_status) ? "budget_approved" : (company.budget_status || "not_submitted");
+
+// ── 전체 통계 ────────────────────────────────────────
+function renderStatsSection({ companies, companyCount }) {
+  const signupApproved = companies.filter((c) => c.approval_status === "approved").length;
+  const round1Approved = companies.filter((c) => BUDGET_APPROVED_STATUSES.includes(c.budget_status)).length;
+  const round2Approved = companies.filter((c) => c.round2Status === "approved").length;
+
+  const cards = [
+    { label: "전체 기업 수", value: companyCount ?? companies.length },
+    { label: "가입 승인 완료 기업 수", value: signupApproved },
+    { label: "1차 예산 승인 완료 기업 수", value: round1Approved },
+    { label: "2차 예산 승인 완료 기업 수", value: round2Approved },
+  ];
+
+  document.querySelector("[data-stats-section]").innerHTML = cards
+    .map((card) => `<div class="card metric"><span>${escapeHtml(card.label)}</span><strong>${card.value}</strong></div>`)
+    .join("");
+}
 
 const APPROVAL_STATUS_OPTIONS = [
   { value: "all", label: "전체 가입 상태" },
@@ -107,6 +128,7 @@ try {
   const user = await requireRole(["admin", "super_admin"]);
   if (user) {
     let dashboard = await getAdminDashboard();
+    renderStatsSection(dashboard);
     const container = document.querySelector("[data-company-table]");
     const toolbar = document.querySelector("[data-company-toolbar]");
     toolbar.innerHTML = FilterToolbar({

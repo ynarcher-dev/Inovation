@@ -6,11 +6,35 @@ import {
   submitExpenseRequest,
   getExpenseDetail,
   getFounderDashboard,
+  getBudgetDocumentRequirements,
+  getExpenseDocumentRequirements,
+  uploadExpenseDocumentFile,
+  deleteExpenseDocumentFile,
+  requestAiBatchDocumentReview,
+  setExpenseDocumentUserReview,
+  downloadStoredFile,
+  validateRequiredDocuments,
+  getAiSettings,
 } from "../../api.js";
 import { hasApprovedBudget } from "../../domains/budget/budget-status.js";
-import { FOUNDER_EDITABLE_STATUSES, COMMITTED_STATUSES } from "../../domains/status.js";
+import { FOUNDER_EDITABLE_STATUSES, COMMITTED_STATUSES, getSubmitDocumentPhase } from "../../domains/status.js";
 import { getExpenseTypesForBudgetCategory } from "../../domains/expense/rules-engine.js";
+import { renderDocumentPhasePanel, openAiReviewModal } from "../../components/expense/DocumentPhasePanel.js";
 import { escapeHtml, formatNumber, getQueryParam, parseNumber } from "../../utils.js";
+
+// 단계(phase) 매칭: 사전승인(pre)은 pre+both, 최종승인(final)은 final+both 서류.
+function matchesPhase(reqPhase, phase) {
+  if (phase === "pre") return reqPhase === "pre" || reqPhase === "both";
+  if (phase === "final") return reqPhase === "final" || reqPhase === "both";
+  return true;
+}
+
+// 선택한 예산 비목의 활성 첨부서류 요구사항을 단계별로 조회한다(미리보기·검증용).
+function activeRequirementsFor(budgetId, phase) {
+  if (!budgetId) return [];
+  return getBudgetDocumentRequirements(budgetId)
+    .filter((r) => r.active && matchesPhase(r.phase, phase));
+}
 
 let planItems = [];
 
@@ -175,6 +199,7 @@ try {
   const user = await requireRole(["founder"]);
   if (user) {
     const { budgetSummary, company } = await getFounderDashboard();
+    const aiSettings = await getAiSettings();
     if (company?.approval_status !== "approved" || !hasApprovedBudget(company?.budget_status)) {
       window.alert("예산안 승인 완료 후 지출 신청을 생성할 수 있습니다.");
       window.location.href = "dashboard.html";
@@ -198,6 +223,143 @@ try {
       prefillForm(detail.expense);
       applyEditModeCopy(editStatus);
     }
+
+    // ----------------------------------------------------
+    // 첨부서류: 작성 단계에서도 인라인 업로드/AI검토를 지원한다.
+    // 파일은 expense_request_id 에 묶이므로, 첫 첨부 시 임시저장(draft)을 자동 생성해 id 를 확보한다.
+    // ----------------------------------------------------
+    const pickFile = () => new Promise((resolve) => {
+      const input = document.createElement("input");
+      input.type = "file";
+      input.onchange = () => resolve(input.files[0] || null);
+      input.click();
+    });
+
+    // 현재 폼 값을 저장한다. editId 가 없으면 draft 를 새로 만들고 URL 을 ?id= 로 바꿔 동일 건을 이어서 편집한다.
+    const persist = async (inputVal) => {
+      if (editId) {
+        await updateExpenseRequest(editId, inputVal);
+        return editId;
+      }
+      const data = await createExpense(inputVal, user);
+      editId = data.id;
+      editStatus = editStatus || "draft";
+      editOwnAmount = Number(inputVal.amount_supply || 0);
+      history.replaceState(null, "", `expense-new.html?id=${encodeURIComponent(editId)}`);
+      return editId;
+    };
+
+    // 첨부를 위해 draft 가 보장된 id 를 반환한다(없으면 생성). 예산 항목 미선택 시 막는다.
+    const ensureDraft = async () => {
+      if (!getSelectedBusinessPlanItem()) {
+        window.alert("사업계획서 항목을 먼저 선택해주세요.");
+        return null;
+      }
+      return persist(readInput(company.id));
+    };
+
+    const renderDocSection = () => {
+      const container = document.querySelector("[data-doc-preview]");
+      if (!container) return;
+      const planItem = getSelectedBusinessPlanItem();
+      const phase = getSubmitDocumentPhase(editStatus || "draft") || "pre";
+      const phaseLabel = phase === "final" ? "최종승인" : "사전승인";
+
+      if (!planItem) {
+        container.innerHTML = `<h2>필요 첨부 서류</h2><p class="muted">예산 항목을 선택하면 필요한 첨부서류를 안내합니다.</p>`;
+        return;
+      }
+      // draft 가 있으면 업로드 파일이 붙은 요구사항을, 없으면 예산 항목 기준 요구사항(빈 첨부)을 보여준다.
+      const requirements = editId
+        ? getExpenseDocumentRequirements(editId, phase)
+        : activeRequirementsFor(planItem.support_program_budget_id, phase);
+      if (!requirements.length) {
+        container.innerHTML = `<h2>필요 첨부 서류 <span class="muted" style="font-weight:500">— ${phaseLabel} 단계</span></h2><p class="muted">이 예산 항목에는 ${phaseLabel} 단계 첨부서류가 설정되어 있지 않습니다.</p>`;
+        return;
+      }
+      renderDocumentPhasePanel(container, {
+        phase,
+        title: `필요 첨부 서류 — ${phaseLabel} 단계`,
+        requirements,
+        editable: true,
+        mode: "founder",
+        aiEnabled: aiSettings.enabled,
+      });
+      attachDocEvents(container, phase, requirements);
+    };
+
+    const attachDocEvents = (container, phase, requirements) => {
+      const doUpload = async (reqId, button) => {
+        const req = requirements.find((r) => r.id === reqId);
+        if (!req) return;
+        const file = await pickFile();
+        if (!file) return;
+        await runWithErrorBoundary(async () => {
+          const targetId = await ensureDraft();
+          if (!targetId) return;
+          await uploadExpenseDocumentFile(targetId, req, phase, file, user);
+          renderDocSection();
+        }, { button });
+      };
+
+      container.querySelectorAll("[data-doc-upload]").forEach((btn) =>
+        btn.addEventListener("click", () => doUpload(btn.dataset.docUpload, btn)));
+      container.querySelectorAll("[data-doc-replace]").forEach((btn) =>
+        btn.addEventListener("click", () => doUpload(btn.dataset.docReplace, btn)));
+
+      container.querySelectorAll("[data-doc-delete]").forEach((btn) =>
+        btn.addEventListener("click", async () => {
+          if (!window.confirm("첨부 파일을 삭제하시겠습니까?")) return;
+          await runWithErrorBoundary(async () => {
+            await deleteExpenseDocumentFile(btn.dataset.docDelete);
+            renderDocSection();
+          }, { button: btn });
+        }));
+
+      container.querySelector("[data-doc-batch-review]")?.addEventListener("click", async (e) => {
+        await runWithErrorBoundary(async () => {
+          const { reviewed } = await requestAiBatchDocumentReview(editId, phase);
+          renderDocSection();
+          if (!reviewed) window.alert("AI검토할 업로드 파일이 없습니다.");
+        }, { button: e.currentTarget });
+      });
+
+      container.querySelectorAll("[data-doc-open]").forEach((btn) =>
+        btn.addEventListener("click", async () => {
+          const req = requirements.find((r) => r.file?.id === btn.dataset.docOpen);
+          await runWithErrorBoundary(async () => {
+            await downloadStoredFile(req?.file?.link_url, req?.file?.original_filename);
+          }, { button: btn });
+        }));
+
+      container.querySelectorAll("[data-doc-ai-comment]").forEach((btn) =>
+        btn.addEventListener("click", () => {
+          const req = requirements.find((r) => r.file?.id === btn.dataset.docAiComment);
+          if (!req?.file) return;
+          openAiReviewModal({
+            req,
+            mode: "founder",
+            editable: true,
+            onClear: async (comment) => {
+              await setExpenseDocumentUserReview(req.file.id, { cleared: true, comment, user });
+              renderDocSection();
+            },
+            onRevert: async () => {
+              await setExpenseDocumentUserReview(req.file.id, { cleared: false, user });
+              renderDocSection();
+            },
+          });
+        }));
+    };
+
+    // 예산 항목 변경 시: draft 가 있으면 변경 내용을 저장해 요구사항·첨부가 어긋나지 않게 맞춘다.
+    document.querySelector("#business_plan_item_id").addEventListener("change", async () => {
+      if (editId && getSelectedBusinessPlanItem()) {
+        await runWithErrorBoundary(() => updateExpenseRequest(editId, readInput(company.id)));
+      }
+      renderDocSection();
+    });
+    renderDocSection();
 
     const form = document.querySelector("#expense-form");
     document.querySelectorAll("[data-money-input]").forEach((input) => {
@@ -241,21 +403,31 @@ try {
           window.alert(`신청 금액(공급가액 기준 ${formatNumber(String(inputVal.amount_supply))}원)이 해당 비목의 집행 잔액(${formatNumber(String(available))}원)을 초과하여 신청할 수 없습니다.`);
           return;
         }
+        // 제출 단계의 필수 첨부서류 검증 (§7). 누락 시 같은 화면의 [필요 첨부 서류]에서 업로드하도록 안내한다.
+        const phase = getSubmitDocumentPhase(editStatus || "draft");
+        let missing = [];
+        if (phase) {
+          missing = editId
+            ? validateRequiredDocuments(editId, phase).missing
+            : activeRequirementsFor(planItem.support_program_budget_id, phase).filter((r) => r.required).map((r) => r.title);
+        }
         const submitLabel = editStatus === "final_approval_revision" ? "최종승인" : "사전승인";
+        if (missing.length) {
+          // 작성 내용을 저장(draft)해 첨부 가능 상태로 전환하고, 같은 화면에서 업로드하도록 안내한다.
+          await runWithErrorBoundary(async () => {
+            await persist(inputVal);
+            renderDocSection();
+          }, { button: event.submitter });
+          window.alert(`이 예산 항목은 ${submitLabel} 필수 첨부서류가 있습니다.\n오른쪽 [필요 첨부 서류]에서 아래 서류를 업로드한 뒤 다시 신청해주세요.\n\n- ${missing.join("\n- ")}`);
+          return;
+        }
         if (!window.confirm(`${submitLabel} 신청을 진행하시겠습니까? 제출 후에는 관리자 검토가 시작됩니다.`)) {
           return;
         }
       }
 
       await runWithErrorBoundary(async () => {
-        let targetId = editId;
-        if (editId) {
-          await updateExpenseRequest(editId, inputVal);
-        } else {
-          const data = await createExpense(inputVal, user);
-          targetId = data.id;
-        }
-        // 제출 액션이면 현재 상태 기준으로 검토 단계로 보낸다.
+        const targetId = await persist(inputVal);
         if (action === "submit") {
           await submitExpenseRequest(targetId);
         }

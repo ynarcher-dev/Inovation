@@ -19,6 +19,11 @@ export const STORAGE_KEYS = {
   REVIEWS: "mock_reviews",
   GUIDANCE: "mock_guidance_items",
   FILES: "mock_file_blobs",
+  // 예산 항목별 커스텀 첨부서류 요구사항 (custom-document-requirements-plan.md §5.1)
+  DOC_REQUIREMENTS: "mock_document_requirements",
+  // 운영사업 공통 AI 검토 기준 문서 (custom-document-requirements-plan.md §5.3)
+  AI_CRITERIA: "mock_program_ai_criteria",
+  AI_SETTINGS: "mock_ai_settings",
 };
 
 // IndexedDB Helper functions

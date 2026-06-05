@@ -56,6 +56,32 @@ export function getReviewKind(status) {
   return null;
 }
 
+// ----------------------------------------------------
+// 첨부서류 단계(phase) 잠금/해금 규칙 (custom-document-requirements-plan.md §4.3)
+// ----------------------------------------------------
+// 단계별 첨부서류 패널의 해금 여부. 한 번에 한 단계만 편집 가능하다.
+//  - pre  패널: draft, pre_approval_revision 에서만 해금
+//  - final 패널: pre_approved, final_approval_revision 에서만 해금
+export function isDocumentPhaseEditable(status, phase) {
+  if (phase === "pre") return ["draft", "pre_approval_revision"].includes(status);
+  if (phase === "final") return ["pre_approved", "final_approval_revision"].includes(status);
+  return false;
+}
+
+// 현재 상태에서 편집 가능한(해금된) 첨부서류 단계. 검토 대기/완료 상태에서는 null(전부 잠김).
+export function getEditableDocumentPhase(status) {
+  if (isDocumentPhaseEditable(status, "pre")) return "pre";
+  if (isDocumentPhaseEditable(status, "final")) return "final";
+  return null;
+}
+
+// 제출 시 검증해야 하는 첨부서류 단계. 현재 상태에서 어느 단계로 제출하는지에 대응한다.
+//  - draft / pre_approval_revision   -> pre  (사전승인 제출)
+//  - pre_approved / final_approval_revision -> final (최종승인 제출)
+export function getSubmitDocumentPhase(status) {
+  return getEditableDocumentPhase(status);
+}
+
 // 창업자 지출 현황용 단순 상태(대시보드 카운터 그룹핑). 각 단계를 대기/승인/보완으로 묶는다.
 export function getSimpleExpenseStatus(status) {
   if (status === "draft") return { label: "제출 대기", tone: "neutral" };

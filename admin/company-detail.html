@@ -54,22 +54,9 @@
       }
       .budget-matrix .budget-amount.danger { color: #b91c1c; }
       .budget-matrix .budget-amount.success { color: #047857; }
-      .budget-matrix .subtotal-row td { background: #fef3c7; font-weight: 600; }
       .budget-matrix .subtotal-row .subtotal-label { text-align: left; }
       .budget-tree-category { color: #6b7280; font-size: 12px; font-weight: 400; margin-left: 4px; }
       .budget-alloc-input { width: 100%; text-align: right; box-sizing: border-box; }
-      .subtotal-tag {
-        display: inline-block;
-        margin-right: 6px;
-        padding: 1px 6px;
-        border-radius: 4px;
-        background: #d97706;
-        color: #ffffff;
-        font-size: 11px;
-        font-weight: 600;
-        letter-spacing: 0.02em;
-        vertical-align: middle;
-      }
       /* 비목 매핑 하이라이트 */
       .budget-matrix tr.leaf-row { cursor: pointer; transition: background 0.15s; }
       .budget-matrix tr.leaf-row:hover td { background: #eff6ff !important; }
@@ -93,17 +80,17 @@
 
         <!-- Tabs Navigation -->
         <div class="tabs-nav">
-          <button class="tab-button active" data-tab="tab-summary" type="button">요약</button>
-          <button class="tab-button" data-tab="tab-budget-status" type="button">예산 현황</button>
+          <button class="tab-button active" data-tab="tab-budget-status" type="button">예산 현황</button>
           <button class="tab-button" data-tab="tab-budget-review" type="button">예산 검토<span data-badge-budget-review hidden class="status-badge" style="margin-left:6px;">●</span></button>
           <button class="tab-button" data-tab="tab-expense-review" type="button">지출 검토<span data-badge-expense-review hidden class="status-badge" style="margin-left:6px;">●</span></button>
           <button class="tab-button" data-tab="tab-plan" type="button">사업계획서</button>
           <button class="tab-button" data-tab="tab-history" type="button">검토 이력</button>
           <button class="tab-button" data-tab="tab-memo" type="button">내부 메모</button>
+          <button class="tab-button" data-tab="tab-summary" type="button">기업/계정 정보</button>
         </div>
 
-        <!-- Tab 1: 요약 -->
-        <div id="tab-summary" class="tab-content active">
+        <!-- Tab: 기업/계정 정보 (맨 뒤 탭) -->
+        <div id="tab-summary" class="tab-content">
           <section class="grid grid-2">
             <div class="card">
               <h2>기업 정보</h2>
@@ -119,22 +106,33 @@
               </div>
             </div>
             <div class="card">
-              <h2>예산 집계</h2>
-              <section class="grid-4" style="margin-bottom:12px;">
-                <div class="card metric"><span>총 승인 예산</span><strong data-sum-allocated>-</strong></div>
-                <div class="card metric"><span>승인 지출</span><strong data-sum-approved>-</strong></div>
-                <div class="card metric"><span>검토 중 지출</span><strong data-sum-pending>-</strong></div>
-                <div class="card metric"><span>잔액</span><strong data-sum-remaining>-</strong></div>
-              </section>
-              <div class="grid-4" style="margin-top:12px; grid-template-columns: 1fr;">
-                <div class="card metric"><span>보완 요청</span><strong data-revision-requested-count>0건</strong></div>
+              <h2>계정 가입 현황</h2>
+              <div class="info-grid" style="grid-template-columns: 1fr;">
+                <div class="info-row"><span class="label">로그인 이메일</span><span class="value" data-account-email>-</span></div>
+                <div class="info-row"><span class="label">담당자명</span><span class="value" data-account-name>-</span></div>
+                <div class="info-row"><span class="label">가입 상태</span><span class="value" data-account-status>-</span></div>
+                <div class="info-row"><span class="label">가입 신청일</span><span class="value" data-account-created>-</span></div>
+                <div class="info-row"><span class="label">승인일</span><span class="value" data-account-approved>-</span></div>
+              </div>
+              <div class="quick-actions" style="margin-top:12px;">
+                <button class="button small" id="btn-approve-signup" type="button">가입 승인</button>
+                <button class="button small danger" id="btn-reject-signup" type="button">가입 반려</button>
+              </div>
+
+              <hr style="margin:16px 0; border:none; border-top:1px solid var(--line);">
+
+              <h3 style="margin-bottom:4px; font-size:14px;">비밀번호 재설정</h3>
+              <p class="muted" style="font-size:12px;">기업 담당자의 로그인 비밀번호를 새로 설정합니다. (6자 이상)</p>
+              <div class="support-total-form" style="margin-top:8px;">
+                <input type="password" id="founder-new-password" placeholder="새 비밀번호" autocomplete="new-password">
+                <button class="button small" id="btn-reset-founder-password" type="button">변경</button>
               </div>
             </div>
           </section>
         </div>
 
-        <!-- Tab 2: 예산 현황 -->
-        <div id="tab-budget-status" class="tab-content">
+        <!-- Tab: 예산 현황 (기본 첫 탭) -->
+        <div id="tab-budget-status" class="tab-content active">
           <section class="card">
             <h2>예산 현황</h2>
             <p class="muted">참가 사업의 예산/비목 구조를 따릅니다. 잔액 = 배정 금액 - 승인 금액 - 검토 중 금액. 말단(리프) 항목에 배정 금액을 입력하면 자동 저장됩니다.</p>

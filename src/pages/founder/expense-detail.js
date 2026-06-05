@@ -1,7 +1,19 @@
 import { mountShell, runWithErrorBoundary, showError } from "../../app.js";
 import { requireRole } from "../../auth.js";
-import { getExpenseDetail, submitExpenseRequest } from "../../api.js";
-import { getStatusLabel, getStatusTone } from "../../domains/status.js";
+import {
+  getExpenseDetail,
+  submitExpenseRequest,
+  getExpenseDocumentRequirements,
+  uploadExpenseDocumentFile,
+  deleteExpenseDocumentFile,
+  requestAiBatchDocumentReview,
+  setExpenseDocumentUserReview,
+  validateRequiredDocuments,
+  downloadStoredFile,
+  getAiSettings,
+} from "../../api.js";
+import { getStatusLabel, getStatusTone, isDocumentPhaseEditable, getSubmitDocumentPhase } from "../../domains/status.js";
+import { renderDocumentPhasePanel, openAiReviewModal } from "../../components/expense/DocumentPhasePanel.js";
 import { escapeHtml, formatCurrency, formatDate, getQueryParam } from "../../utils.js";
 
 try {
@@ -10,6 +22,111 @@ try {
   if (user) {
     const id = getQueryParam("id");
     const { expense, reviews } = await getExpenseDetail(id);
+    const aiSettings = await getAiSettings();
+
+    // ----------------------------------------------------
+    // 단계별 첨부서류 패널 (§4) — 사전/최종 패널을 분리하고 상태에 따라 한쪽만 해금한다(§4.3).
+    // ----------------------------------------------------
+    const PHASES = [
+      { phase: "pre", title: "사전승인 첨부서류", container: "[data-doc-panel-pre]",
+        lockedNote: "사전승인 단계가 잠겨 있습니다. 제출된 서류는 조회만 가능합니다." },
+      { phase: "final", title: "최종승인 첨부서류", container: "[data-doc-panel-final]",
+        lockedNote: "사전승인 완료 후 제출할 수 있습니다." },
+    ];
+
+    // 숨김 파일 입력으로 업로드/교체를 처리한다.
+    const pickFile = () => new Promise((resolve) => {
+      const input = document.createElement("input");
+      input.type = "file";
+      input.onchange = () => resolve(input.files[0] || null);
+      input.click();
+    });
+
+    const renderDocPanels = () => {
+      for (const def of PHASES) {
+        const container = document.querySelector(def.container);
+        if (!container) continue;
+        const requirements = getExpenseDocumentRequirements(id, def.phase);
+        const editable = isDocumentPhaseEditable(expense.status, def.phase);
+        renderDocumentPhasePanel(container, {
+          phase: def.phase,
+          title: def.title,
+          requirements,
+          editable,
+          mode: "founder",
+          lockedNote: def.lockedNote,
+          aiEnabled: aiSettings.enabled,
+        });
+        attachPanelEvents(container, def.phase, requirements);
+      }
+    };
+
+    const attachPanelEvents = (container, phase, requirements) => {
+      const reqById = new Map(requirements.map((r) => [r.id, r]));
+
+      const doUpload = async (reqId, button) => {
+        const req = reqById.get(reqId);
+        const file = await pickFile();
+        if (!file) return;
+        await runWithErrorBoundary(async () => {
+          await uploadExpenseDocumentFile(id, req, phase, file, user);
+          renderDocPanels();
+        }, { button });
+      };
+
+      container.querySelectorAll("[data-doc-upload]").forEach((btn) =>
+        btn.addEventListener("click", () => doUpload(btn.dataset.docUpload, btn)));
+      container.querySelectorAll("[data-doc-replace]").forEach((btn) =>
+        btn.addEventListener("click", () => doUpload(btn.dataset.docReplace, btn)));
+
+      container.querySelectorAll("[data-doc-delete]").forEach((btn) =>
+        btn.addEventListener("click", async () => {
+          if (!confirm("첨부 파일을 삭제하시겠습니까?")) return;
+          await runWithErrorBoundary(async () => {
+            await deleteExpenseDocumentFile(btn.dataset.docDelete);
+            renderDocPanels();
+          }, { button: btn });
+        }));
+
+      // 단계별 일괄 AI검토: 해당 단계의 업로드 파일을 한 번에 검토하고 결과를 각 행에 분배한다.
+      container.querySelector("[data-doc-batch-review]")?.addEventListener("click", async (e) => {
+        await runWithErrorBoundary(async () => {
+          const { reviewed } = await requestAiBatchDocumentReview(id, phase);
+          renderDocPanels();
+          if (!reviewed) window.alert("AI검토할 업로드 파일이 없습니다.");
+        }, { button: e.currentTarget });
+      });
+
+      container.querySelectorAll("[data-doc-open]").forEach((btn) =>
+        btn.addEventListener("click", async () => {
+          const fileId = btn.dataset.docOpen;
+          const req = requirements.find((r) => r.file?.id === fileId);
+          await runWithErrorBoundary(async () => {
+            await downloadStoredFile(req?.file?.link_url, req?.file?.original_filename);
+          }, { button: btn });
+        }));
+
+      // AI검토 결과 모달: 행의 점/버튼에서 호출. 보완 필요 건은 '이상없음' 소명도 여기서 처리.
+      const editable = isDocumentPhaseEditable(expense.status, phase);
+      container.querySelectorAll("[data-doc-ai-comment]").forEach((btn) =>
+        btn.addEventListener("click", () => {
+          const req = requirements.find((r) => r.file?.id === btn.dataset.docAiComment);
+          if (!req?.file) return;
+          openAiReviewModal({
+            req,
+            mode: "founder",
+            editable,
+            onClear: async (comment) => {
+              await setExpenseDocumentUserReview(req.file.id, { cleared: true, comment, user });
+              renderDocPanels();
+            },
+            onRevert: async () => {
+              await setExpenseDocumentUserReview(req.file.id, { cleared: false, user });
+              renderDocPanels();
+            },
+          });
+        }));
+    };
 
     // 검토 결과(decision)별 한글 라벨/배지 톤.
     const REVIEW_DECISIONS = {
@@ -76,6 +193,15 @@ try {
       if (submitBtn) {
         submitBtn.addEventListener("click", (event) => {
           const label = expense.status === "pre_approved" ? "최종승인" : "사전승인";
+          // 제출 전 필수 첨부서류 검증 (§7). 누락 시 서류명을 안내하고 제출을 막는다.
+          const phase = getSubmitDocumentPhase(expense.status);
+          if (phase) {
+            const { ok, missing } = validateRequiredDocuments(id, phase);
+            if (!ok) {
+              window.alert(`다음 필수 첨부서류를 업로드해야 ${label} 신청을 진행할 수 있습니다.\n\n- ${missing.join("\n- ")}`);
+              return;
+            }
+          }
           if (!window.confirm(`${label} 신청을 진행하시겠습니까? 제출 후에는 관리자 검토가 시작됩니다.`)) return;
           runWithErrorBoundary(async () => {
             await submitExpenseRequest(id);
@@ -127,6 +253,7 @@ try {
     `;
     renderCta();
     renderReviews();
+    renderDocPanels();
   }
 } catch (error) {
   showError(error);

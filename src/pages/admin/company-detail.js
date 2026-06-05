@@ -5,6 +5,9 @@ import {
   reviewBudgetSubmission,
   downloadStoredFile,
   updateCompanyInternalMemo,
+  approveCompany,
+  rejectCompany,
+  resetFounderPassword,
 } from "../../api.js";
 import { BudgetTreeView } from "../../components/BudgetTreeView.js";
 import { FlatReviewHistoryTable } from "../../components/FlatReviewHistoryTable.js";
@@ -14,7 +17,6 @@ import { getBudgetCategoryPaths, attachCategoryHighlight, attachAllocationHandle
 import { getBudgetStatusLabel } from "../../domains/budget/budget-status.js";
 import {
   escapeHtml,
-  formatCurrency,
   formatDate,
   getQueryParam,
 } from "../../utils.js";
@@ -92,7 +94,7 @@ try {
       setText("[data-business-number]", company.business_number || "-");
       renderBusinessPlanTab();
 
-      // 요약 탭: 기업 기본정보
+      // 기업/계정 정보 탭: 기업 기본정보
       setText("[data-summary-name]", company.name);
       setText("[data-phone]", company.phone || "-");
       setText("[data-program-name]", company.support_programs?.name || "-");
@@ -103,16 +105,19 @@ try {
       setText("[data-approval-status-2]", approvalText[company.approval_status] || company.approval_status || "-");
       setText("[data-budget-status-2]", getBudgetStatusLabel(company.budget_status));
 
-      // 요약 탭: 예산 집계 (비목 배정 합산)
-      const summaryRows = detail.budgetSummary || [];
-      const sum = (key) => summaryRows.reduce((acc, r) => acc + Number(r[key] || 0), 0);
-      setText("[data-sum-allocated]", formatCurrency(sum("allocated_amount")));
-      setText("[data-sum-approved]", formatCurrency(sum("approved_amount")));
-      setText("[data-sum-pending]", formatCurrency(sum("pending_amount")));
-      setText("[data-sum-remaining]", formatCurrency(sum("remaining_amount")));
-      const reviewHistory = detail.reviewHistory || [];
-      const revisionRequestedCount = reviewHistory.filter((r) => r.decision === "revision_requested").length;
-      setText("[data-revision-requested-count]", `${revisionRequestedCount}건`);
+      // 기업/계정 정보 탭: 계정 가입 현황
+      const account = detail.account || {};
+      setText("[data-account-email]", account.email || "-");
+      setText("[data-account-name]", account.name || company.representative_name || "-");
+      setText("[data-account-status]", approvalText[company.approval_status] || company.approval_status || "-");
+      setText("[data-account-created]", company.created_at ? formatDate(company.created_at) : "-");
+      setText("[data-account-approved]", company.approved_at ? formatDate(company.approved_at) : "-");
+
+      // 가입 승인/반려 버튼: 현재 상태에 따라 비활성화
+      const approveSignupBtn = document.getElementById("btn-approve-signup");
+      const rejectSignupBtn = document.getElementById("btn-reject-signup");
+      if (approveSignupBtn) approveSignupBtn.disabled = company.approval_status === "approved";
+      if (rejectSignupBtn) rejectSignupBtn.disabled = company.approval_status === "rejected";
 
       // Load internal memo
       if (internalMemoEl) {
@@ -212,6 +217,43 @@ try {
 
     document.getElementById("btn-approve-budget")?.addEventListener("click", (e) => submitBudgetReview("approved", "승인", e.currentTarget));
     document.getElementById("btn-revision-budget")?.addEventListener("click", (e) => submitBudgetReview("revision_requested", "보완요청", e.currentTarget));
+
+    // 계정 가입 승인/반려: 처리 후 상세를 다시 불러와 현황을 갱신한다.
+    const reloadDetail = async () => {
+      detail = await getAdminCompanyDetail(id);
+      renderHeader();
+    };
+    document.getElementById("btn-approve-signup")?.addEventListener("click", (e) => {
+      if (!confirm("이 기업의 가입을 승인하시겠습니까?")) return;
+      runWithErrorBoundary(async () => {
+        await approveCompany(id, user.id);
+        await reloadDetail();
+      }, { button: e.currentTarget });
+    });
+    document.getElementById("btn-reject-signup")?.addEventListener("click", (e) => {
+      if (!confirm("이 기업의 가입을 반려하시겠습니까?")) return;
+      runWithErrorBoundary(async () => {
+        await rejectCompany(id);
+        await reloadDetail();
+      }, { button: e.currentTarget });
+    });
+
+    // 기업 담당자 로그인 비밀번호 재설정
+    document.getElementById("btn-reset-founder-password")?.addEventListener("click", (e) => {
+      const input = document.getElementById("founder-new-password");
+      const next = input.value.trim();
+      if (next.length < 6) {
+        alert("새 비밀번호는 6자 이상이어야 합니다.");
+        input.focus();
+        return;
+      }
+      if (!confirm("기업 담당자의 로그인 비밀번호를 변경하시겠습니까?")) return;
+      runWithErrorBoundary(async () => {
+        await resetFounderPassword(id, next);
+        input.value = "";
+        alert("비밀번호가 변경되었습니다.");
+      }, { button: e.currentTarget });
+    });
 
     // Save internal memo
     document.getElementById("btn-save-memo")?.addEventListener("click", async (e) => {

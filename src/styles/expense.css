@@ -244,7 +244,8 @@
   font-weight: 500;
   word-break: break-all;
 }
-.doc-dropzone-icon { font-size: 1rem; }
+.doc-dropzone-icon { display: inline-flex; align-items: center; }
+.doc-dropzone-icon svg { display: block; }
 .doc-dropzone-remove {
   position: absolute;
   top: 6px;
@@ -389,3 +390,161 @@
   height: 34px;
   cursor: pointer;
 }
+
+/* ---- 단계별 첨부서류 패널 / AI 검토 코멘트 (custom-document-requirements-plan §4) ---- */
+.doc-phase-summary {
+  margin: 4px 0 12px;
+  font-size: var(--text-sm);
+  color: var(--text);
+}
+.doc-phase-summary-ai { color: var(--muted); }
+/* 잠금 단계: 박스 내용은 살짝 비치게 흐리고, 자물쇠 오버레이로 덮는다 (§4.3). */
+.doc-phase-is-locked { position: relative; }
+.doc-phase-body.is-locked {
+  filter: blur(2.5px) grayscale(0.25);
+  opacity: 0.5;
+  pointer-events: none;
+  user-select: none;
+}
+.doc-phase-lock-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  border-radius: inherit;
+  background: rgba(249, 250, 251, 0.3);
+}
+.doc-phase-lock-overlay-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  max-width: 260px;
+  text-align: center;
+}
+.doc-phase-lock-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: var(--surface, #fff);
+  border: 1px solid var(--line);
+  color: var(--muted);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+}
+.doc-phase-lock-text {
+  margin: 0;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--text);
+}
+/* AI 검토 결과 인디케이터 — 행에는 점만, 코멘트는 모달(§4.5) */
+.ai-dot {
+  flex: none;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+.ai-dot-success { background: var(--success, #16a34a); }
+.ai-dot-warning { background: var(--warning, #d97706); }
+.ai-dot-danger { background: var(--danger, #dc2626); }
+.ai-dot-info { background: var(--primary, #2563eb); }
+.ai-dot-neutral { background: var(--muted); }
+/* AI 검토 결과 바 — 파일명 행과 분리된 별도 줄. 결과에 따라 박스 색을 바꾼다. */
+.ai-review-bar {
+  margin-top: 8px;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-muted, #f9fafb);
+  font: inherit;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--muted);
+  text-align: left;
+}
+.ai-review-bar-label { flex: 1 1 auto; }
+.ai-review-bar-status { font-weight: 700; }
+.ai-review-bar-chevron { flex: none; font-size: 1.1rem; line-height: 1; opacity: 0.7; }
+.ai-review-bar.is-clickable { cursor: pointer; transition: filter 0.15s ease; }
+.ai-review-bar.is-clickable:hover { filter: brightness(0.97); }
+.ai-review-bar-neutral, .ai-review-bar-info { color: var(--muted); }
+.ai-review-bar-success {
+  background: #f0fdf4;
+  border-color: #bbf7d0;
+  color: #166534;
+}
+.ai-review-bar-warning {
+  background: #fffbeb;
+  border-color: #fde68a;
+  color: #92400e;
+}
+.ai-review-bar-danger {
+  background: #fef2f2;
+  border-color: #fecaca;
+  color: #991b1b;
+}
+/* AI 검토 모달 — 신청자 '이상없음' 소명 영역 */
+.ai-modal-override {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+.ai-modal-override.is-cleared {
+  margin-top: 14px;
+  padding: 12px;
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+  background: #eff6ff;
+}
+.ai-modal-override-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--text-sm);
+  font-weight: 700;
+  color: #1e40af;
+  margin-bottom: 6px;
+}
+.ai-modal-override-comment {
+  margin: 0 0 10px;
+  font-size: var(--text-sm);
+  color: var(--text);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.ai-modal-textarea {
+  width: 100%;
+  min-height: 72px;
+  margin-bottom: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font: inherit;
+  font-size: var(--text-sm);
+  resize: vertical;
+}
+/* AI 검토 코멘트 — 모달 본문 */
+.ai-review-comment {
+  margin: 0;
+  font: inherit;
+  font-size: var(--text-sm);
+  color: var(--text);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+/* expense-new 필요 서류 미리보기 */
+.doc-preview-list { list-style: none; margin: 12px 0 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.doc-preview-item { display: flex; align-items: center; gap: 8px; font-size: var(--text-sm); }
+.doc-preview-title { flex: 1 1 auto; font-weight: 500; }
+
+.doc-phase-actions { margin: 0 0 12px; }

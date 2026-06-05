@@ -394,7 +394,7 @@ input:focus, select:focus, textarea:focus {
 .budget-matrix .hierarchy-level-2 { background: #fafafa; }
 .budget-matrix .budget-amount { text-align: right; }
 .budget-matrix .budget-amount input { min-height: 32px; padding: 4px 8px; }
-.budget-matrix .subtotal-row td { background: #f0fdf4; font-weight: 700; color: #166534; }
+.budget-matrix .subtotal-row td { background: #fef3c7; font-weight: 600; color: #92400e; }
 .budget-matrix .hierarchy-empty { background: #fff; }
 .budget-matrix .hierarchy-level-3 { background: #fcfcfd; }
 .budget-matrix .hierarchy-level-4 { background: #fdfdfd; }
@@ -417,7 +417,7 @@ input:focus, select:focus, textarea:focus {
   margin-right: 6px;
   padding: 1px 6px;
   border-radius: 4px;
-  background: var(--warning);
+  background: #d97706;
   color: #fff;
   font-size: var(--text-caption);
   font-weight: 700;

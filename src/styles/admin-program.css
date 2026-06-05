@@ -200,3 +200,89 @@
       .guidance-icon-btn.confirm { background: var(--primary); color: #fff; border-color: var(--primary); }
       .guidance-icon-btn.confirm:hover { background: var(--primary-dark); }
       .save-row { display: flex; justify-content: flex-end; margin-top: 10px; }
+
+      /* ---- 예산 항목별 첨부서류 설정 패널 (custom-document-requirements-plan §3.1) ---- */
+      .doc-req-empty, .ai-criteria-empty {
+        padding: 18px 14px;
+        text-align: center;
+        font-size: 13px;
+        border: 1px dashed #e5e7eb;
+        border-radius: 8px;
+        background: #fafafa;
+      }
+      .doc-req-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 10px;
+      }
+      .doc-req-head h3 { margin: 0; font-size: 15px; font-weight: 700; }
+      .doc-req-head h3 .muted { font-weight: 500; font-size: 13px; }
+      .doc-req-table-header,
+      .doc-req-row {
+        display: grid;
+        grid-template-columns: minmax(0,2.4fr) 0.8fr 0.7fr 0.9fr 0.8fr 1.4fr;
+        align-items: center;
+        gap: 8px;
+      }
+      .doc-req-table-header {
+        padding: 10px 12px;
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: #6b7280;
+        background: #f9fafb;
+        border: 1px solid #e5e7eb;
+        border-bottom: 1px solid #e5e7eb;
+        border-radius: 8px 8px 0 0;
+      }
+      .doc-req-list { border: 1px solid #e5e7eb; border-top: none; border-radius: 0 0 8px 8px; overflow: hidden; }
+      .doc-req-row {
+        padding: 10px 12px;
+        border-bottom: 1px solid #f3f4f6;
+        font-size: 13px;
+      }
+      .doc-req-row:last-child { border-bottom: none; }
+      .doc-req-row.is-inactive { background: #fafafa; opacity: 0.7; }
+      .doc-req-row.doc-req-row--editing { display: block; padding: 14px 12px; background: #f9fafb; }
+      .doc-req-cell--title { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+      .doc-req-cell--title strong { font-weight: 600; }
+      .doc-req-badge { font-size: 12px; color: #6b7280; }
+      .doc-req-badge.is-required { color: #b45309; font-weight: 600; }
+      .doc-req-badge.is-active { color: #047857; font-weight: 600; }
+      .doc-req-badge.is-off { color: #9ca3af; }
+      .doc-req-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+      .doc-req-link {
+        border: none; background: none; padding: 0;
+        font: inherit; font-size: 12px; font-weight: 600;
+        color: var(--primary, #2563eb); cursor: pointer;
+      }
+      .doc-req-link:hover { text-decoration: underline; }
+      .doc-req-link.is-danger { color: #ef4444; }
+      /* 추가/수정 폼 */
+      .doc-req-form { display: flex; flex-direction: column; gap: 12px; }
+      .doc-req-form-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 10px;
+      }
+      .doc-req-field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; }
+      .doc-req-field--wide { grid-column: span 3; }
+      .doc-req-field > span { font-weight: 600; color: #6b7280; }
+      .doc-req-field input, .doc-req-field select {
+        padding: 7px 9px; border: 1px solid #d1d5db; border-radius: 6px; font: inherit; font-size: 13px;
+      }
+      .doc-req-form-actions { display: flex; gap: 8px; }
+      [data-req-add-root] {
+        margin-top: 12px; padding: 14px; border: 1px solid #e5e7eb; border-radius: 8px; background: #f9fafb;
+      }
+      /* ---- 운영사업 공통 AI 검토 기준 문서 (§3.3) ---- */
+      .ai-criteria-card { border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; }
+      .ai-criteria-row {
+        display: grid; grid-template-columns: 160px 1fr; gap: 10px;
+        padding: 10px 14px; border-bottom: 1px solid #f3f4f6; font-size: 13px;
+      }
+      .ai-criteria-row:last-child { border-bottom: none; }
+      .ai-criteria-key { font-weight: 600; color: #6b7280; }

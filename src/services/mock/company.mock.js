@@ -197,6 +197,17 @@ export function mockGetAdminCompanyDetail(companyId) {
     business_plans: normalizeBusinessPlans(company),
   };
 
+  // 기업 담당자(창업자) 로그인 계정 정보: MEMBERS → USERS 조인. 가입 현황/비밀번호 재설정 화면에서 사용한다.
+  const members = load(STORAGE_KEYS.MEMBERS, []);
+  const member = members.find((m) => m.company_id === companyId);
+  const users = load(STORAGE_KEYS.USERS, []);
+  const accountUser = member ? users.find((u) => u.id === member.user_id) : null;
+  const account = {
+    user_id: accountUser?.id || null,
+    email: accountUser?.email || null,
+    name: accountUser?.raw_user_meta_data?.name || company.representative_name || null,
+  };
+
   const expenses = load(STORAGE_KEYS.EXPENSES, []).filter((e) => e.company_id === companyId);
   const budgets = load(STORAGE_KEYS.BUDGETS, []).filter((b) => b.support_program_id === company.support_program_id);
   const allocations = load(STORAGE_KEYS.ALLOCATIONS, []).filter((a) => a.company_id === companyId);
@@ -277,6 +288,7 @@ export function mockGetAdminCompanyDetail(companyId) {
 
   return {
     company: companyWithProgram,
+    account,
     budgetSummary: calculateBudgetSummary(allocations, budgets, companyId, expenses),
     budgetTree,
     round2Status,
@@ -338,6 +350,24 @@ export function mockUpdateCompanySupportTotal(companyId, amount) {
     return companies[idx];
   }
   throw new Error("기업을 찾을 수 없습니다.");
+}
+
+// 기업 담당자(창업자) 로그인 비밀번호 재설정. MEMBERS → USERS 로 계정을 찾아 갱신한다.
+export function mockResetFounderPassword(companyId, newPassword) {
+  const next = String(newPassword || "");
+  if (next.length < 6) throw new Error("새 비밀번호는 6자 이상이어야 합니다.");
+
+  const members = load(STORAGE_KEYS.MEMBERS, []);
+  const member = members.find((m) => m.company_id === companyId);
+  if (!member) throw new Error("이 기업에 연결된 로그인 계정을 찾을 수 없습니다.");
+
+  const users = load(STORAGE_KEYS.USERS, []);
+  const idx = users.findIndex((u) => u.id === member.user_id);
+  if (idx === -1) throw new Error("이 기업에 연결된 로그인 계정을 찾을 수 없습니다.");
+
+  users[idx].password = next;
+  save(STORAGE_KEYS.USERS, users);
+  return { ok: true };
 }
 
 // 관리자 내부 메모 저장. 페이지에서 localStorage 직접 접근 대신 이 서비스 계층을 경유한다.

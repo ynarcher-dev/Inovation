@@ -72,6 +72,12 @@ a:hover {
   display: flex;
   flex-direction: column;
   border-right: 1px solid rgba(255, 255, 255, 0.05);
+  /* 화면을 스크롤해도 사이드바는 뷰포트에 고정되어 로그아웃이 항상 화면 맨 아래에 보인다. */
+  position: sticky;
+  top: 0;
+  align-self: start;
+  height: 100vh;
+  overflow-y: auto;
 }
 
 .brand {
@@ -124,6 +130,21 @@ a:hover {
 .nav button:hover {
   background: rgba(255, 255, 255, 0.08);
   color: #fff;
+}
+
+/* 사이드바 메뉴 대기 건수 배지(가입신청·예산사용·예산승인). app.js navBadge()가 0건이면 미출력. */
+.nav-badge {
+  margin-left: auto;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 10px;
+  background: #ef4444;
+  color: #fff;
+  font-size: var(--text-caption);
+  font-weight: 700;
+  line-height: 20px;
+  text-align: center;
 }
 
 .main {
