@@ -22,6 +22,8 @@
 -- 1.1 AI 설정 테이블
 CREATE TABLE IF NOT EXISTS public.ai_settings (
     id integer PRIMARY KEY DEFAULT 1,
+    enabled boolean NOT NULL DEFAULT false,
+    provider text NOT NULL DEFAULT 'openai',
     openai_api_key_configured boolean NOT NULL DEFAULT false,
     openai_model text NOT NULL DEFAULT 'gpt-4o',
     updated_at timestamp with time zone NOT NULL DEFAULT now(),

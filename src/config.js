@@ -13,10 +13,6 @@ export const CONFIG = {
   supabaseAnonKey: appConfig?.supabaseAnonKey || "sb_publishable_IWbWxOxtH_89WfyHPWzN2w_KMVkjVKN",
   apiBaseUrl: appConfig?.apiBaseUrl || "/api",
 
-  // 데이터 API 모드. true=브라우저 mock(localStorage/IndexedDB), false=실제 Supabase.
-  // 로컬 개발 환경과 배포 환경 모두 실제 Supabase/S3 라이브 서버에 연결하도록 false로 설정합니다.
-  useMockApi: appConfig?.useMockApi ?? false,
-
   // 배포 환경 구분. window.APP_CONFIG.env = "production" 등으로 주입한다.
   env: appConfig?.env || (isLocal ? "development" : "production"),
 
@@ -25,6 +21,4 @@ export const CONFIG = {
 
 export const hasSupabaseConfig = Boolean(CONFIG.supabaseUrl && CONFIG.supabaseAnonKey);
 
-// mock 모드 여부 단일 진입점. 화면/서비스 계층은 이 값으로 mock/remote 를 분기한다.
-export const isMockApi = CONFIG.useMockApi === true;
 export const isProduction = CONFIG.env === "production";

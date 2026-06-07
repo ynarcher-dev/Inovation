@@ -1,5 +1,5 @@
 import { CONFIG } from "../config.js";
-import { mockGetAiSettings } from "./mock/ai-settings.mock.js";
+import { getAiSettings } from "./supabase-api.js";
 
 const DEFAULT_MODEL_BY_PROVIDER = {
   openai: "gpt-4o-mini",
@@ -97,7 +97,7 @@ function normalizeDocumentReviewResult(result = {}) {
 }
 
 export async function requestBudgetAiReview(input = {}) {
-  const settings = mockGetAiSettings();
+  const settings = await getAiSettings();
   if (!settings.enabled) {
     throw new Error("AI 기능이 비활성화되어 있습니다. AI 관리에서 기능 상태를 켜주세요.");
   }
@@ -124,7 +124,7 @@ export async function requestBudgetAiReview(input = {}) {
 // 브라우저가 문서 바이트(base64)와 신청 정보·적용 기준을 Edge Function 으로 보내면,
 // 설정된 provider 의 비전/문서 모델이 문서를 읽어 구조화된 검토 결과를 돌려준다.
 export async function requestDocumentReview(input = {}) {
-  const settings = mockGetAiSettings();
+  const settings = await getAiSettings();
   if (!settings.enabled) {
     throw new Error("AI 기능이 비활성화되어 있습니다. AI 관리에서 기능 상태를 켜주세요.");
   }
@@ -163,7 +163,7 @@ export async function requestDocumentReview(input = {}) {
 // 브라우저가 문서 바이트(base64)를 Edge Function 으로 보내면, 설정된 provider 의
 // 모델이 문서를 읽어 구조화된 검토 기준 텍스트를 돌려준다.
 export async function requestCriteriaExtraction(input = {}) {
-  const settings = mockGetAiSettings();
+  const settings = await getAiSettings();
   if (!settings.enabled) {
     throw new Error("AI 기능이 비활성화되어 있습니다. AI 관리에서 기능 상태를 켜주세요.");
   }

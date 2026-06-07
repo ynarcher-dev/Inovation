@@ -317,7 +317,16 @@ export async function getAiSettings() {
     .select("*")
     .maybeSingle();
   if (error) throw error;
-  return data || { enabled: false, provider: "openai", model: "gpt-4o" };
+  if (!data) return { enabled: false, provider: "openai", model: "gpt-4o" };
+  // 테이블 컬럼 -> UI/mock 계약(enabled/provider/model)으로 매핑한다.
+  // model 은 openai_model 컬럼에 저장한다.
+  return {
+    ...data,
+    enabled: data.enabled ?? false,
+    provider: data.provider || "openai",
+    model: data.openai_model || "gpt-4o",
+    api_key_configured: data.openai_api_key_configured ?? false,
+  };
 }
 
 export async function updateAiSettings(input) {
@@ -327,7 +336,7 @@ export async function updateAiSettings(input) {
   const payload = {
     enabled: input.enabled,
     provider: input.provider,
-    model: input.model,
+    openai_model: input.model,
     updated_at: new Date().toISOString(),
   };
   let query;

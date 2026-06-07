@@ -1,13 +1,4 @@
-import { CONFIG, isMockApi } from "./config.js";
-import {
-  mockGetCurrentUser,
-  mockSignIn,
-  mockSignUpFounder,
-  mockSignOut,
-  mockVerifyCurrentPassword,
-  mockChangePassword,
-  mockDeleteFounderAccount,
-} from "./mockApi.js";
+import { CONFIG } from "./config.js";
 
 // CDN에서 Supabase JS SDK를 동적으로 로드하는 헬퍼 함수
 function loadSupabaseScript() {
@@ -50,8 +41,6 @@ export function normalizeLoginId(value) {
 // ----------------------------------------------------
 
 export async function getCurrentUser() {
-  if (isMockApi) return mockGetCurrentUser();
-
   try {
     const supabase = await getSupabase();
     const { data: { user } } = await supabase.auth.getUser();
@@ -74,8 +63,6 @@ export async function getCurrentUser() {
 
 export async function signIn(loginId, password, remember = false) {
   const normalized = normalizeLoginId(loginId);
-  if (isMockApi) return mockSignIn(normalized, password, remember);
-
   const supabase = await getSupabase();
   const { data, error } = await supabase.auth.signInWithPassword({
     email: normalized,
@@ -133,8 +120,6 @@ export async function signIn(loginId, password, remember = false) {
 }
 
 export async function signUpFounder(input) {
-  if (isMockApi) return mockSignUpFounder(input);
-
   const supabase = await getSupabase();
   // Supabase Auth 회원가입.
   // 회사(companies)/소속(company_members) 생성은 클라이언트에서 직접 하지 않는다.
@@ -163,7 +148,6 @@ export async function signUpFounder(input) {
 }
 
 export async function signOut() {
-  if (isMockApi) return mockSignOut();
   try {
     const supabase = await getSupabase();
     await supabase.auth.signOut();
@@ -173,7 +157,6 @@ export async function signOut() {
 }
 
 export async function verifyCurrentPassword(password) {
-  if (isMockApi) return mockVerifyCurrentPassword(password);
   // Supabase Auth는 클라이언트 측에서 현재 비밀번호 검증 API를 직접 제공하지 않으므로,
   // 로그인 검증을 다시 시도하여 확인합니다.
   const user = await getCurrentUser();
@@ -187,8 +170,6 @@ export async function verifyCurrentPassword(password) {
 }
 
 export async function changePassword(currentPassword, newPassword) {
-  if (isMockApi) return mockChangePassword(currentPassword, newPassword);
-
   const next = String(newPassword || "");
   if (next.length < 6) throw new Error("새 비밀번호는 6자 이상이어야 합니다.");
   if (next === currentPassword) throw new Error("현재 비밀번호와 다른 비밀번호를 입력해 주세요.");
@@ -202,8 +183,6 @@ export async function changePassword(currentPassword, newPassword) {
 }
 
 export async function deleteFounderAccount(password) {
-  if (isMockApi) return mockDeleteFounderAccount(password);
-
   await verifyCurrentPassword(password);
   
   const user = await getCurrentUser();
