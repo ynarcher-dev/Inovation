@@ -720,6 +720,7 @@ export async function getAdminCompanyDetail(companyId) {
   return {
     company,
     budgetTree,
+    programBudgets: programBudgets || [],
     expenses: expenses || [],
     budgetHistory: (budgetHistory || []).map((h) => ({
       ...h,
@@ -1407,7 +1408,7 @@ export async function updateBusinessPlan(companyId, round, file, options = {}) {
   const supabase = await getSupabase();
   const { data: company, error: compErr } = await supabase
     .from("companies")
-    .select("business_plans, business_plan")
+    .select("business_plans")
     .eq("id", companyId)
     .single();
   if (compErr) throw compErr;
@@ -1430,15 +1431,6 @@ export async function updateBusinessPlan(companyId, round, file, options = {}) {
 
   const business_plans = { ...currentPlans, [slot]: nextEntry };
   const updatePayload = { business_plans };
-
-  if (slot === "round1") {
-    updatePayload.business_plan = {
-      ...(company.business_plan || {}),
-      original_filename: nextEntry.original_filename,
-      link_url: nextEntry.link_url,
-      updated_at: nextEntry.updated_at,
-    };
-  }
 
   const { error: updateErr } = await supabase
     .from("companies")
