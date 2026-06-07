@@ -1,4 +1,4 @@
-import { showError, showToast } from "../../app.js";
+import { showError } from "../../app.js";
 import { getSupportPrograms } from "../../api.js";
 import { signUpFounder } from "../../auth.js";
 import { escapeHtml } from "../../utils.js";
@@ -27,8 +27,6 @@ enhancePasswordInputs();
 
 document.querySelector("#signup-form").addEventListener("submit", async (event) => {
   event.preventDefault();
-  const resultTarget = document.querySelector("[data-result]");
-  resultTarget.hidden = true;
 
   const password = document.querySelector("#password").value;
   const passwordConfirm = document.querySelector("#password_confirm").value;
@@ -59,17 +57,14 @@ document.querySelector("#signup-form").addEventListener("submit", async (event) 
       phone: document.querySelector("#phone").value.trim(),
     });
 
-    resultTarget.hidden = false;
-    resultTarget.textContent = result.needsConfirmation
-      ? result.message
-      : "가입 신청이 완료되었습니다. 예산 및 비목 승인 후 지출 신청을 진행할 수 있습니다.";
+    // 가입 결과 안내 메시지. 이메일 확인이 켜져 있으면 인증 안내를 함께 보여준다.
+    const message = result.needsConfirmation
+      ? "가입 신청이 완료되었습니다. 메일로 보낸 인증 링크로 이메일 확인을 마친 뒤 로그인해 주세요."
+      : "가입 신청이 완료되었습니다. 관리자 승인 후 로그인할 수 있습니다.";
 
-    // 자동 리다이렉트 대신 결과 메시지를 충분히 보여주고, 명시적 '로그인으로 이동' 버튼을 노출한다(§7.1).
-    showToast("가입 신청이 완료되었습니다.", { type: "success" });
-    const loginLink = document.querySelector("[data-login-after-signup]");
-    if (loginLink) loginLink.hidden = false;
-    // 중복 제출을 막기 위해 제출 버튼은 숨긴다.
-    document.querySelector("[data-signup-submit]")?.setAttribute("hidden", "");
+    // 로그인 페이지에서 안내 토스트로 이어 보여주기 위해 메시지를 전달하고 이동한다.
+    sessionStorage.setItem("signup:notice", message);
+    window.location.href = "./login.html";
   } catch (error) {
     showError(error);
   }

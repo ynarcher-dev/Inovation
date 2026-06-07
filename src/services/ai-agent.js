@@ -30,6 +30,15 @@ async function getEdgeAccessToken() {
   } catch (_) {
     /* 토큰 조회 실패는 무시하고 미인증으로 처리한다 */
   }
+  try {
+    const supabase = window.supabaseClient;
+    if (supabase) {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) return session.access_token;
+    }
+  } catch (_) {
+    /* ignore */
+  }
   return null;
 }
 

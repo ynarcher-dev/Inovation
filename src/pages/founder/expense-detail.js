@@ -42,11 +42,11 @@ try {
       input.click();
     });
 
-    const renderDocPanels = () => {
+    const renderDocPanels = async () => {
       for (const def of PHASES) {
         const container = document.querySelector(def.container);
         if (!container) continue;
-        const requirements = getExpenseDocumentRequirements(id, def.phase);
+        const requirements = (await getExpenseDocumentRequirements(id, def.phase)) || [];
         const editable = isDocumentPhaseEditable(expense.status, def.phase);
         renderDocumentPhasePanel(container, {
           phase: def.phase,
@@ -70,7 +70,7 @@ try {
         if (!file) return;
         await runWithErrorBoundary(async () => {
           await uploadExpenseDocumentFile(id, req, phase, file, user);
-          renderDocPanels();
+          await renderDocPanels();
         }, { button });
       };
 
@@ -90,7 +90,7 @@ try {
           if (!ok) return;
           await runWithErrorBoundary(async () => {
             await deleteExpenseDocumentFile(btn.dataset.docDelete);
-            renderDocPanels();
+            await renderDocPanels();
           }, { button: btn });
         }));
 
@@ -98,7 +98,7 @@ try {
       container.querySelector("[data-doc-batch-review]")?.addEventListener("click", async (e) => {
         await runWithErrorBoundary(async () => {
           const { reviewed } = await requestAiBatchDocumentReview(id, phase);
-          renderDocPanels();
+          await renderDocPanels();
           if (!reviewed) showToast("AI검토할 업로드 파일이 없습니다.", { type: "info" });
         }, { button: e.currentTarget });
       });
@@ -124,11 +124,11 @@ try {
             editable,
             onClear: async (comment) => {
               await setExpenseDocumentUserReview(req.file.id, { cleared: true, comment, user });
-              renderDocPanels();
+              await renderDocPanels();
             },
             onRevert: async () => {
               await setExpenseDocumentUserReview(req.file.id, { cleared: false, user });
-              renderDocPanels();
+              await renderDocPanels();
             },
           });
         }));
@@ -203,7 +203,7 @@ try {
           // 제출 전 필수 첨부서류 검증 (§7). 누락 시 서류명을 안내하고 제출을 막는다.
           const phase = getSubmitDocumentPhase(expense.status);
           if (phase) {
-            const { ok, missing } = validateRequiredDocuments(id, phase);
+            const { ok, missing } = await validateRequiredDocuments(id, phase);
             if (!ok) {
               showToast(`다음 필수 첨부서류를 업로드해야 ${label} 신청을 진행할 수 있습니다.\n- ${missing.join("\n- ")}`, { type: "warning", duration: 6000 });
               return;

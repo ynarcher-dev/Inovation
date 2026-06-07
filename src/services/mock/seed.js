@@ -3,7 +3,7 @@ import { STORAGE_KEYS, save } from "./storage.mock.js";
 
 // localStorage 시드 데이터 버전. 데이터 구조가 바뀌면 올린다.
 // 버전이 다르면 mock 데이터를 재시드한다(개발용 로컬 데이터만 초기화).
-const DATA_VERSION = "8";
+const DATA_VERSION = "10";
 const DATA_VERSION_KEY = "mock_data_version";
 
 // Initialize Mock Data
@@ -22,6 +22,7 @@ export function initMockData() {
     { id: "superadmin-uid", email: "super@yna.local", password: "yna123", raw_user_meta_data: { name: "최고관리자" } },
     { id: "admin-uid", email: "admin@yna.local", password: "yna123", raw_user_meta_data: { name: "관리자" } },
     { id: "founder-uid", email: "founder@yna.local", password: "yna123", raw_user_meta_data: { name: "김대표" } },
+    { id: "ynarcher-superadmin-uid", email: "info@ynarcher.com", password: "@@ynarcher123", raw_user_meta_data: { name: "와이앤아처 최고관리자" } },
   ];
   save(STORAGE_KEYS.USERS, users);
 
@@ -87,6 +88,7 @@ export function initMockData() {
 
   const profiles = [
     { id: "prof-super", user_id: "superadmin-uid", role: "super_admin", name: "최고관리자" },
+    { id: "prof-ynarcher-super", user_id: "ynarcher-superadmin-uid", role: "super_admin", name: "와이앤아처 최고관리자" },
     // 일반관리자는 배정된 사업(program_ids)만 관리한다. 데모: 체육인 창업지원(prog-1)만 배정.
     { id: "prof-admin", user_id: "admin-uid", role: "admin", name: "관리자", program_ids: ["prog-1"] },
     { id: "prof-founder", user_id: "founder-uid", role: "founder", name: "김대표", company_name: "ABC스포츠" },

@@ -79,7 +79,10 @@ import {
 } from "./services/ai-agent.js";
 import { parsePdfText } from "./services/pdf-parse.js";
 import { isMockApi, isProduction } from "./config.js";
-import { validateUploadFile, sanitizeFilename } from "./domains/upload-policy.js";
+import { validateUploadFile, sanitizeFilename, getFileExtension } from "./domains/upload-policy.js";
+import { uploadFileToS3, getS3DownloadUrl } from "./services/s3-storage.js";
+import * as remote from "./services/supabase-api.js";
+import { getCurrentUser } from "./auth.js";
 
 // ----------------------------------------------------
 // mock / remote API 경계 (P0-03 / T6)
@@ -121,106 +124,127 @@ if (isMockApi) initMockData();
 warnIfMockInProduction();
 
 // Export wrapped mock APIs
-export const getSupportPrograms = mockGetSupportPrograms;
-export const createSupportProgram = mockCreateSupportProgram;
-export const updateSupportProgram = mockUpdateSupportProgram;
-export const deleteSupportProgram = mockDeleteSupportProgram;
-export const updateSupportProgramDescription = mockUpdateSupportProgramDescription;
-export const updateSupportProgramMemo = mockUpdateSupportProgramMemo;
-export const updateSupportProgramLevelLabels = mockUpdateSupportProgramLevelLabels;
+export const getSupportPrograms = isMockApi ? mockGetSupportPrograms : remote.getSupportPrograms;
+export const createSupportProgram = isMockApi ? mockCreateSupportProgram : remote.createSupportProgram;
+export const updateSupportProgram = isMockApi ? mockUpdateSupportProgram : remote.updateSupportProgram;
+export const deleteSupportProgram = isMockApi ? mockDeleteSupportProgram : remote.deleteSupportProgram;
+export const updateSupportProgramDescription = isMockApi ? mockUpdateSupportProgramDescription : remote.updateSupportProgramDescription;
+export const updateSupportProgramMemo = isMockApi ? mockUpdateSupportProgramMemo : remote.updateSupportProgramMemo;
+export const updateSupportProgramLevelLabels = isMockApi ? mockUpdateSupportProgramLevelLabels : remote.updateSupportProgramLevelLabels;
 
-export const getSupportProgramBudgets = mockGetSupportProgramBudgets;
-export const createSupportProgramBudget = mockCreateSupportProgramBudget;
-export const updateSupportProgramBudget = mockUpdateSupportProgramBudget;
-export const deleteSupportProgramBudget = mockDeleteSupportProgramBudget;
+export const getSupportProgramBudgets = isMockApi ? mockGetSupportProgramBudgets : remote.getSupportProgramBudgets;
+export const createSupportProgramBudget = isMockApi ? mockCreateSupportProgramBudget : remote.createSupportProgramBudget;
+export const updateSupportProgramBudget = isMockApi ? mockUpdateSupportProgramBudget : remote.updateSupportProgramBudget;
+export const deleteSupportProgramBudget = isMockApi ? mockDeleteSupportProgramBudget : remote.deleteSupportProgramBudget;
 
-export const getAdminAccounts = mockGetAdminAccounts;
-export const createAdminAccount = mockCreateAdminAccount;
-export const deleteAdminAccount = mockDeleteAdminAccount;
-export const resetAdminPassword = mockResetAdminPassword;
-export const updateAdminPrograms = mockUpdateAdminPrograms;
+export const getAdminAccounts = isMockApi ? mockGetAdminAccounts : remote.getAdminAccounts;
+export const createAdminAccount = isMockApi ? mockCreateAdminAccount : remote.createAdminAccount;
+export const deleteAdminAccount = isMockApi ? mockDeleteAdminAccount : remote.deleteAdminAccount;
+export const resetAdminPassword = isMockApi ? mockResetAdminPassword : remote.resetAdminPassword;
+export const updateAdminPrograms = isMockApi ? mockUpdateAdminPrograms : remote.updateAdminPrograms;
 
-export const getAiSettings = mockGetAiSettings;
-export const updateAiSettings = mockUpdateAiSettings;
+export const getAiSettings = isMockApi ? mockGetAiSettings : remote.getAiSettings;
+export const updateAiSettings = isMockApi ? mockUpdateAiSettings : remote.updateAiSettings;
 export const requestBudgetAiReview = requestBudgetAiReviewFromEdge;
 
-export const getGuidanceItems = mockGetGuidanceItems;
-export const createGuidanceItem = mockCreateGuidanceItem;
-export const updateGuidanceItem = mockUpdateGuidanceItem;
-export const deleteGuidanceItem = mockDeleteGuidanceItem;
+export const getGuidanceItems = isMockApi ? mockGetGuidanceItems : remote.getGuidanceItems;
+export const createGuidanceItem = isMockApi ? mockCreateGuidanceItem : remote.createGuidanceItem;
+export const updateGuidanceItem = isMockApi ? mockUpdateGuidanceItem : remote.updateGuidanceItem;
+export const deleteGuidanceItem = isMockApi ? mockDeleteGuidanceItem : remote.deleteGuidanceItem;
 
-export const getFounderDashboard = mockGetFounderDashboard;
-export const submitFounderBudgetAllocations = mockSubmitFounderBudgetAllocations;
-export const getFounderProfile = () => {
-  const user = mockGetCurrentUser();
-  if (!user) return { company: null };
-  const dashboard = mockGetFounderDashboard();
-  return { company: dashboard.company };
+export const getFounderDashboard = isMockApi ? mockGetFounderDashboard : remote.getFounderDashboard;
+export const submitFounderBudgetAllocations = isMockApi ? mockSubmitFounderBudgetAllocations : remote.submitFounderBudgetAllocations;
+export const getFounderProfile = async () => {
+  if (isMockApi) {
+    const user = mockGetCurrentUser();
+    if (!user) return { company: null };
+    const dashboard = mockGetFounderDashboard();
+    return { company: dashboard.company };
+  } else {
+    const dashboard = await remote.getFounderDashboard();
+    return { company: dashboard?.company || null };
+  }
 };
-export const updateFounderProfile = mockUpdateFounderProfile;
-export const updateBusinessPlan = mockUpdateBusinessPlan;
+export const updateFounderProfile = isMockApi ? mockUpdateFounderProfile : remote.updateFounderProfile;
+export const updateBusinessPlan = isMockApi ? mockUpdateBusinessPlan : remote.updateBusinessPlan;
 
-export const getAdminDashboard = mockGetAdminDashboard;
-export const getAdminCompanyDetail = mockGetAdminCompanyDetail;
-export const approveCompany = mockApproveCompany;
-export const rejectCompany = mockRejectCompany;
-export const resetFounderPassword = mockResetFounderPassword;
-export const reviewBudgetSubmission = mockReviewBudgetSubmission;
-export const upsertCompanyBudgetAllocation = mockUpsertCompanyBudgetAllocation;
-export const updateCompanySupportTotal = mockUpdateCompanySupportTotal;
-export const updateCompanyInternalMemo = mockUpdateCompanyInternalMemo;
+export const getAdminDashboard = isMockApi ? mockGetAdminDashboard : remote.getAdminDashboard;
+export const getAdminCompanyDetail = isMockApi ? mockGetAdminCompanyDetail : remote.getAdminCompanyDetail;
+export const approveCompany = isMockApi ? mockApproveCompany : remote.approveCompany;
+export const rejectCompany = isMockApi ? mockRejectCompany : remote.rejectCompany;
+export const resetFounderPassword = isMockApi ? mockResetFounderPassword : remote.resetFounderPassword;
+export const reviewBudgetSubmission = isMockApi ? mockReviewBudgetSubmission : remote.reviewBudgetSubmission;
+export const upsertCompanyBudgetAllocation = isMockApi ? mockUpsertCompanyBudgetAllocation : remote.upsertCompanyBudgetAllocation;
+export const updateCompanySupportTotal = isMockApi ? mockUpdateCompanySupportTotal : remote.updateCompanySupportTotal;
+export const updateCompanyInternalMemo = isMockApi ? mockUpdateCompanyInternalMemo : remote.updateCompanyInternalMemo;
 
-export const getExpenseDetail = mockGetExpenseDetail;
-export const createExpense = mockCreateExpense;
-export const updateExpenseRequest = mockUpdateExpenseRequest;
-export const submitExpenseRequest = mockSubmitExpenseRequest;
-export const reviewExpenseRequest = mockReviewExpenseRequest;
+export const getExpenseDetail = isMockApi ? mockGetExpenseDetail : remote.getExpenseDetail;
+export const createExpense = isMockApi ? mockCreateExpense : remote.createExpense;
+export const updateExpenseRequest = isMockApi ? mockUpdateExpenseRequest : remote.updateExpenseRequest;
+export const submitExpenseRequest = isMockApi ? mockSubmitExpenseRequest : remote.submitExpenseRequest;
+export const reviewExpenseRequest = isMockApi ? mockReviewExpenseRequest : remote.reviewExpenseRequest;
 
 // ----------------------------------------------------
 // 예산 항목별 커스텀 첨부서류 / 운영사업 공통 AI 검토 기준 문서 / 창업자 업로드·AI검토
 // (custom-document-requirements-plan.md §6)
 // ----------------------------------------------------
-export const getBudgetDocumentRequirements = mockGetBudgetDocumentRequirements;
-export const createBudgetDocumentRequirement = mockCreateBudgetDocumentRequirement;
-export const updateBudgetDocumentRequirement = mockUpdateBudgetDocumentRequirement;
-export const deactivateBudgetDocumentRequirement = mockDeactivateBudgetDocumentRequirement;
-export const deleteBudgetDocumentRequirement = mockDeleteBudgetDocumentRequirement;
+export const getBudgetDocumentRequirements = isMockApi ? mockGetBudgetDocumentRequirements : remote.getBudgetDocumentRequirements;
+export const createBudgetDocumentRequirement = isMockApi ? mockCreateBudgetDocumentRequirement : remote.createBudgetDocumentRequirement;
+export const updateBudgetDocumentRequirement = isMockApi ? mockUpdateBudgetDocumentRequirement : remote.updateBudgetDocumentRequirement;
+export const deactivateBudgetDocumentRequirement = isMockApi ? mockDeactivateBudgetDocumentRequirement : remote.deactivateBudgetDocumentRequirement;
+export const deleteBudgetDocumentRequirement = isMockApi ? mockDeleteBudgetDocumentRequirement : remote.deleteBudgetDocumentRequirement;
 
-export const getProgramAiCriteriaDocument = mockGetProgramAiCriteriaDocument;
-export const deleteProgramAiCriteriaDocument = mockDeleteProgramAiCriteriaDocument;
+export const getProgramAiCriteriaDocument = isMockApi ? mockGetProgramAiCriteriaDocument : remote.getProgramAiCriteriaDocument;
+export const deleteProgramAiCriteriaDocument = isMockApi ? mockDeleteProgramAiCriteriaDocument : remote.deleteProgramAiCriteriaDocument;
 
 // 기준 문서 텍스트 파싱: 브라우저에 보관된 실제 PDF 바이트를 pdf.js 로 읽어
 // 전체 텍스트와 파싱 품질 지표(페이지 수/글자 수/이미지 PDF 여부)를 저장한다.
 // 저장된 전체 텍스트는 제출 서류 AI 검토에 그대로 적용된다.
 export async function extractProgramAiCriteria(criteriaId) {
-  const doc = mockGetProgramAiCriteriaDocumentById(criteriaId);
+  const docFn = isMockApi ? mockGetProgramAiCriteriaDocumentById : remote.mockGetProgramAiCriteriaDocumentById;
+  const doc = await docFn(criteriaId);
   if (!doc) throw new Error("기준 문서를 찾을 수 없습니다.");
   if (!doc.link_url) throw new Error("파싱할 문서 파일이 없습니다. 문서를 다시 업로드해주세요.");
 
-  mockSetProgramAiCriteriaExtractionStatus(criteriaId, "pending");
+  const setStatusFn = isMockApi ? mockSetProgramAiCriteriaExtractionStatus : remote.mockSetProgramAiCriteriaExtractionStatus;
+  await setStatusFn(criteriaId, "pending");
   try {
-    const stored = await mockGetFile(doc.link_url);
-    if (!stored?.data) throw new Error("보관된 문서 파일을 찾을 수 없습니다. 문서를 다시 업로드해주세요.");
+    let stored;
+    if (isMockApi) {
+      stored = await mockGetFile(doc.link_url);
+      if (!stored?.data) throw new Error("보관된 문서 파일을 찾을 수 없습니다. 문서를 다시 업로드해주세요.");
+    } else {
+      const s3Url = await getS3DownloadUrl(doc.link_url);
+      const res = await fetch(s3Url);
+      if (!res.ok) throw new Error("S3에서 문서 파일을 가져오지 못했습니다.");
+      const blob = await res.blob();
+      const dataUrl = await readFileAsDataUrl(blob);
+      stored = {
+        data: dataUrl,
+        type: blob.type,
+      };
+    }
 
     // 텍스트가 거의 없는 이미지(스캔) PDF 도 지표만 남기고 '완료'로 저장한다(화면에서 경고 표시).
     const parsed = await parsePdfText(stored.data, {
       mimeType: stored.type || doc.mime_type || "application/pdf",
     });
-    return mockSaveProgramAiCriteriaExtraction(criteriaId, parsed.text, {
+    const saveFn = isMockApi ? mockSaveProgramAiCriteriaExtraction : remote.mockSaveProgramAiCriteriaExtraction;
+    return await saveFn(criteriaId, parsed.text, {
       page_count: parsed.pageCount,
       char_count: parsed.charCount,
       pages_with_text: parsed.pagesWithText,
       image_likely: parsed.imageLikely,
     });
   } catch (error) {
-    mockSetProgramAiCriteriaExtractionStatus(criteriaId, "failed");
+    await setStatusFn(criteriaId, "failed");
     throw error;
   }
 }
 
-export const getExpenseDocumentRequirements = mockGetExpenseDocumentRequirements;
-export const deleteExpenseDocumentFile = mockDeleteExpenseDocumentFile;
-export const validateRequiredDocuments = mockValidateRequiredDocuments;
+export const getExpenseDocumentRequirements = isMockApi ? mockGetExpenseDocumentRequirements : remote.getExpenseDocumentRequirements;
+export const deleteExpenseDocumentFile = isMockApi ? mockDeleteExpenseDocumentFile : remote.mockDeleteUploadedFile;
+export const validateRequiredDocuments = isMockApi ? mockValidateRequiredDocuments : remote.mockValidateRequiredDocuments;
 
 // ----------------------------------------------------
 // 제출 서류 실제 AI 검토 (§2.4 / §4)
@@ -249,8 +273,22 @@ function buildDocumentReviewComment(result, { criteriaTitle, batchCount }) {
 
 // 보관된 첨부 파일 한 건을 실제 LLM 으로 검토하고 결과를 저장한다.
 async function reviewStoredDocument({ file, req, expense, criteriaText, criteriaTitle, batchCount }) {
-  const stored = await mockGetFile(file.link_url);
-  if (!stored?.data) throw new Error("보관된 첨부 파일을 찾을 수 없습니다. 파일을 다시 업로드해주세요.");
+  let stored;
+  if (isMockApi) {
+    stored = await mockGetFile(file.link_url);
+    if (!stored?.data) throw new Error("보관된 첨부 파일을 찾을 수 없습니다. 파일을 다시 업로드해주세요.");
+  } else {
+    const s3Url = await getS3DownloadUrl(file.link_url);
+    const res = await fetch(s3Url);
+    if (!res.ok) throw new Error("S3에서 첨부 파일을 가져오지 못했습니다.");
+    const blob = await res.blob();
+    const dataUrl = await readFileAsDataUrl(blob);
+    stored = {
+      data: dataUrl,
+      type: blob.type,
+      filename: file.original_filename,
+    };
+  }
 
   const result = await requestDocumentReviewFromEdge({
     fileBase64: dataUrlToBase64(stored.data),
@@ -272,7 +310,8 @@ async function reviewStoredDocument({ file, req, expense, criteriaText, criteria
     batchCount: batchCount || 1,
   });
 
-  return mockSaveAiDocumentReviewResult(file.id, {
+  const saveFn = isMockApi ? mockSaveAiDocumentReviewResult : remote.mockSaveAiDocumentReviewResult;
+  return await saveFn(file.id, {
     status: result.status,
     comment: buildDocumentReviewComment(result, { criteriaTitle, batchCount }),
     ai_check_result: {
@@ -287,13 +326,15 @@ async function reviewStoredDocument({ file, req, expense, criteriaText, criteria
 
 // 단일 파일 실제 AI 검토(개별 재검토).
 export async function requestAiDocumentReview(fileId) {
-  const { file, req, expense, criteriaText, criteriaTitle } = mockGetAiDocumentReviewTargetByFile(fileId);
+  const getTargetFn = isMockApi ? mockGetAiDocumentReviewTargetByFile : remote.mockGetAiDocumentReviewTargetByFile;
+  const { file, req, expense, criteriaText, criteriaTitle } = await getTargetFn(fileId);
   return reviewStoredDocument({ file, req, expense, criteriaText, criteriaTitle, batchCount: 1 });
 }
 
 // 단계별 일괄 실제 AI 검토(§4): 해당 단계의 'AI검토 사용 + 파일 업로드' 서류를 순차 검토한다.
 export async function requestAiBatchDocumentReview(expenseRequestId, phase) {
-  const { expense, criteriaText, criteriaTitle, targets } = mockGetAiDocumentReviewContext(expenseRequestId, phase);
+  const getContextFn = isMockApi ? mockGetAiDocumentReviewContext : remote.mockGetAiDocumentReviewContext;
+  const { expense, criteriaText, criteriaTitle, targets } = await getContextFn(expenseRequestId, phase);
   if (!targets.length) return { reviewed: 0 };
   for (const req of targets) {
     await reviewStoredDocument({ file: req.file, req, expense, criteriaText, criteriaTitle, batchCount: targets.length });
@@ -303,13 +344,15 @@ export async function requestAiBatchDocumentReview(expenseRequestId, phase) {
 
 // 창업자 'AI 보완 → 이상없음' 소명 처리/취소. AI 결과는 보존하고 소명만 덧붙인다.
 export function setExpenseDocumentUserReview(fileId, { cleared, comment, user }) {
-  return mockSetExpenseDocumentUserReview(fileId, { cleared, comment, user });
+  const fn = isMockApi ? mockSetExpenseDocumentUserReview : remote.mockSetExpenseDocumentUserReview;
+  return fn(fileId, { cleared, comment, user });
 }
 
 // 운영사업 공통 AI 기준 문서 업로드: 실제 파일을 보관(link_url)한 뒤 메타데이터를 등록한다.
 export async function uploadProgramAiCriteriaDocument(programId, file, user) {
-  const upload = await uploadFile(file);
-  return mockUploadProgramAiCriteriaDocument(programId, {
+  const upload = await uploadFile(file, { programId });
+  const fn = isMockApi ? mockUploadProgramAiCriteriaDocument : remote.mockUploadProgramAiCriteriaDocument;
+  return fn(programId, {
     title: file.name,
     original_filename: upload.original_filename,
     mime_type: file.type,
@@ -321,8 +364,12 @@ export async function uploadProgramAiCriteriaDocument(programId, file, user) {
 
 // 창업자 첨부서류 업로드: 실제 파일을 보관(link_url)한 뒤 요구사항에 연결한다.
 export async function uploadExpenseDocumentFile(expenseRequestId, requirement, phase, file, user) {
-  const upload = await uploadFile(file);
-  return mockUploadExpenseDocumentFile(expenseRequestId, requirement.id, phase, {
+  const upload = await uploadFile(file, {
+    companyId: user?.company_id || user?.profile?.company_id,
+    expenseRequestId
+  });
+  const fn = isMockApi ? mockUploadExpenseDocumentFile : remote.mockUploadExpenseDocumentFile;
+  return fn(expenseRequestId, requirement.id, phase, {
     support_program_budget_id: requirement.support_program_budget_id || null,
     original_filename: upload.original_filename,
     mime_type: file.type,
@@ -360,6 +407,34 @@ function dataUrlToBlob(dataUrl) {
 export async function uploadFile(file, policyOpts = {}) {
   const check = validateUploadFile(file, policyOpts);
   if (!check.valid) throw new Error(check.error);
+
+  if (!isMockApi) {
+    const ext = getFileExtension(file.name);
+    const uuid = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2, 15);
+    let filePath = "";
+
+    if (policyOpts.path) {
+      filePath = policyOpts.path;
+    } else if (policyOpts.companyId) {
+      const folder = policyOpts.expenseRequestId ? `expenses/${policyOpts.expenseRequestId}` : 'business-plans';
+      filePath = `companies/${policyOpts.companyId}/${folder}/${uuid}.${ext}`;
+    } else if (policyOpts.programId) {
+      filePath = `programs/${policyOpts.programId}/criteria/${uuid}.${ext}`;
+    } else {
+      let companyId = "unknown";
+      try {
+        const currentUser = await getCurrentUser();
+        if (currentUser?.profile?.company_id) {
+          companyId = currentUser.profile.company_id;
+        }
+      } catch (_) {}
+      filePath = `companies/${companyId}/general/${uuid}.${ext}`;
+    }
+
+    const key = await uploadFileToS3(file, filePath);
+    return { link_url: key, original_filename: sanitizeFilename(file.name) };
+  }
+
   const dataUrl = await readFileAsDataUrl(file);
   const link_url = await mockStoreFile(dataUrl, sanitizeFilename(file.name), file.type);
   return { link_url, original_filename: sanitizeFilename(file.name) };
@@ -370,6 +445,14 @@ export const uploadGuidanceFile = uploadFile;
 
 // 미리보기(새 탭 열기)용 URL. 보관된 실제 파일이 있으면 그 파일을, 없으면(개발 한정) 더미를 돌려준다.
 export async function getGuidanceDownloadUrl(linkUrl) {
+  if (!isMockApi && linkUrl && (linkUrl.startsWith("companies/") || linkUrl.startsWith("programs/"))) {
+    try {
+      return await getS3DownloadUrl(linkUrl);
+    } catch (error) {
+      console.error("Failed to get S3 download URL:", error);
+    }
+  }
+
   const stored = await mockGetFile(linkUrl);
   if (stored?.data) return URL.createObjectURL(dataUrlToBlob(stored.data));
   // 운영에서는 외부 더미 파일을 열지 않는다(혼란 방지). 개발에서만 fallback.
@@ -379,6 +462,16 @@ export async function getGuidanceDownloadUrl(linkUrl) {
 
 // 보관된 실제 첨부 파일을 원본 파일명으로 다운로드한다. 없으면(개발 한정) 더미를 새 탭으로 연다.
 export async function downloadStoredFile(linkUrl, filename) {
+  if (!isMockApi && linkUrl && (linkUrl.startsWith("companies/") || linkUrl.startsWith("programs/"))) {
+    try {
+      const s3Url = await getS3DownloadUrl(linkUrl);
+      window.open(s3Url, "_blank", "noopener,noreferrer");
+      return;
+    } catch (error) {
+      console.error("Failed to download file from S3:", error);
+    }
+  }
+
   const stored = await mockGetFile(linkUrl);
   if (!stored?.data) {
     // 운영에서는 외부 더미 파일을 열지 않는다.
@@ -397,13 +490,22 @@ export async function downloadStoredFile(linkUrl, filename) {
 }
 
 export async function uploadDocumentFile(expenseRequestId, documentType, file, user) {
-  return mockUploadDocumentFile(expenseRequestId, documentType, file, user);
+  if (isMockApi) {
+    return mockUploadDocumentFile(expenseRequestId, documentType, file, user);
+  }
+  throw new Error("uploadDocumentFile is deprecated. Use uploadExpenseDocumentFile instead.");
 }
 
 export async function markDocumentUploaded(expenseRequestId, documentType) {
-  return mockMarkDocumentUploaded(expenseRequestId, documentType);
+  if (isMockApi) {
+    return mockMarkDocumentUploaded(expenseRequestId, documentType);
+  }
+  throw new Error("markDocumentUploaded is deprecated.");
 }
 
 export async function deleteUploadedFile(fileId) {
-  return mockDeleteUploadedFile(fileId);
+  if (isMockApi) {
+    return mockDeleteUploadedFile(fileId);
+  }
+  return await remote.mockDeleteUploadedFile(fileId);
 }

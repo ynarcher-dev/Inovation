@@ -13,7 +13,7 @@ import { renderDocumentPhasePanel, openAiReviewModal } from "../../components/ex
 import { escapeHtml, formatCurrency, formatDate, getQueryParam } from "../../utils.js";
 
 // 관리자 상세: 제출된 첨부서류 + AI 검토 결과를 단계별 읽기 전용으로 표시한다(§6).
-function renderAdminDocPanels(expenseId, aiEnabled) {
+async function renderAdminDocPanels(expenseId, aiEnabled) {
   const defs = [
     { phase: "pre", title: "사전승인 첨부서류", container: "[data-doc-panel-pre]" },
     { phase: "final", title: "최종승인 첨부서류", container: "[data-doc-panel-final]" },
@@ -21,7 +21,7 @@ function renderAdminDocPanels(expenseId, aiEnabled) {
   for (const def of defs) {
     const container = document.querySelector(def.container);
     if (!container) continue;
-    const requirements = getExpenseDocumentRequirements(expenseId, def.phase);
+    const requirements = (await getExpenseDocumentRequirements(expenseId, def.phase)) || [];
     renderDocumentPhasePanel(container, {
       phase: def.phase, title: def.title, requirements, editable: false, mode: "admin",
       aiEnabled,
@@ -138,7 +138,7 @@ try {
       </dl>
     `;
     renderReviews(reviews);
-    renderAdminDocPanels(expense.id, aiSettings.enabled);
+    await renderAdminDocPanels(expense.id, aiSettings.enabled);
 
     // 현재 상태에 따라 검토 종류(사전승인/최종승인)와 폼을 분기한다.
     //  - 검토 결과는 승인/보완요청 두 가지다(반려 없음).

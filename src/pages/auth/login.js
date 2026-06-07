@@ -1,9 +1,16 @@
 import { redirectByRole, signIn } from "../../auth.js";
-import { showError } from "../../app.js";
+import { showError, showToast } from "../../app.js";
 import { enhancePasswordInputs } from "../../password-toggle.js";
 
 // 비밀번호 입력에 눈 아이콘 토글을 추가한다.
 enhancePasswordInputs();
+
+// 회원가입 직후 이동해 온 경우, 가입 안내 메시지를 토스트로 보여준다.
+const signupNotice = sessionStorage.getItem("signup:notice");
+if (signupNotice) {
+  sessionStorage.removeItem("signup:notice");
+  showToast(signupNotice, { type: "success", duration: 6000 });
+}
 
 document.querySelector("#login-form").addEventListener("submit", async (event) => {
   event.preventDefault();

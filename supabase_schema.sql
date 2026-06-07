@@ -242,6 +242,9 @@ CREATE TABLE IF NOT EXISTS public.uploaded_files (
 );
 CREATE INDEX IF NOT EXISTS idx_uploaded_files_expense ON public.uploaded_files(expense_request_id);
 
+ALTER TABLE public.support_programs ADD COLUMN IF NOT EXISTS created_by uuid REFERENCES public.profiles(id) ON DELETE SET NULL;
+
+
 
 -- ==========================================
 -- 2. 보안 헬퍼 함수 (RLS 재귀 방지)
@@ -263,28 +266,64 @@ $$;
 
 CREATE OR REPLACE FUNCTION public.is_admin()
 RETURNS boolean
-LANGUAGE sql
-STABLE
+LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public
 AS $$
+DECLARE
+  v_is_admin boolean;
+  v_check text;
+BEGIN
+  -- 무한 재귀 호출 방지를 위한 세션 변수 체크
+  v_check := current_setting('my.is_admin_check', true);
+  IF v_check IS NOT NULL AND v_check <> '' THEN
+    RETURN v_check::boolean;
+  END IF;
+
+  -- 임시로 세션 변수 설정 (재귀 방지용 플래그)
+  PERFORM set_config('my.is_admin_check', 'false', true);
+
   SELECT EXISTS (
     SELECT 1 FROM public.profiles
     WHERE id = auth.uid() AND role IN ('admin', 'super_admin')
-  );
+  ) INTO v_is_admin;
+
+  -- 최종 권한 결과를 세션 변수에 저장해 재사용
+  PERFORM set_config('my.is_admin_check', v_is_admin::text, true);
+
+  RETURN v_is_admin;
+END;
 $$;
 
 CREATE OR REPLACE FUNCTION public.is_super_admin()
 RETURNS boolean
-LANGUAGE sql
-STABLE
+LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public
 AS $$
+DECLARE
+  v_is_super boolean;
+  v_check text;
+BEGIN
+  -- 무한 재귀 호출 방지를 위한 세션 변수 체크
+  v_check := current_setting('my.is_super_admin_check', true);
+  IF v_check IS NOT NULL AND v_check <> '' THEN
+    RETURN v_check::boolean;
+  END IF;
+
+  -- 임시로 세션 변수 설정 (재귀 방지용 플래그)
+  PERFORM set_config('my.is_super_admin_check', 'false', true);
+
   SELECT EXISTS (
     SELECT 1 FROM public.profiles
     WHERE id = auth.uid() AND role = 'super_admin'
-  );
+  ) INTO v_is_super;
+
+  -- 최종 권한 결과를 세션 변수에 저장해 재사용
+  PERFORM set_config('my.is_super_admin_check', v_is_super::text, true);
+
+  RETURN v_is_super;
+END;
 $$;
 
 CREATE OR REPLACE FUNCTION public.is_company_member(cid uuid)
@@ -327,17 +366,56 @@ $$;
 --  보안: 회원가입자가 raw_user_meta_data 로 role 을 직접 지정하지 못하게 한다.
 --  자가가입은 항상 'founder' 로 고정한다. admin/super_admin 승격은
 --  service_role(서버) 또는 관리자 콘솔 전용 경로에서만 수행한다.
+--
+--  창업자 자가가입(is_founder_signup = true)인 경우, 회사(companies)와
+--  소속(company_members)까지 이 트리거 안에서 원자적으로 생성한다.
+--  - companies/company_members 에는 founder 가 직접 INSERT 할 수 있는 RLS
+--    정책이 없으므로(설계상 의도), SECURITY DEFINER 인 이 트리거가 유일한
+--    생성 경로다. 클라이언트에서 직접 insert 하지 않는다.
+--  - 이메일 확인이 켜져 있어 가입 직후 세션이 없어도 동작한다.
+--  - role 은 항상 'founder' 로 고정되며, 회사는 항상 'pending' 으로 생성된다.
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS trigger AS $$
+DECLARE
+  v_name                text := COALESCE(new.raw_user_meta_data->>'name', new.raw_user_meta_data->>'founder_name', '사용자');
+  v_company_name        text := new.raw_user_meta_data->>'company_name';
+  v_phone               text := new.raw_user_meta_data->>'phone';
+  v_business_number     text := COALESCE(new.raw_user_meta_data->>'business_number', '');
+  v_support_program_id  uuid;
+  v_company_id          uuid;
 BEGIN
+  -- 1. 프로필은 항상 founder 로 생성
   INSERT INTO public.profiles (id, role, name, company_name, phone)
-  VALUES (
-    new.id,
-    'founder',
-    COALESCE(new.raw_user_meta_data->>'name', new.raw_user_meta_data->>'founder_name', '사용자'),
-    new.raw_user_meta_data->>'company_name',
-    new.raw_user_meta_data->>'phone'
-  );
+  VALUES (new.id, 'founder', v_name, v_company_name, v_phone);
+
+  -- 2. 창업자 자가가입인 경우에만 회사 + 소속 생성
+  IF COALESCE(new.raw_user_meta_data->>'is_founder_signup', 'false') = 'true' THEN
+    -- 잘못된 uuid 문자열은 NULL 로 안전 처리
+    BEGIN
+      v_support_program_id := NULLIF(new.raw_user_meta_data->>'support_program_id', '')::uuid;
+    EXCEPTION WHEN others THEN
+      v_support_program_id := NULL;
+    END;
+
+    INSERT INTO public.companies (
+      name, representative_name, business_number,
+      support_program_id, approval_status, budget_status, phone
+    )
+    VALUES (
+      COALESCE(NULLIF(v_company_name, ''), '미입력 회사'),
+      v_name,
+      v_business_number,
+      v_support_program_id,
+      'pending',
+      'not_submitted',
+      v_phone
+    )
+    RETURNING id INTO v_company_id;
+
+    INSERT INTO public.company_members (company_id, user_id, member_role)
+    VALUES (v_company_id, new.id, 'owner');
+  END IF;
+
   RETURN new;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;

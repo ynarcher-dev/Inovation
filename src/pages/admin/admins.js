@@ -72,7 +72,7 @@ function ProgramAssignModal(adminName, programs, selectedIds) {
   const set = new Set(selectedIds);
   const list = programs.length
     ? programs.map((p) => `
-        <label style="display:flex;align-items:center;gap:8px;font-weight:500;padding:4px 0">
+        <label class="checkbox-row" style="padding:6px 0">
           <input type="checkbox" value="${escapeHtml(p.id)}" ${set.has(p.id) ? "checked" : ""}>
           <span>${escapeHtml(p.name)}</span>
         </label>
@@ -88,7 +88,7 @@ function ProgramAssignModal(adminName, programs, selectedIds) {
           </div>
           <button class="modal-close" type="button" data-assign-cancel aria-label="닫기">x</button>
         </div>
-        <div class="field" style="gap:4px">${list}</div>
+        <div class="field" style="gap:2px;max-height:320px;overflow-y:auto">${list}</div>
         <div class="actions">
           <button class="button" type="submit">저장</button>
           <button class="button secondary" type="button" data-assign-cancel>취소</button>

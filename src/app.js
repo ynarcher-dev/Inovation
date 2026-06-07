@@ -9,9 +9,11 @@ import { isBudgetPendingReview } from "./domains/budget/budget-status.js";
 //  - 가입신청: 가입 승인 대기 기업
 //  - 예산사용: 사전/최종 승인 검토 대기 지출
 //  - 예산승인: 예산안/변경 검토 대기 기업
-function getAdminPendingCounts() {
+async function getAdminPendingCounts() {
   try {
-    const { companies = [], expenses = [] } = getAdminDashboard();
+    // getAdminDashboard 는 remote 모드에서 async(Promise 반환)다. await 없이 구조분해하면
+    // companies/expenses 가 전부 undefined 가 되어 배지 건수가 0으로 떨어진다(빨간 원 미표시).
+    const { companies = [], expenses = [] } = (await getAdminDashboard()) || {};
     return {
       signup: companies.filter((c) => c.approval_status === "pending").length,
       expense: expenses.filter((e) => ADMIN_REVIEW_STATUSES.includes(e.status)).length,
@@ -28,10 +30,10 @@ function navBadge(count) {
 }
 
 // 승인/반려 등으로 대기 건수가 바뀐 뒤 사이드바 배지를 다시 그린다(페이지 이동 없이 갱신).
-export function updateAdminNavBadges() {
+export async function updateAdminNavBadges() {
   const nav = document.querySelector("aside.sidebar .nav");
   if (!nav) return;
-  const pending = getAdminPendingCounts();
+  const pending = await getAdminPendingCounts();
   const targets = [
     ["signup-requests.html", pending.signup],
     ["expense-requests.html", pending.expense],
@@ -52,15 +54,16 @@ export function mountShell() {
     const filename = path.split("/").pop() || "dashboard.html";
     
     if (path.includes("/admin/")) {
-      const pending = getAdminPendingCounts();
+      // 배지는 대시보드 데이터(async)를 기다려야 하므로 사이드바를 먼저 그린 뒤
+      // updateAdminNavBadges() 로 비동기 주입한다(아래 mountShell 말미에서 호출).
       sidebar.innerHTML = `
         <div class="brand">관리자</div>
         <nav class="nav">
           <div class="nav-category">실무관리</div>
           <a class="${filename === "companies.html" || filename === "company-detail.html" || filename === "dashboard.html" ? "active" : ""}" href="./companies.html">기업 목록</a>
-          <a class="${filename === "signup-requests.html" ? "active" : ""}" href="./signup-requests.html">가입 신청 관리${navBadge(pending.signup)}</a>
-          <a class="${filename === "expense-requests.html" || filename === "expense-detail.html" ? "active" : ""}" href="./expense-requests.html">예산사용 승인${navBadge(pending.expense)}</a>
-          <a class="${filename === "budget-approvals.html" ? "active" : ""}" href="./budget-approvals.html">예산 승인/변경${navBadge(pending.budget)}</a>
+          <a class="${filename === "signup-requests.html" ? "active" : ""}" href="./signup-requests.html">가입 신청 관리</a>
+          <a class="${filename === "expense-requests.html" || filename === "expense-detail.html" ? "active" : ""}" href="./expense-requests.html">예산사용 승인</a>
+          <a class="${filename === "budget-approvals.html" ? "active" : ""}" href="./budget-approvals.html">예산 승인/변경</a>
 
           <div class="nav-category" style="margin-top: 8px;">운영관리</div>
           <a class="${filename === "support-programs.html" ? "active" : ""}" href="./support-programs.html">신규사업 관리</a>
@@ -70,6 +73,8 @@ export function mountShell() {
           <button data-logout type="button">로그아웃</button>
         </nav>
       `;
+      // 대시보드 데이터를 받아 대기 건수 배지를 비동기로 주입한다(렌더 블로킹 방지).
+      updateAdminNavBadges();
     } else if (path.includes("/founder/")) {
       sidebar.innerHTML = `
         <div class="brand">사업비 집행 도우미</div>

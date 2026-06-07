@@ -1,18 +1,26 @@
 // 앱 전역 설정.
 // 환경별 값은 배포 파일 수정이 아니라 window.APP_CONFIG 주입으로 덮어쓴다.
 // (index.html 보다 먼저 로드되는 <script>에서 window.APP_CONFIG = {...} 형태로 주입)
+const appConfig = typeof window !== "undefined" ? window.APP_CONFIG : null;
+
+const isLocal = typeof window !== "undefined" && 
+  (window.location.hostname === "localhost" || 
+   window.location.hostname === "127.0.0.1" || 
+   window.location.hostname.startsWith("192.168."));
+
 export const CONFIG = {
-  supabaseUrl: window.APP_CONFIG?.supabaseUrl || "https://kbyuumrgmovngaahycmk.supabase.co",
-  supabaseAnonKey: window.APP_CONFIG?.supabaseAnonKey || "sb_publishable_IWbWxOxtH_89WfyHPWzN2w_KMVkjVKN",
-  apiBaseUrl: window.APP_CONFIG?.apiBaseUrl || "/api",
+  supabaseUrl: appConfig?.supabaseUrl || "https://kbyuumrgmovngaahycmk.supabase.co",
+  supabaseAnonKey: appConfig?.supabaseAnonKey || "sb_publishable_IWbWxOxtH_89WfyHPWzN2w_KMVkjVKN",
+  apiBaseUrl: appConfig?.apiBaseUrl || "/api",
 
   // 데이터 API 모드. true=브라우저 mock(localStorage/IndexedDB), false=실제 Supabase.
-  // 주입이 없으면 안전하게 mock 모드를 기본값으로 한다.
-  // 실제 Supabase 어댑터 구현은 docs/api-migration.md 의 전환 순서를 따른다.
-  useMockApi: window.APP_CONFIG?.useMockApi ?? true,
+  // 로컬 개발 환경과 배포 환경 모두 실제 Supabase/S3 라이브 서버에 연결하도록 false로 설정합니다.
+  useMockApi: appConfig?.useMockApi ?? false,
 
   // 배포 환경 구분. window.APP_CONFIG.env = "production" 등으로 주입한다.
-  env: window.APP_CONFIG?.env || "development",
+  env: appConfig?.env || (isLocal ? "development" : "production"),
+
+  s3FunctionUrl: appConfig?.s3FunctionUrl || "https://kbyuumrgmovngaahycmk.supabase.co/functions/v1/s3-presigned-url",
 };
 
 export const hasSupabaseConfig = Boolean(CONFIG.supabaseUrl && CONFIG.supabaseAnonKey);

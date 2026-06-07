@@ -35,6 +35,7 @@ let currentUser = null;
 let editingReqId = null;   // 첨부서류 요구사항 인라인 편집 대상 (null = 편집 안 함)
 let showReqAddForm = false; // 첨부서류 추가 폼 표시 여부
 let aiExtracting = false;   // AI 기준 문서 추출 진행 중 여부 (로딩 표시용)
+let aiCriteriaDoc = null;   // 현재 사업의 공통 AI 기준 문서 (remote 비동기 조회 결과 캐시)
 
 function parseLevelLabels(levelLabels) {
   if (!levelLabels) return ["depth.1"];
@@ -225,7 +226,7 @@ function readRequirementForm(root) {
   };
 }
 
-function renderDocRequirements() {
+async function renderDocRequirements() {
   const panel = document.querySelector("[data-doc-req-panel]");
   if (!panel) return;
 
@@ -236,7 +237,7 @@ function renderDocRequirements() {
   }
 
   const node = budgetItems.find((b) => b.id === budgetId);
-  const requirements = getBudgetDocumentRequirements(budgetId);
+  const requirements = (await getBudgetDocumentRequirements(budgetId)) || [];
 
   const rows = requirements.length
     ? requirements.map((r) => {
@@ -285,10 +286,10 @@ function renderDocRequirements() {
 }
 
 function attachDocRequirementEvents(panel, budgetId) {
-  panel.querySelector("[data-req-show-add]")?.addEventListener("click", () => {
+  panel.querySelector("[data-req-show-add]")?.addEventListener("click", async () => {
     showReqAddForm = true;
     editingReqId = null;
-    renderDocRequirements();
+    await renderDocRequirements();
     panel.querySelector("[data-req-title]")?.focus();
   });
 
@@ -310,7 +311,7 @@ function attachDocRequirementEvents(panel, budgetId) {
           created_by: currentUser.id,
         });
         showReqAddForm = false;
-        renderDocRequirements();
+        await renderDocRequirements();
       }, { button: e.currentTarget });
     });
   }
@@ -329,7 +330,7 @@ function attachDocRequirementEvents(panel, budgetId) {
       await runWithErrorBoundary(async () => {
         await updateBudgetDocumentRequirement(reqId, input);
         editingReqId = null;
-        renderDocRequirements();
+        await renderDocRequirements();
       }, { button: e.currentTarget });
     });
   }
@@ -348,7 +349,7 @@ function attachDocRequirementEvents(panel, budgetId) {
       const isActive = btn.dataset.active === "true";
       await runWithErrorBoundary(async () => {
         await updateBudgetDocumentRequirement(id, { active: !isActive });
-        renderDocRequirements();
+        await renderDocRequirements();
       }, { button: btn });
     });
   });
@@ -358,7 +359,7 @@ function attachDocRequirementEvents(panel, budgetId) {
       if (!confirm("이 첨부서류 요구사항을 삭제하시겠습니까?")) return;
       await runWithErrorBoundary(async () => {
         await deleteBudgetDocumentRequirement(btn.dataset.reqDelete);
-        renderDocRequirements();
+        await renderDocRequirements();
       }, { button: btn });
     });
   });
@@ -525,10 +526,17 @@ function renderParseMetrics(doc) {
   return metric + warn;
 }
 
+// 공통 AI 기준 문서를 다시 조회해 캐시에 담고 화면을 갱신한다.
+// (remote 구현은 async 이므로 반드시 await 로 조회한 뒤 렌더해야 한다.)
+async function reloadAiCriteria() {
+  aiCriteriaDoc = (await getProgramAiCriteriaDocument(currentProgramId)) || null;
+  renderAiCriteria();
+}
+
 function renderAiCriteria() {
   const root = document.querySelector("[data-ai-criteria]");
   if (!root) return;
-  const doc = getProgramAiCriteriaDocument(currentProgramId);
+  const doc = aiCriteriaDoc;
 
   const guideNote = `<p class="muted caption" style="margin-top:10px">공통 기준 문서가 등록되면 AI검토가 해당 사업의 지침을 함께 참고합니다. 기준 문서가 없을 경우 기본 항목 일치 여부만 검토합니다.</p>`;
 
@@ -607,18 +615,19 @@ function renderAiCriteria() {
       // 새 문서를 올리면 추출 상태가 초기화되므로 진행 플래그도 해제한다.
       aiExtracting = false;
       await uploadProgramAiCriteriaDocument(currentProgramId, file, currentUser);
-      renderAiCriteria();
+      await reloadAiCriteria();
     }, {});
   });
 
   root.querySelector("[data-ai-criteria-extract]")?.addEventListener("click", async () => {
+    if (!doc?.id) return; // 기준 문서가 없으면 추출할 대상이 없다.
     aiExtracting = true;
     renderAiCriteria(); // 로딩 상태 즉시 표시
     await runWithErrorBoundary(async () => {
       await extractProgramAiCriteria(doc.id);
     }, {});
     aiExtracting = false;
-    renderAiCriteria(); // 추출 결과 표시
+    await reloadAiCriteria(); // 추출 결과 반영
   });
 
   root.querySelector("[data-ai-criteria-open]")?.addEventListener("click", async (e) => {
@@ -632,7 +641,7 @@ function renderAiCriteria() {
     if (!confirm("공통 AI 검토 기준 문서를 삭제하시겠습니까?")) return;
     await runWithErrorBoundary(async () => {
       await deleteProgramAiCriteriaDocument(doc.id);
-      renderAiCriteria();
+      await reloadAiCriteria();
     }, { button: e.currentTarget });
   });
 }
@@ -745,12 +754,14 @@ try {
     editingReqId = null;
     showReqAddForm = false;
 
-    const [budgets, guidance] = await Promise.all([
+    const [budgets, guidance, aiCriteria] = await Promise.all([
       getSupportProgramBudgets(programId),
       getGuidanceItems(programId),
+      getProgramAiCriteriaDocument(programId),
     ]);
     budgetItems = budgets;
     guidanceItems = guidance;
+    aiCriteriaDoc = aiCriteria || null;
 
     programSections.hidden = false;
     document.querySelector("#program-description").value = program?.description || "";

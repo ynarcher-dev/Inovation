@@ -30,10 +30,10 @@ function matchesPhase(reqPhase, phase) {
 }
 
 // 선택한 예산 비목의 활성 첨부서류 요구사항을 단계별로 조회한다(미리보기·검증용).
-function activeRequirementsFor(budgetId, phase) {
+async function activeRequirementsFor(budgetId, phase) {
   if (!budgetId) return [];
-  return getBudgetDocumentRequirements(budgetId)
-    .filter((r) => r.active && matchesPhase(r.phase, phase));
+  const reqs = await getBudgetDocumentRequirements(budgetId);
+  return (reqs || []).filter((r) => r.active && matchesPhase(r.phase, phase));
 }
 
 // 접근 차단 후 안내 토스트를 보여주고 짧은 지연 뒤 리다이렉트할 때, 에러 배너를 띄우지 않기 위한 신호용 예외.
@@ -261,7 +261,7 @@ try {
       return persist(readInput(company.id));
     };
 
-    const renderDocSection = () => {
+    const renderDocSection = async () => {
       const container = document.querySelector("[data-doc-preview]");
       if (!container) return;
       const planItem = getSelectedBusinessPlanItem();
@@ -273,9 +273,9 @@ try {
         return;
       }
       // draft 가 있으면 업로드 파일이 붙은 요구사항을, 없으면 예산 항목 기준 요구사항(빈 첨부)을 보여준다.
-      const requirements = editId
-        ? getExpenseDocumentRequirements(editId, phase)
-        : activeRequirementsFor(planItem.support_program_budget_id, phase);
+      const requirements = (editId
+        ? await getExpenseDocumentRequirements(editId, phase)
+        : await activeRequirementsFor(planItem.support_program_budget_id, phase)) || [];
       if (!requirements.length) {
         container.innerHTML = `<h2>필요 첨부 서류 <span class="muted" style="font-weight:500">— ${phaseLabel} 단계</span></h2><p class="muted">이 예산 항목에는 ${phaseLabel} 단계 첨부서류가 설정되어 있지 않습니다.</p>`;
         return;
@@ -301,7 +301,7 @@ try {
           const targetId = await ensureDraft();
           if (!targetId) return;
           await uploadExpenseDocumentFile(targetId, req, phase, file, user);
-          renderDocSection();
+          await renderDocSection();
         }, { button });
       };
 
@@ -321,14 +321,14 @@ try {
           if (!ok) return;
           await runWithErrorBoundary(async () => {
             await deleteExpenseDocumentFile(btn.dataset.docDelete);
-            renderDocSection();
+            await renderDocSection();
           }, { button: btn });
         }));
 
       container.querySelector("[data-doc-batch-review]")?.addEventListener("click", async (e) => {
         await runWithErrorBoundary(async () => {
           const { reviewed } = await requestAiBatchDocumentReview(editId, phase);
-          renderDocSection();
+          await renderDocSection();
           if (!reviewed) showToast("AI검토할 업로드 파일이 없습니다.", { type: "info" });
         }, { button: e.currentTarget });
       });
@@ -351,11 +351,11 @@ try {
             editable: true,
             onClear: async (comment) => {
               await setExpenseDocumentUserReview(req.file.id, { cleared: true, comment, user });
-              renderDocSection();
+              await renderDocSection();
             },
             onRevert: async () => {
               await setExpenseDocumentUserReview(req.file.id, { cleared: false, user });
-              renderDocSection();
+              await renderDocSection();
             },
           });
         }));
@@ -366,7 +366,7 @@ try {
       if (editId && getSelectedBusinessPlanItem()) {
         await runWithErrorBoundary(() => updateExpenseRequest(editId, readInput(company.id)));
       }
-      renderDocSection();
+      await renderDocSection();
     });
     renderDocSection();
 
@@ -417,15 +417,15 @@ try {
         let missing = [];
         if (phase) {
           missing = editId
-            ? validateRequiredDocuments(editId, phase).missing
-            : activeRequirementsFor(planItem.support_program_budget_id, phase).filter((r) => r.required).map((r) => r.title);
+            ? (await validateRequiredDocuments(editId, phase)).missing
+            : (await activeRequirementsFor(planItem.support_program_budget_id, phase)).filter((r) => r.required).map((r) => r.title);
         }
         const submitLabel = editStatus === "final_approval_revision" ? "최종승인" : "사전승인";
         if (missing.length) {
           // 작성 내용을 저장(draft)해 첨부 가능 상태로 전환하고, 같은 화면에서 업로드하도록 안내한다.
           await runWithErrorBoundary(async () => {
             await persist(inputVal);
-            renderDocSection();
+            await renderDocSection();
           }, { button: event.submitter });
           showToast(`이 예산 항목은 ${submitLabel} 필수 첨부서류가 있습니다.\n[필요 첨부 서류]에서 아래 서류를 업로드한 뒤 다시 신청해주세요.\n- ${missing.join("\n- ")}`, { type: "warning", duration: 6000 });
           return;

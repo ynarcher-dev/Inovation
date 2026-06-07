@@ -219,7 +219,7 @@ try {
         }
 
         const table = document.getElementById("budget-matrix-table");
-        table.addEventListener("input", (event) => {
+        table?.addEventListener("input", (event) => {
           if (event.target.classList.contains("budget-alloc-input")) {
             const cursorAtEnd = event.target.selectionStart === event.target.value.length;
             event.target.value = formatNumber(event.target.value);
@@ -297,7 +297,7 @@ try {
             const res = await submitFounderBudgetAllocations(detail.company.id, allocations, reason);
             // 1차 사업계획서를 교체했다면 이번 변경 제출 건에 연결한다 — 승인 전까지는 교체본이 노출되지 않는다.
             if (round1PlanFile) {
-              const upload = await uploadFile(round1PlanFile);
+              const upload = await uploadFile(round1PlanFile, { companyId: detail.company.id });
               await updateBusinessPlan(
                 detail.company.id,
                 "round1",
@@ -307,7 +307,7 @@ try {
             }
             // 새 2차 사업계획서를 첨부했다면 이번 제출 건에 연결해 보관한다.
             if (round2On && round2PlanFile) {
-              const upload = await uploadFile(round2PlanFile);
+              const upload = await uploadFile(round2PlanFile, { companyId: detail.company.id });
               await updateBusinessPlan(
                 detail.company.id,
                 "round2",
@@ -352,8 +352,9 @@ try {
       // 1차 사업계획서 파일 선택(제출 시 업로드). new.md §10.
       const getRound1File = bindPlanUpload("round1");
 
+      // 비목 구조가 없으면 BudgetTreeView 가 매트릭스 대신 안내 문구만 렌더한다 → 입력 핸들러를 붙이지 않는다.
       const table = document.getElementById("budget-matrix-table");
-      table.addEventListener("input", (event) => {
+      table?.addEventListener("input", (event) => {
         if (event.target.classList.contains("budget-alloc-input")) {
           const cursorAtEnd = event.target.selectionStart === event.target.value.length;
           event.target.value = formatNumber(event.target.value);
@@ -406,7 +407,7 @@ try {
         await runWithErrorBoundary(async () => {
           const res = await submitFounderBudgetAllocations(detail.company.id, allocations, "");
           if (round1PlanFile) {
-            const upload = await uploadFile(round1PlanFile);
+            const upload = await uploadFile(round1PlanFile, { companyId: detail.company.id });
             // 1차 사업계획서도 이번 제출 건에 연결한다 — 제출이 승인되기 전까지는 노출/다운로드되지 않는다.
             await updateBusinessPlan(
               detail.company.id,
