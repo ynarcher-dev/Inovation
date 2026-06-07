@@ -353,7 +353,9 @@ export async function updateAiSettings(input) {
   }
   const { error } = await query;
   if (error) throw error;
-  return { ok: true };
+  // 저장 후 화면이 setForm(반환값)으로 즉시 다시 그리므로, 갱신된 설정 객체를 그대로 돌려준다.
+  // ({ ok:true } 만 돌려주면 토글/Provider 가 기본값으로 리셋되어 보이는 버그가 있었다.)
+  return await getAiSettings();
 }
 
 // ----------------------------------------------------
