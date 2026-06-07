@@ -617,7 +617,7 @@ export async function getAdminDashboard() {
 
   // 가입 신청 및 예산 검토 신청 수 계산
   const signupRequestCount = companies.filter((c) => c.approval_status === "pending").length;
-  const budgetRequestCount = companies.filter((c) => c.budget_status === "submitted").length;
+  const budgetRequestCount = companies.filter((c) => ["budget_submitted", "change_submitted"].includes(c.budget_status)).length;
 
   return {
     metrics: {
