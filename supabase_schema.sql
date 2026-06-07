@@ -26,6 +26,10 @@ CREATE TABLE IF NOT EXISTS public.ai_settings (
     provider text NOT NULL DEFAULT 'openai',
     openai_api_key_configured boolean NOT NULL DEFAULT false,
     openai_model text NOT NULL DEFAULT 'gpt-4o',
+    api_key_configured boolean NOT NULL DEFAULT false,
+    edge_function_url text,
+    api_key_hint text,
+    memo text,
     updated_at timestamp with time zone NOT NULL DEFAULT now(),
     CONSTRAINT chk_single_row CHECK (id = 1)
 );

@@ -318,14 +318,16 @@ export async function getAiSettings() {
     .maybeSingle();
   if (error) throw error;
   if (!data) return { enabled: false, provider: "openai", model: "gpt-4o" };
-  // 테이블 컬럼 -> UI/mock 계약(enabled/provider/model)으로 매핑한다.
-  // model 은 openai_model 컬럼에 저장한다.
+  // 테이블 컬럼 -> UI/mock 계약으로 매핑한다. model 은 openai_model 컬럼에 저장한다.
   return {
     ...data,
     enabled: data.enabled ?? false,
     provider: data.provider || "openai",
     model: data.openai_model || "gpt-4o",
-    api_key_configured: data.openai_api_key_configured ?? false,
+    api_key_configured: data.api_key_configured ?? false,
+    edge_function_url: data.edge_function_url || "",
+    api_key_hint: data.api_key_hint || "",
+    memo: data.memo || "",
   };
 }
 
@@ -337,6 +339,10 @@ export async function updateAiSettings(input) {
     enabled: input.enabled,
     provider: input.provider,
     openai_model: input.model,
+    api_key_configured: input.api_key_configured ?? false,
+    edge_function_url: input.edge_function_url || "",
+    api_key_hint: input.api_key_hint || "",
+    memo: input.memo || "",
     updated_at: new Date().toISOString(),
   };
   let query;
