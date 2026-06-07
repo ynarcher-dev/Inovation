@@ -49,9 +49,19 @@ async function callEdgeFunction(url, body) {
   const headers = { "Content-Type": "application/json", apikey: CONFIG.supabaseAnonKey };
   if (token) headers.Authorization = `Bearer ${token}`;
 
-  const response = await fetch(url, { method: "POST", headers, body: JSON.stringify(body) });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) {
+  // provider 측 일시 과부하(502/503, "high demand" 등)는 짧게 대기 후 재시도한다.
+  const MAX_ATTEMPTS = 3;
+  let lastData = {};
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    const response = await fetch(url, { method: "POST", headers, body: JSON.stringify(body) });
+    const data = await response.json().catch(() => ({}));
+    if (response.ok) return data;
+    lastData = data;
+
+    if ((response.status === 502 || response.status === 503) && attempt < MAX_ATTEMPTS) {
+      await new Promise((resolve) => setTimeout(resolve, 1500 * attempt));
+      continue;
+    }
     if (response.status === 401 || response.status === 403) {
       throw new Error(data.error || "AI 기능을 사용할 권한이 없습니다. 관리자 계정으로 로그인했는지 확인해주세요.");
     }
@@ -63,7 +73,7 @@ async function callEdgeFunction(url, body) {
     }
     throw new Error(data.error || "AI 요청에 실패했습니다.");
   }
-  return data;
+  throw new Error(lastData.error || "AI provider가 일시적으로 혼잡합니다. 잠시 후 다시 시도해주세요.");
 }
 
 function normalizeAiReviewResult(result = {}) {
