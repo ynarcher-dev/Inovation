@@ -12,6 +12,17 @@ async function getMyProfile(supabase) {
     .eq("id", user.id)
     .maybeSingle();
   if (error) throw error;
+  // profiles 에는 company_id 컬럼이 없다. 창업자↔기업 연결은 company_members 가 단일 소스다.
+  // 호출부(getFounderDashboard/submitFounderBudgetAllocations 등)가 profile.company_id 를
+  // 기대하므로 여기서 소속 회사를 보강한다(없으면 undefined 유지 — 관리자 등).
+  if (profile && !profile.company_id) {
+    const { data: member } = await supabase
+      .from("company_members")
+      .select("company_id")
+      .eq("user_id", user.id)
+      .maybeSingle();
+    if (member?.company_id) profile.company_id = member.company_id;
+  }
   return { user, profile };
 }
 
@@ -496,45 +507,63 @@ export async function getFounderDashboard() {
   };
 }
 
-export async function submitFounderBudgetAllocations(input) {
+// 호출부(dashboard.js)·mock(mockSubmitFounderBudgetAllocations)과 동일한 위치 인자 시그니처를 따른다.
+//   inputAllocations: [{ support_program_budget_id, allocated_amount, round2_allocated_amount? }, ...]
+// 상태값은 스키마 CHECK 제약(budget_submitted/change_submitted 등)을 그대로 사용한다.
+export async function submitFounderBudgetAllocations(companyId, inputAllocations = [], reason = "") {
   const supabase = await getSupabase();
   const { profile } = await getMyProfile(supabase);
-  if (!profile?.company_id) throw new Error("회사 정보가 등록되지 않았습니다.");
+  const targetCompanyId = companyId || profile?.company_id;
+  if (!targetCompanyId) throw new Error("회사 정보가 등록되지 않았습니다.");
+
+  // 최초 예산이 한 번이라도 승인된 적이 있으면 이번 제출은 예산 변경(change)이다(mock 과 동일 판정).
+  const { data: company } = await supabase
+    .from("companies")
+    .select("budget_status")
+    .eq("id", targetCompanyId)
+    .single();
+  const hasApprovedHistory = ["budget_approved", "change_submitted", "change_revision_requested", "change_approved"]
+    .includes(company?.budget_status);
+  const type = hasApprovedHistory ? "change" : "initial";
+  const submissionStatus = hasApprovedHistory ? "change_submitted" : "budget_submitted";
 
   const { data: sub, error: subErr } = await supabase
     .from("budget_submissions")
     .insert({
-      company_id: profile.company_id,
-      type: input.type || "initial",
-      status: "pending",
-      reason: input.reason || "",
-      submitted_by: profile.id,
+      company_id: targetCompanyId,
+      type,
+      status: submissionStatus,
+      reason: reason || "",
+      submitted_by: profile?.id || null,
     })
     .select("id")
     .single();
-
   if (subErr) throw subErr;
 
-  const items = Object.entries(input.allocations || {}).map(([budgetId, val]) => ({
-    budget_submission_id: sub.id,
-    support_program_budget_id: budgetId,
-    previous_allocated_amount: Number(val.previous || 0),
-    requested_allocated_amount: Number(val.requested || 0),
-  }));
+  const items = (inputAllocations || []).map((a) => {
+    const round1 = Number(a.allocated_amount || 0);
+    const round2 = Number(a.round2_allocated_amount || 0);
+    return {
+      budget_submission_id: sub.id,
+      support_program_budget_id: a.support_program_budget_id,
+      previous_allocated_amount: Number(a.previous_allocated_amount || 0),
+      requested_allocated_amount: round1 + (type === "change" ? round2 : 0),
+      requested_round1_allocated_amount: round1,
+      requested_round2_allocated_amount: round2,
+    };
+  });
+  if (items.length) {
+    const { error: itemsErr } = await supabase.from("budget_submission_items").insert(items);
+    if (itemsErr) throw itemsErr;
+  }
 
-  const { error: itemsErr } = await supabase
-    .from("budget_submission_items")
-    .insert(items);
-
-  if (itemsErr) throw itemsErr;
-
-  // 기업 예산 상태 업데이트
+  // 기업 예산 상태 업데이트(스키마 chk_budget_status 허용값).
   await supabase
     .from("companies")
-    .update({ budget_status: "submitted" })
-    .eq("id", profile.company_id);
+    .update({ budget_status: submissionStatus })
+    .eq("id", targetCompanyId);
 
-  return { ok: true };
+  return { ok: true, submissionId: sub.id };
 }
 
 // ----------------------------------------------------
@@ -725,8 +754,16 @@ export async function reviewBudgetSubmission(submissionId, decision, comment) {
   const supabase = await getSupabase();
   const { profile } = await getMyProfile(supabase);
 
-  const status = decision === "approved" ? "budget_approved" : "rejected";
-  
+  // 제출 차수(initial/change)에 맞는 스키마 CHECK 허용 상태값을 사용한다.
+  //  - 승인:   initial -> budget_approved,            change -> change_approved
+  //  - 보완요청: initial -> budget_revision_requested,  change -> change_revision_requested
+  const { data: subType } = await supabase
+    .from("budget_submissions").select("type").eq("id", submissionId).maybeSingle();
+  const isChange = subType?.type === "change";
+  const status = decision === "approved"
+    ? (isChange ? "change_approved" : "budget_approved")
+    : (isChange ? "change_revision_requested" : "budget_revision_requested");
+
   // 1. 제출 내역 정보 및 심사 기록 업데이트
   const { data: sub, error: subErr } = await supabase
     .from("budget_submissions")
@@ -921,15 +958,26 @@ export async function updateExpenseRequest(id, input) {
   return data;
 }
 
-export async function submitExpenseRequest(id, phase) {
+// 호출부(expense-detail.js)는 submitExpenseRequest(id) 만 호출한다(phase 미전달).
+// remote 도 mock 과 동일하게 현재 상태에서 다음 제출 상태를 유도한다(도메인 규칙).
+//   draft / pre_approval_revision        -> pre_approval_submitted
+//   pre_approved / final_approval_revision -> final_approval_submitted
+export async function submitExpenseRequest(id) {
   const supabase = await getSupabase();
-  const status = phase === "pre" ? "pre_approval_submitted" : "final_approval_submitted";
-  const payload = { status };
-  if (phase === "pre") {
-    payload.submitted_at = new Date().toISOString();
+  const { data: current, error: curErr } = await supabase
+    .from("expense_requests").select("status").eq("id", id).single();
+  if (curErr) throw curErr;
+
+  let status, stamp;
+  if (["draft", "pre_approval_revision"].includes(current.status)) {
+    status = "pre_approval_submitted"; stamp = "submitted_at";
+  } else if (["pre_approved", "final_approval_revision"].includes(current.status)) {
+    status = "final_approval_submitted"; stamp = "final_submitted_at";
   } else {
-    payload.final_submitted_at = new Date().toISOString();
+    throw new Error("현재 상태에서는 제출할 수 없습니다.");
   }
+
+  const payload = { status, [stamp]: new Date().toISOString() };
   const { data, error } = await supabase
     .from("expense_requests")
     .update(payload)
@@ -1304,10 +1352,8 @@ export async function mockDeleteUploadedFile(fileId) {
 export async function mockValidateRequiredDocuments(expenseRequestId, phase) {
   const reqs = await getExpenseDocumentRequirements(expenseRequestId, phase);
   const missing = reqs.filter((r) => r.required && !r.file).map((r) => r.title);
-  return {
-    valid: missing.length === 0,
-    missing_requirements: missing,
-  };
+  // 호출부(expense-detail.js/expense-new.js)·mock 계약은 { ok, missing } 형태다.
+  return { ok: missing.length === 0, missing };
 }
 
 export async function updateFounderProfile(input) {

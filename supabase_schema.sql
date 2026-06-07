@@ -160,6 +160,7 @@ CREATE TABLE IF NOT EXISTS public.expense_requests (
     submitted_at timestamp with time zone,
     approved_at timestamp with time zone,
     final_submitted_at timestamp with time zone,
+    final_approved_at timestamp with time zone,
     created_at timestamp with time zone NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_expense_requests_company ON public.expense_requests(company_id);
