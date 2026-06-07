@@ -178,11 +178,16 @@ try {
         return;
       }
 
-      const ok = await showConfirm(`검토 결과를 '${label}'(으)로 처리하시겠습니까?`, {
-        title: `${label} 처리`,
+      // 잔액 초과 건을 승인할 때는 초과 사실을 명시한 경고 확인을 한 번 더 받는다(강제 승인 허용).
+      const overBudgetApproval = decision === "approved" && budgetCheck?.exceeds;
+      const confirmMessage = overBudgetApproval
+        ? `이 신청은 예산 잔액을 초과합니다. (신청 후 잔액 ${formatCurrency(budgetCheck.remaining_after)}) 그래도 승인하시겠습니까?`
+        : `검토 결과를 '${label}'(으)로 처리하시겠습니까?`;
+      const ok = await showConfirm(confirmMessage, {
+        title: overBudgetApproval ? "잔액 초과 승인" : `${label} 처리`,
         confirmText: label,
         cancelText: "취소",
-        tone: decision === "approved" ? "default" : "danger",
+        tone: decision === "approved" && !overBudgetApproval ? "default" : "danger",
       });
       if (!ok) return;
 

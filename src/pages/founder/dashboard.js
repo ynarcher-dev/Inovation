@@ -4,7 +4,7 @@ import { getFounderDashboard, submitFounderBudgetAllocations, downloadStoredFile
 import { FounderExpenseStatusTable } from "../../components/FounderExpenseStatusTable.js";
 import { BudgetTreeView } from "../../components/BudgetTreeView.js";
 import { BUDGET_APPROVED_STATUSES, EXPENSE_STATUS_ORDER, EXPENSE_SEGMENTS, getExpenseSegment, getStatusLabel, getStatusTone } from "../../domains/status.js";
-import { hasApprovedBudget, isBudgetPendingReview, founderBudgetBanners } from "../../domains/budget/budget-status.js";
+import { hasApprovedBudget, isBudgetPendingReview, isChangeStatus, founderBudgetBanners } from "../../domains/budget/budget-status.js";
 import { escapeHtml, formatCurrency, formatDate, formatNumber, parseNumber } from "../../utils.js";
 import { AttachmentList } from "../../components/attachments/AttachmentList.js";
 import { BudgetHistoryTable } from "../../components/budget/BudgetHistoryTable.js";
@@ -681,16 +681,31 @@ try {
       const treeEl = document.querySelector("[data-budget-tree]");
       const pending = detail.pendingSubmission;
 
-      // 예산 변경 버튼(1차 수정 + 2차 배정 신청): 확정 예산이 있으면 항상 노출하되, 검토 중에는 비활성화(회색)한다.
-      const showChangeBtn = hasApprovedBudget(budgetStatus);
-      const changeDisabled = isBudgetPendingReview(budgetStatus);
+      // 예산 신청/변경 버튼.
+      //  - 검토 대기 중(*_submitted): 신청한 내용만 읽기 전용으로 보이고, 버튼은 회색(disabled)으로 표시한다.
+      //    HTML disabled 로 막으면 사유를 알 수 없으므로 클릭은 허용하고(aria-disabled) 핸들러에서 토스트로 안내한다(§5.1, 지출 버튼과 동일 패턴).
+      //  - 확정 예산 존재(검토 중 아님): 활성 '예산 변경' 버튼으로 1차 수정 + 2차 배정 신청을 받는다.
+      const changePending = isBudgetPendingReview(budgetStatus);
+      const showChangeBtn = changePending || hasApprovedBudget(budgetStatus);
+      const isChangeFlow = isChangeStatus(budgetStatus);
+      const changeLabel = changePending && !isChangeFlow ? "예산 신청" : "예산 변경";
+      const changePendingReason = isChangeFlow
+        ? "예산 변경 신청이 접수되어 검토 중입니다. 관리자 승인 후 다시 변경할 수 있습니다."
+        : "예산안 신청이 접수되어 검토 중입니다. 관리자 승인 후 진행됩니다.";
       const changeBtn = showChangeBtn
-        ? `<div style="text-align:right; margin-bottom:8px;"><button class="button${changeDisabled ? " disabled" : ""}" id="start-change-btn" type="button"${changeDisabled ? " disabled" : ""}>예산 변경</button></div>`
+        ? `<div style="text-align:right; margin-bottom:8px;"><button class="button${changePending ? " disabled" : ""}" id="start-change-btn" type="button"${changePending ? ' aria-disabled="true"' : ""}>${changeLabel}</button></div>`
         : "";
       const bindChangeBtn = () => {
-        if (showChangeBtn && !changeDisabled) {
-          document.getElementById("start-change-btn").addEventListener("click", () => renderEditableTree({ mode: "change" }));
-        }
+        if (!showChangeBtn) return;
+        const btn = document.getElementById("start-change-btn");
+        if (!btn) return;
+        btn.addEventListener("click", () => {
+          if (changePending) {
+            showToast(changePendingReason, { type: "info" });
+            return;
+          }
+          renderEditableTree({ mode: "change" });
+        });
       };
 
       if (pending && isBudgetPendingReview(budgetStatus) && detail.pendingBudgetTree) {

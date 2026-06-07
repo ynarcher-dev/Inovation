@@ -25,10 +25,10 @@ function summaryHtml(requirements, aiEnabled) {
   const required = requirements.filter((r) => r.required);
   const uploadedRequired = required.filter((r) => r.file).length;
   const reviewed = requirements.filter((r) => r.file);
-  const cleared = reviewed.filter((r) => r.file.user_review_status === "cleared").length;
-  const passed = reviewed.filter((r) => r.file.ai_review_status === "passed" && r.file.user_review_status !== "cleared").length;
+  const cleared = reviewed.filter((r) => r.file.cleared).length;
+  const passed = reviewed.filter((r) => r.file.ai_review_status === "passed" && !r.file.cleared).length;
   // 신청자가 이상없음으로 소명한 건은 '보완 필요'에서 제외한다.
-  const revision = reviewed.filter((r) => r.file.ai_review_status === "needs_revision" && r.file.user_review_status !== "cleared").length;
+  const revision = reviewed.filter((r) => r.file.ai_review_status === "needs_revision" && !r.file.cleared).length;
   const notReviewed = reviewed.filter((r) => !r.file.ai_review_status || r.file.ai_review_status === "not_requested").length;
   const aiParts = [];
   if (passed) aiParts.push(`제출 가능 ${passed}건`);
@@ -48,7 +48,7 @@ function summaryHtml(requirements, aiEnabled) {
 function aiReviewBar(req, aiEnabled) {
   const file = req.file;
   if (!aiEnabled || !file || !req.ai_review_enabled) return "";
-  const cleared = file.user_review_status === "cleared";
+  const cleared = !!file.cleared;
   const tone = cleared ? "info" : aiMeta(file.ai_review_status).tone;
   const head = cleared ? "신청자 확인" : "AI검토 결과";
   const status = cleared ? "이상없음" : aiMeta(file.ai_review_status).label;
@@ -67,7 +67,7 @@ function aiReviewBar(req, aiEnabled) {
 export function openAiReviewModal({ req, mode, editable, onClear, onRevert }) {
   const file = req.file;
   const meta = aiMeta(file.ai_review_status);
-  const cleared = file.user_review_status === "cleared";
+  const cleared = !!file.cleared;
   const canAct = mode === "founder" && editable && file.ai_review_status === "needs_revision";
 
   const overrideSection = cleared

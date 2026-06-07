@@ -304,6 +304,157 @@ export async function downloadStoredFile(linkUrl) {
   window.open(s3Url, "_blank", "noopener,noreferrer");
 }
 
+// 보관된 첨부 파일(S3) 한 건을 내려받아 base64 로 반환한다.
+// AI 검토(예: 예산 검토에 사업계획서 첨부)에 파일 바이트를 함께 보낼 때 사용한다.
+//   반환: { data_base64, mime_type } (없으면 null)
+export async function fetchStoredFileBase64(linkUrl) {
+  if (!linkUrl) return null;
+  const s3Url = await getS3DownloadUrl(linkUrl);
+  const res = await fetch(s3Url);
+  if (!res.ok) throw new Error("S3에서 파일을 가져오지 못했습니다.");
+  const blob = await res.blob();
+  const dataUrl = await readFileAsDataUrl(blob);
+  return { data_base64: dataUrlToBase64(dataUrl), mime_type: blob.type || "" };
+}
+
+// JSZip 동적 로드(빌드 도구가 없는 프로젝트 — 필요 시에만 CDN(ESM)에서 import). pdf.js 로드 방식과 동일.
+let jsZipPromise = null;
+function loadJsZip() {
+  if (!jsZipPromise) {
+    jsZipPromise = import("https://cdn.jsdelivr.net/npm/jszip@3.10.1/+esm")
+      .then((mod) => mod.default || mod)
+      .catch((err) => {
+        jsZipPromise = null; // 다음 시도에서 다시 로드할 수 있게 캐시를 비운다.
+        throw new Error("압축 모듈(JSZip)을 불러오지 못했습니다. 네트워크 연결을 확인해주세요.");
+      });
+  }
+  return jsZipPromise;
+}
+
+// Blob 을 지정한 파일명으로 즉시 내려받는다(a[download]).
+function triggerBlobDownload(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  // 다운로드 시작 후 약간의 여유를 두고 object URL 을 해제한다.
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+// 보관된 여러 파일(S3)을 받아 ZIP 한 개로 내려받는다.
+//  files: [{ link_url, name, originalName }]
+//   - name: 확장자를 제외한 최종 파일명 베이스. originalName 의 확장자를 붙인다.
+//   - 같은 name 이 여러 건이면 " (2)", " (3)" 을 붙여 충돌을 피한다.
+//  반환: ZIP 에 담긴 파일 수(0이면 대상 없음 — 호출부에서 안내).
+async function downloadStoredFilesAsZip(files, zipName) {
+  const valid = (files || []).filter((f) => f?.link_url);
+  if (!valid.length) return 0;
+
+  const JSZip = await loadJsZip();
+  const zip = new JSZip();
+  const usedNames = new Map(); // 동일 파일명 충돌 방지 카운터
+
+  let added = 0;
+  for (const f of valid) {
+    let blob;
+    try {
+      const url = await getS3DownloadUrl(f.link_url);
+      const res = await fetch(url);
+      if (!res.ok) continue; // 한 파일 실패가 전체를 막지 않도록 건너뛴다.
+      blob = await res.blob();
+    } catch (_) {
+      continue;
+    }
+    const stem = sanitizeFilename(f.name || "file");
+    const ext = getFileExtension(f.originalName || f.name || "");
+    const count = (usedNames.get(stem) || 0) + 1;
+    usedNames.set(stem, count);
+    const fname = (count > 1 ? `${stem} (${count})` : stem) + (ext ? `.${ext}` : "");
+    zip.file(fname, blob);
+    added += 1;
+  }
+  if (!added) throw new Error("파일을 내려받지 못했습니다. 잠시 후 다시 시도해주세요.");
+
+  const zipBlob = await zip.generateAsync({ type: "blob" });
+  triggerBlobDownload(zipBlob, zipName);
+  return added;
+}
+
+// 사업계획서(1차/2차)를 ZIP 한 개로 내려받는다. 파일명: "(기업명)_사업계획서_(n차)".
+//  - 승인된 제출에 연결된 계획서만 포함한다(미승인 첨부/연결 id 없는 레거시는 승인으로 간주).
+//  company: detail.company, budgetSubmissions: detail.budgetSubmissions
+//  반환: ZIP 에 담긴 파일 수(0이면 다운로드할 승인된 계획서 없음).
+export async function downloadBusinessPlansZip(company, budgetSubmissions = []) {
+  const safeCompany = sanitizeFilename(company?.name || "기업");
+  const plans = company?.business_plans || {};
+  const approvedIds = new Set(
+    (budgetSubmissions || [])
+      .filter((s) => ["budget_approved", "change_approved"].includes(s.status))
+      .map((s) => s.id),
+  );
+  const rounds = [
+    { key: "round1", label: "1차" },
+    { key: "round2", label: "2차" },
+  ];
+  const files = [];
+  for (const r of rounds) {
+    const plan = plans[r.key];
+    if (!plan?.original_filename || !plan.link_url) continue;
+    const approved = !plan.budget_submission_id || approvedIds.has(plan.budget_submission_id);
+    if (!approved) continue; // 승인 전(검토 중) 계획서는 일괄 다운로드에 포함하지 않는다.
+    files.push({
+      link_url: plan.link_url,
+      name: `${safeCompany}_사업계획서_${r.label}`,
+      originalName: plan.original_filename,
+    });
+  }
+  if (!files.length) return 0;
+  return downloadStoredFilesAsZip(files, `${safeCompany}_사업계획서.zip`);
+}
+
+// 한 지출 신청의 모든 증빙 첨부파일을 모아 ZIP 한 개로 내려받는다.
+//  - 사전승인/최종승인 단계에 업로드된 파일을 모두 포함한다.
+//  - 파일명 정책: "(기업명)_(파일 제목)_(지출 제목)_(총액)"  예) "딜챗2_견적서_사무용품 구매_1100000원"
+//    · 파일 제목 = 첨부서류 대분류(견적서 등). 같은 제목이 여러 건이면 "(2)","(3)" 을 붙인다. 확장자는 원본 유지.
+//  expense: 지출 신청 객체(또는 id 문자열). 객체면 company_name/title/총액을 파일명에 사용한다.
+//  반환: ZIP 에 담긴 파일 수(0이면 첨부가 없는 것 — 호출부에서 안내).
+export async function downloadExpenseEvidenceZip(expense) {
+  const expenseId = typeof expense === "string" ? expense : expense?.id;
+  if (!expenseId) throw new Error("지출 신청 정보를 찾을 수 없습니다.");
+  const exp = typeof expense === "object" && expense ? expense : {};
+  const companyName = exp.company_name || exp.companyName || "기업";
+  const expenseTitle = exp.title || "지출";
+  const totalAmount = Number(
+    exp.total_amount != null ? exp.total_amount : Number(exp.amount_supply || 0) + Number(exp.vat_amount || 0),
+  );
+
+  // 사전/최종 단계의 첨부 요구사항을 모아 실제 업로드된 파일만 추린다.
+  const reqLists = await Promise.all(
+    ["pre", "final"].map((phase) => remote.getExpenseDocumentRequirements(expenseId, phase)),
+  );
+  const seenFileIds = new Set();
+  const withFiles = reqLists.flat().filter((r) => {
+    if (!r?.file?.link_url || seenFileIds.has(r.file.id)) return false;
+    seenFileIds.add(r.file.id);
+    return true;
+  });
+  if (!withFiles.length) return 0;
+
+  const safeCompany = sanitizeFilename(companyName);
+  const safeTitle = sanitizeFilename(expenseTitle);
+  const totalStr = `${Math.round(totalAmount).toLocaleString("ko-KR")}원`;
+  // (기업명)_(파일 제목=첨부서류 대분류)_(신청명)_(금액)
+  const files = withFiles.map((req) => ({
+    link_url: req.file.link_url,
+    name: `${safeCompany}_${sanitizeFilename(req.title || "증빙서류")}_${safeTitle}_${totalStr}`,
+    originalName: req.file.original_filename,
+  }));
+  return downloadStoredFilesAsZip(files, `${safeCompany}_${safeTitle}_증빙서류.zip`);
+}
+
 export const deleteUploadedFile = remote.mockDeleteUploadedFile;
 
 // 더 이상 쓰지 않는 레거시 업로드 API (uploadExpenseDocumentFile 로 대체됨).

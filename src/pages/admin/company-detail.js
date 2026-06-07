@@ -9,11 +9,16 @@ import {
   rejectCompany,
   resetFounderPassword,
   requestBudgetAiReview,
+  fetchStoredFileBase64,
+  downloadExpenseEvidenceZip,
+  downloadBusinessPlansZip,
 } from "../../api.js";
 import { BudgetTreeView } from "../../components/BudgetTreeView.js";
 import { FlatReviewHistoryTable } from "../../components/FlatReviewHistoryTable.js";
 import { BudgetSubmissionDiff } from "../../components/budget/BudgetSubmissionDiff.js";
+import { BudgetHistoryTable } from "../../components/budget/BudgetHistoryTable.js";
 import { ExpenseRequestsTable } from "../../components/expense/ExpenseRequestsTable.js";
+import { FounderExpenseStatusTable } from "../../components/FounderExpenseStatusTable.js";
 import { getBudgetCategoryPaths, attachCategoryHighlight, attachAllocationHandlers } from "../../dom/admin-company-detail.js";
 import { getBudgetStatusLabel } from "../../domains/budget/budget-status.js";
 import {
@@ -37,6 +42,8 @@ try {
 
     const budgetTreeEl = document.querySelector("[data-budget-tree]");
     const expenseTableEl = document.querySelector("[data-expense-table]");
+    const expenseAllTableEl = document.querySelector("[data-expense-all-table]");
+    const budgetSubmissionsEl = document.querySelector("[data-budget-submissions]");
     const reviewHistoryEl = document.querySelector("[data-review-history]");
     const internalMemoEl = document.getElementById("admin-internal-memo");
     const aiBudgetReviewBtn = document.getElementById("btn-ai-budget-review");
@@ -88,6 +95,45 @@ try {
         },
       };
     };
+    // AI 비전/문서 모델이 읽을 수 있는 형식만 첨부한다(파일명 확장자로 판별). hwp/docx 등은 제외.
+    const aiReadableMime = (name) => {
+      const ext = String(name || "").split(".").pop().toLowerCase();
+      if (ext === "pdf") return "application/pdf";
+      if (ext === "png") return "image/png";
+      if (ext === "jpg" || ext === "jpeg") return "image/jpeg";
+      if (ext === "webp") return "image/webp";
+      return null;
+    };
+
+    // 예산 검토 AI 에 함께 보낼 사업계획서 첨부본을 수집한다.
+    // 제출 차수에 맞는 계획서를 우선(최초→1차, 변경→2차)하되, 용량/토큰 보호를 위해 가장 관련 있는 1건만 첨부한다.
+    const collectBudgetPlanDocuments = async () => {
+      const plans = detail.company?.business_plans || {};
+      const order = detail.pendingSubmission?.type === "change" ? ["round2", "round1"] : ["round1", "round2"];
+      for (const round of order) {
+        const plan = plans[round];
+        if (!plan?.link_url) continue;
+        const mime = aiReadableMime(plan.original_filename);
+        if (!mime) continue; // AI 가 읽을 수 없는 형식은 건너뛴다(텍스트 기준으로만 검토).
+        let fetched = null;
+        try {
+          fetched = await fetchStoredFileBase64(plan.link_url);
+        } catch (_) {
+          continue; // 파일을 가져오지 못하면 첨부 없이(텍스트 기준) 검토를 진행한다.
+        }
+        if (!fetched?.data_base64) continue;
+        const resolvedMime =
+          fetched.mime_type && fetched.mime_type !== "application/octet-stream" ? fetched.mime_type : mime;
+        return [{
+          round,
+          filename: plan.original_filename || `${round}.pdf`,
+          mime_type: resolvedMime,
+          data_base64: fetched.data_base64,
+        }];
+      }
+      return [];
+    };
+
     const aiToneClass = (level) => {
       if (["danger", "error", "high"].includes(level)) return "notice-danger";
       if (["warning", "medium"].includes(level)) return "notice-warning";
@@ -216,6 +262,24 @@ try {
       const pendingExpenses = detail.expenses.filter((row) => row.status?.includes("submitted"));
 
       expenseTableEl.innerHTML = ExpenseRequestsTable(pendingExpenses, categoryPaths);
+      // 지출 검토 탭: 검토 대기 외에 이 기업의 모든 지출 신청 내역/진행 상태를 함께 보여준다.
+      // 진행 상태 우측에 '증빙 다운로드'(첨부서류 ZIP) 버튼 컬럼을 추가한다.
+      if (expenseAllTableEl) {
+        expenseAllTableEl.innerHTML = FounderExpenseStatusTable(detail.expenses, "아직 등록된 지출 신청이 없습니다.", {
+          actionColumn: {
+            header: "증빙",
+            cell: (row) =>
+              `<button class="button small secondary" type="button" data-evidence-zip="${escapeHtml(row.id)}">증빙 다운로드</button>`,
+          },
+        });
+      }
+      // 예산 검토 탭: 검토 패널 외에 이 기업의 예산안 제출/변경 요청 이력과 상태를 함께 보여준다.
+      if (budgetSubmissionsEl) {
+        budgetSubmissionsEl.innerHTML = BudgetHistoryTable(
+          detail.budgetSubmissions,
+          detail.company?.business_plans?.round2?.budget_submission_id || null,
+        );
+      }
       reviewHistoryEl.innerHTML = FlatReviewHistoryTable(detail.reviewHistory, true);
 
       // 탭 배지: 검토 대기 표시
@@ -287,6 +351,18 @@ try {
     // 예산 제출안 심사 액션 (승인 시에만 확정 예산 반영)
     const commentInput = document.getElementById("budget-review-comment");
 
+    // 입력/AI 작성 내용에 맞춰 코멘트 입력란 높이를 자동으로 늘린다(수동 입력·AI 초안 모두 반영).
+    const COMMENT_MIN_HEIGHT = 64;
+    const autoGrowComment = () => {
+      if (!commentInput) return;
+      commentInput.style.height = "auto";
+      commentInput.style.height = `${Math.max(COMMENT_MIN_HEIGHT, commentInput.scrollHeight)}px`;
+    };
+    if (commentInput) {
+      commentInput.style.overflowY = "hidden";
+      commentInput.addEventListener("input", autoGrowComment);
+    }
+
     const submitBudgetReview = async (decision, label, btn) => {
       const pending = detail.pendingSubmission;
       if (!pending) {
@@ -310,6 +386,7 @@ try {
       await runWithErrorBoundary(async () => {
         await reviewBudgetSubmission(pending.id, decision, comment, user.profile.name);
         commentInput.value = "";
+        autoGrowComment();
         detail = await getAdminCompanyDetail(id);
         renderHeader();
         showToast(`예산안이 ${label} 처리되었습니다.`, { type: "success" });
@@ -328,10 +405,13 @@ try {
         aiBudgetReviewResultEl.innerHTML = `<p class="empty">AI가 예산 제출안을 검토하는 중입니다...</p>`;
       }
       await runWithErrorBoundary(async () => {
+        // 사업계획서 첨부본을 함께 보내, 예산 항목/금액이 사업계획과 정합하는지도 점검하게 한다.
+        payload.documents = await collectBudgetPlanDocuments();
         const result = await requestBudgetAiReview(payload);
         renderBudgetAiReviewResult(result);
         if (result.revision_comment_draft && commentInput && !commentInput.value.trim()) {
           commentInput.value = result.revision_comment_draft;
+          autoGrowComment();
         }
         showToast("AI 검토가 완료되었습니다.", { type: "success" });
       }, { button: e.currentTarget });
@@ -418,9 +498,69 @@ try {
       });
     });
 
-    // ZIP Download — 아직 미구현. 실제 완료된 다운로드처럼 보이지 않도록 '준비 중' 안내만 한다.
-    document.getElementById("btn-download-all-docs")?.addEventListener("click", () => {
-      showToast("전체 문서 ZIP 다운로드는 아직 준비 중입니다.", { type: "info" });
+    // 지출 신청 현황 표: 행 클릭 → 지출 상세 검토 페이지로 이동(컨테이너에 1회 위임 바인딩, 표는 매 렌더마다 갱신됨).
+    const gotoExpense = (row) => {
+      const href = row?.dataset.expenseHref;
+      if (href) window.location.href = href;
+    };
+    expenseAllTableEl?.addEventListener("click", async (e) => {
+      // 증빙 다운로드 버튼: 행 이동을 막고 이 기업의 첨부서류를 ZIP 으로 내려받는다.
+      const zipBtn = e.target.closest("[data-evidence-zip]");
+      if (zipBtn) {
+        e.stopPropagation();
+        const expenseId = zipBtn.dataset.evidenceZip;
+        const expenseRow = detail.expenses.find((row) => row.id === expenseId) || { id: expenseId };
+        await runWithErrorBoundary(async () => {
+          const count = await downloadExpenseEvidenceZip({ ...expenseRow, company_name: detail.company?.name });
+          if (count === 0) {
+            showToast("첨부된 증빙서류가 없습니다.", { type: "info" });
+          } else {
+            showToast(`증빙서류 ${count}건을 ZIP으로 내려받았습니다.`, { type: "success" });
+          }
+        }, { button: zipBtn });
+        return;
+      }
+      const row = e.target.closest(".clickable-row");
+      if (row) gotoExpense(row);
+    });
+    expenseAllTableEl?.addEventListener("keydown", (e) => {
+      if (e.key !== "Enter") return;
+      // 증빙 다운로드 버튼에 포커스가 있을 땐 버튼 자체 동작(클릭)에 맡기고 행 이동은 막는다.
+      if (e.target.closest("[data-evidence-zip]")) return;
+      const row = e.target.closest(".clickable-row");
+      if (row) { e.preventDefault(); gotoExpense(row); }
+    });
+
+    // 예산 신청 현황 표: 행 클릭/Enter → 비목별 상세 펼침(창업자 히스토리 표와 동일 동작).
+    const toggleBudgetRow = (row) => {
+      const idx = row.dataset.historyRow;
+      const detailRow = budgetSubmissionsEl?.querySelector(`[data-history-detail="${idx}"]`);
+      if (!detailRow) return;
+      const willOpen = detailRow.hidden;
+      detailRow.hidden = !willOpen;
+      row.classList.toggle("expanded", willOpen);
+      row.setAttribute("aria-expanded", String(willOpen));
+    };
+    budgetSubmissionsEl?.addEventListener("click", (e) => {
+      const row = e.target.closest("[data-history-row]");
+      if (row) toggleBudgetRow(row);
+    });
+    budgetSubmissionsEl?.addEventListener("keydown", (e) => {
+      if (e.key !== "Enter" && e.key !== " ") return;
+      const row = e.target.closest("[data-history-row]");
+      if (row) { e.preventDefault(); toggleBudgetRow(row); }
+    });
+
+    // 사업계획서 일괄 다운로드: 승인 완료된 1차/2차 계획서를 ZIP 한 개로 내려받는다.
+    document.getElementById("btn-download-plans-zip")?.addEventListener("click", async (e) => {
+      await runWithErrorBoundary(async () => {
+        const count = await downloadBusinessPlansZip(detail.company, detail.budgetSubmissions);
+        if (count === 0) {
+          showToast("다운로드할 승인된 사업계획서가 없습니다.", { type: "info" });
+        } else {
+          showToast(`사업계획서 ${count}건을 ZIP으로 내려받았습니다.`, { type: "success" });
+        }
+      }, { button: e.currentTarget });
     });
 
     renderHeader();

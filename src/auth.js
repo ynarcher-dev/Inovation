@@ -54,6 +54,19 @@ export async function getCurrentUser() {
       .maybeSingle();
 
     if (error) throw error;
+
+    // profiles 에는 company_id 컬럼이 없다. 창업자↔기업 연결은 company_members 가 단일 소스다.
+    // 호출부(파일 업로드 경로 companies/{company_id}/ 생성 등)가 profile.company_id 를
+    // 기대하므로 여기서 소속 회사를 보강한다(없으면 undefined 유지 — 관리자 등).
+    if (profile && !profile.company_id) {
+      const { data: member } = await supabase
+        .from("company_members")
+        .select("company_id")
+        .eq("user_id", user.id)
+        .maybeSingle();
+      if (member?.company_id) profile.company_id = member.company_id;
+    }
+
     return { id: user.id, email: user.email, profile };
   } catch (err) {
     console.error("getCurrentUser 실패:", err);

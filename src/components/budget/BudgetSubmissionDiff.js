@@ -35,12 +35,32 @@ export function BudgetSubmissionDiff(submission, programBudgets, committedByBudg
   // 예산 변경(1차 수정 + 2차 배정) 검토표(new.md §10.7):
   // 비목 | 1차 배정(변경 전→후) | 2차 배정(변경 전→후) | 승인 후 총 예산 | 집행/검토 중 | 승인 후 예상 잔액
   if (isChange) {
-    // 변경 전→후를 한 셀에 보여준다(같으면 단일 값).
-    const prevReqCell = (prev, req, color) => {
-      if (prev === req) return `<span>${formatCurrency(req)}</span>`;
-      const arrow = req > prev ? "▲" : "▼";
-      const c = req > prev ? "#047857" : "#b91c1c";
-      return `<span class="muted" style="text-decoration:line-through;">${formatCurrency(prev)}</span> <span style="color:${color || c}; font-weight:600;">${arrow} ${formatCurrency(req)}</span>`;
+    // 상태 칩(증액/감액/신규/유지) — 행/범례 공용.
+    const chip = (text, bg, fg) =>
+      `<span style="display:inline-block; padding:1px 8px; border-radius:999px; font-size:0.75em; font-weight:700; background:${bg}; color:${fg}; white-space:nowrap;">${text}</span>`;
+    const rowChip = (prevTotal, afterTotal) => {
+      if (afterTotal === prevTotal) return chip("유지", "#f3f4f6", "#6b7280");
+      if (prevTotal === 0) return chip("신규", "#dbeafe", "#1d4ed8");
+      return afterTotal > prevTotal ? chip("증액", "#dcfce7", "#047857") : chip("감액", "#fee2e2", "#b91c1c");
+    };
+
+    // 셀을 2줄로 분리: 위 = 변경 후 금액(굵게·색), 아래 = 변경 전(취소선) + 증감액. 변동 없으면 단일 값.
+    const prevReqCell = (prev, req) => {
+      if (prev === req) return `<span class="muted">${formatCurrency(req)}</span>`;
+      // 0원 → 양수는 '증액'이 아니라 '신규' 배정 — 범례(신규=파랑)와 맞춰 파랑으로 표기한다.
+      if (prev === 0 && req > 0) {
+        return `<div style="font-weight:700; color:#1d4ed8;">${formatCurrency(req)}</div>`
+          + `<div style="font-size:0.82em; color:#1d4ed8; margin-top:2px; white-space:nowrap;">신규 배정</div>`;
+      }
+      const up = req > prev;
+      const color = up ? "#047857" : "#b91c1c"; // 증액 녹색 / 감액 빨강
+      const arrow = up ? "▲" : "▼";
+      const delta = req - prev;
+      const deltaStr = `${delta > 0 ? "+" : ""}${formatCurrency(delta)}`; // formatCurrency 가 음수는 -로 표기
+      return `<div style="font-weight:700; color:${color};">${formatCurrency(req)}</div>`
+        + `<div style="font-size:0.82em; color:#6b7280; margin-top:2px; white-space:nowrap;">`
+        + `<span style="text-decoration:line-through;">${formatCurrency(prev)}</span> `
+        + `<span style="color:${color}; font-weight:700;">${arrow} ${deltaStr}</span></div>`;
     };
     const violationsArr = [];
     const r2Rows = items.map((it) => {
@@ -58,7 +78,12 @@ export function BudgetSubmissionDiff(submission, programBudgets, committedByBudg
       if (isViolation) violationsArr.push(`${pathLabel} (승인 후 ${formatCurrency(totalAfter)} < 집행·검토중 ${formatCurrency(committed)})`);
       return `
         <tr${isViolation ? ' style="background:#fef2f2;"' : ""}>
-          <td>${escapeHtml(pathLabel)}${isViolation ? ' <span style="color:#b91c1c; font-weight:700;">⚠ 감액 불가</span>' : ""}</td>
+          <td>
+            <span style="display:inline-flex; align-items:center; gap:6px;">
+              ${rowChip(prev1 + prev2, totalAfter)}
+              <span>${escapeHtml(pathLabel)}</span>
+            </span>${isViolation ? ' <span style="color:#b91c1c; font-weight:700;">⚠ 감액 불가</span>' : ""}
+          </td>
           <td style="text-align:right;">${prevReqCell(prev1, req1)}</td>
           <td style="text-align:right;">${prevReqCell(prev2, req2)}</td>
           <td style="text-align:right; font-weight:600;">${formatCurrency(totalAfter)}</td>
@@ -91,15 +116,21 @@ export function BudgetSubmissionDiff(submission, programBudgets, committedByBudg
     return `
       ${warning}
       ${submissionMeta}
-      <div class="notice" style="margin-bottom:8px;">요청 범위: <strong>${escapeHtml(scopeNote)}</strong></div>
+      <div class="notice" style="margin-bottom:8px; display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
+        <span>요청 범위: <strong>${escapeHtml(scopeNote)}</strong></span>
+        <span class="muted" style="font-size:0.82em; display:inline-flex; gap:6px; align-items:center; flex-wrap:wrap;">
+          ${chip("증액", "#dcfce7", "#047857")} ${chip("감액", "#fee2e2", "#b91c1c")} ${chip("신규", "#dbeafe", "#1d4ed8")} ${chip("유지", "#f3f4f6", "#6b7280")}
+          <span>· 각 칸 위=변경 후, 아래=<span style="text-decoration:line-through;">변경 전</span>·증감</span>
+        </span>
+      </div>
       ${round2PlanBlock}
       <div class="table-wrap">
         <table>
           <thead>
             <tr>
               <th>비목</th>
-              <th style="text-align:right;">1차 배정 (변경 전→후)</th>
-              <th style="text-align:right;">2차 배정 (변경 전→후)</th>
+              <th style="text-align:right;">1차 배정<div style="font-weight:400; font-size:0.8em; color:#6b7280;">변경 후 / 변경 전·증감</div></th>
+              <th style="text-align:right;">2차 배정<div style="font-weight:400; font-size:0.8em; color:#6b7280;">변경 후 / 변경 전·증감</div></th>
               <th style="text-align:right;">승인 후 총 예산</th>
               <th style="text-align:right;">집행/검토 중</th>
               <th style="text-align:right;">승인 후 예상 잔액</th>

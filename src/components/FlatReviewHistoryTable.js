@@ -38,10 +38,13 @@ export function FlatReviewHistoryTable(reviewHistory, isAdmin = false) {
         </thead>
         <tbody>
           ${reviewHistory.map((rev) => {
-            const targetUrl = `${target}?id=${encodeURIComponent(rev.expense_request_id)}`;
+            // 지출 신청 건은 상세로 링크, 예산 검토 등 지출 건이 아닌 항목은 일반 텍스트로 표시한다.
+            const titleCell = rev.expense_request_id
+              ? `<a href="${target}?id=${encodeURIComponent(rev.expense_request_id)}" style="font-weight: 600;">${escapeHtml(rev.title || "-")}</a>`
+              : `<span style="font-weight: 600;">${escapeHtml(rev.title || "-")}</span>`;
             return `
               <tr>
-                <td><a href="${targetUrl}" style="font-weight: 600;">${escapeHtml(rev.title || "-")}</a></td>
+                <td>${titleCell}</td>
                 <td>${DecisionBadge(rev.decision)}</td>
                 <td class="comment-cell">${escapeHtml(rev.comment || "의견 내용이 없습니다.")}</td>
                 <td>${escapeHtml(rev.reviewer_id || "관리자")}</td>

@@ -239,7 +239,7 @@ CREATE TABLE IF NOT EXISTS public.uploaded_files (
     size_bytes bigint NOT NULL,
     link_url text NOT NULL, -- Storage object path 또는 key
     uploaded_by uuid REFERENCES public.profiles(id) ON DELETE SET NULL,
-    ai_review_status text NOT NULL DEFAULT 'not_requested' CONSTRAINT chk_ai_review_status CHECK (ai_review_status IN ('not_requested', 'pending', 'passed', 'failed')),
+    ai_review_status text NOT NULL DEFAULT 'not_requested' CONSTRAINT chk_ai_review_status CHECK (ai_review_status IN ('not_requested', 'pending', 'passed', 'needs_revision', 'failed')),
     ai_review_comment text,
     ai_check_result jsonb NOT NULL DEFAULT '{}'::jsonb,
     cleared boolean NOT NULL DEFAULT false,
@@ -547,6 +547,14 @@ CREATE POLICY "budget_submissions_member_select" ON public.budget_submissions
 DROP POLICY IF EXISTS "budget_submissions_member_insert" ON public.budget_submissions;
 CREATE POLICY "budget_submissions_member_insert" ON public.budget_submissions
     FOR INSERT WITH CHECK (public.is_company_member(company_id));
+-- 덮어쓰기용: 본인 회사의 '아직 결재되지 않은' 제출안(budget_submitted/change_submitted)만 삭제 허용
+--   (재제출 시 직전 신청 정리). 보완요청·승인 등 결재된 이력은 status 조건으로 보호. 항목은 FK ON DELETE CASCADE.
+DROP POLICY IF EXISTS "budget_submissions_member_delete_pending" ON public.budget_submissions;
+CREATE POLICY "budget_submissions_member_delete_pending" ON public.budget_submissions
+    FOR DELETE USING (
+        public.is_company_member(company_id)
+        AND status IN ('budget_submitted', 'change_submitted')
+    );
 DROP POLICY IF EXISTS "budget_submissions_admin_all" ON public.budget_submissions;
 CREATE POLICY "budget_submissions_admin_all" ON public.budget_submissions
     FOR ALL USING (public.is_admin()) WITH CHECK (public.is_admin());
@@ -639,3 +647,9 @@ CREATE POLICY "uploaded_files_admin_all" ON public.uploaded_files
 DROP POLICY IF EXISTS "ai_settings_admin_all" ON public.ai_settings;
 CREATE POLICY "ai_settings_admin_all" ON public.ai_settings
     FOR ALL USING (public.is_admin()) WITH CHECK (public.is_admin());
+-- 창업자 등 인증 사용자는 설정을 '읽기'만 가능(쓰기는 관리자 전용).
+-- AI 토글/Edge Function URL 을 읽어야 지출·보완 화면의 AI검토가 동작하기 때문.
+-- 실제 API 키는 이 테이블에 저장하지 않으므로(Edge Function Secret) 노출 위험 없음.
+DROP POLICY IF EXISTS "ai_settings_authenticated_read" ON public.ai_settings;
+CREATE POLICY "ai_settings_authenticated_read" ON public.ai_settings
+    FOR SELECT TO authenticated USING (true);

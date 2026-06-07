@@ -38,19 +38,22 @@ export function BudgetHistoryDetail(s) {
       <tbody>
         ${s.items.map((it) => {
           // 최초 등록은 이전 배정이 없으므로 이전 총액 0, 2차도 0.
+          // 변경 제출의 '변경 전 총액'은 제출 시점에 저장된 previous_allocated_amount(스냅샷)를 쓴다.
+          //   previous_round1/round2 는 제출 시 저장되지 않아(=null) 둘을 더하면 0 이 되고,
+          //   변동이 없는 비목도 전부 '0→요청액' 증액으로 잘못 표시되던 문제를 막는다.
+          //   (per-round 분리값이 저장된 데이터가 있으면 그 합을 우선 사용한다.)
           const prevTotal = isChange
-            ? Number(it.previous_round1_allocated_amount || 0) + Number(it.previous_round2_allocated_amount || 0)
+            ? (it.previous_round1_allocated_amount != null || it.previous_round2_allocated_amount != null
+                ? Number(it.previous_round1_allocated_amount || 0) + Number(it.previous_round2_allocated_amount || 0)
+                : Number(it.previous_allocated_amount || 0))
             : 0;
           // 승인 완료 건은 승인된 최종값, 그 외에는 요청값을 최종값으로 사용한다.
-          const final2 = isChange
-            ? (isApproved && it.approved_round2_allocated_amount != null
-              ? Number(it.approved_round2_allocated_amount)
-              : Number(it.requested_round2_allocated_amount || 0))
-            : 0;
-          const finalTotal = isApproved && it.approved_allocated_amount != null
-            ? Number(it.approved_allocated_amount)
-            : Number(it.requested_allocated_amount || round1ReqOf(it) + final2);
-          const final1 = finalTotal - final2;
+          const requested2 = Number(it.requested_round2_allocated_amount || 0);
+          const requestedTotal = Number(it.requested_allocated_amount || round1ReqOf(it) + requested2);
+          const approvedTotal = Number(it.approved_allocated_amount || 0);
+          const final2 = requested2;
+          const finalTotal = isApproved && approvedTotal > 0 ? approvedTotal : requestedTotal;
+          const final1 = round1ReqOf(it);
           const delta = finalTotal - prevTotal;
           return `
             <tr>

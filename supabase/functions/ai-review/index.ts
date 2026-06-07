@@ -199,19 +199,29 @@ function normalizeReviewResult(value: any, rawText: string) {
   };
 }
 
-function buildPrompt(payload: unknown) {
+function buildPrompt(payload: any) {
+  // base64 첨부(documents)는 멀티파트로 따로 전달하므로 텍스트 JSON 에서는 제외한다.
+  const { documents, ...rest } = payload || {};
+  const hasPlan = Array.isArray(documents) && documents.length > 0;
+  const planNames = hasPlan
+    ? documents.map((d: any) => String(d?.filename || "사업계획서")).join(", ")
+    : "";
+
   const instructions = [
     "너는 정부지원사업/창업지원사업 예산 심사 보조 AI다.",
     "관리자의 최종 판단을 대체하지 말고, 구조화된 검토 의견만 제공한다.",
     "감액 불가 위반, 총액/항목 증감의 이상점, 보완요청 코멘트에 필요한 근거를 점검한다.",
+    hasPlan
+      ? "첨부된 사업계획서 문서를 읽고, 예산 항목/금액이 사업계획의 활동 내용과 정합하는지(계획에 없는 항목, 과다 책정, 근거 부족, 비목 분류 오류 등)도 함께 점검한다. 사업계획서에서 확인되지 않는 내용은 추정하지 말고 '계획서에서 확인되지 않음'으로 표기한다."
+      : "사업계획서 첨부본이 없으므로 예산 데이터(비목 경로/금액)만으로 점검한다.",
     "반드시 JSON 객체만 반환한다.",
     "스키마: {\"summary\":\"string\",\"decision_suggestion\":\"approve|revision_requested|needs_review\",\"risks\":[{\"level\":\"info|warning|danger\",\"title\":\"string\",\"detail\":\"string\"}],\"revision_comment_draft\":\"string\"}",
   ].join("\n");
 
   const input = [
-    "다음 예산 제출안을 검토해줘.",
+    hasPlan ? `다음 예산 제출안을 첨부된 사업계획서(${planNames})와 함께 검토해줘.` : "다음 예산 제출안을 검토해줘.",
     "",
-    JSON.stringify(payload, null, 2),
+    JSON.stringify(rest, null, 2),
   ].join("\n");
 
   return { instructions, input };
@@ -296,6 +306,33 @@ function buildCriteriaPrompt() {
   return { instructions, input };
 }
 
+// provider 응답의 retryDelay(초)를 추출한다(Gemini RetryInfo 등). 없으면 null.
+function extractRetryDelaySeconds(data: any): number | null {
+  const details = data?.error?.details;
+  if (Array.isArray(details)) {
+    for (const d of details) {
+      const rd = typeof d?.retryDelay === "string" ? d.retryDelay : "";
+      const m = rd.match(/([\d.]+)\s*s/);
+      if (m) return Math.ceil(Number(m[1]));
+    }
+  }
+  return null;
+}
+
+// provider(OpenAI/Gemini/Anthropic) 실패 응답을 적절한 에러로 변환해 던진다.
+// 429(쿼터/레이트리밋)는 그대로 429로 전달해, 클라이언트가 무의미한 502 재시도로
+// 쿼터를 더 소진하지 않도록 한다. 그 외 실패는 일반 Error → 상위 catch에서 502 처리.
+function throwProviderError(providerLabel: string, status: number, data: any): never {
+  if (status === 429) {
+    const retry = extractRetryDelaySeconds(data);
+    const msg = retry
+      ? `AI provider(${providerLabel}) 사용량 한도를 초과했습니다. 약 ${retry}초 후 다시 시도해주세요.`
+      : `AI provider(${providerLabel}) 사용량 한도를 초과했습니다. 잠시 후 다시 시도해주세요.`;
+    throw new HttpError(429, msg);
+  }
+  throw new Error(data?.error?.message || `${providerLabel} API 호출에 실패했습니다.`);
+}
+
 function extractOpenAiText(response: any) {
   if (typeof response?.output_text === "string") return response.output_text;
   const parts: string[] = [];
@@ -332,26 +369,33 @@ function isImageMime(mime: string) {
 }
 type CallOptions = {
   document?: ProviderDocument | null;
+  documents?: ProviderDocument[] | null;
   jsonOutput?: boolean;
   maxOutputTokens?: number;
 };
+
+// 단일 document / 복수 documents 옵션을 하나의 배열로 정규화한다(기존 단일 호출부와 호환).
+function normalizeDocs(options: CallOptions): ProviderDocument[] {
+  if (options.documents?.length) return options.documents.filter((d) => d?.data_base64);
+  if (options.document?.data_base64) return [options.document];
+  return [];
+}
 
 async function callOpenAi(model: string, instructions: string, input: string, options: CallOptions = {}) {
   const apiKey = Deno.env.get("OPENAI_API_KEY");
   if (!apiKey) throw new Error("OPENAI_API_KEY Secret이 등록되어 있지 않습니다.");
 
   // 문서가 있으면 input_text + (이미지는 input_image / PDF는 input_file) 멀티파트로, 없으면 문자열로 보낸다.
-  const filePart = options.document
-    ? (isImageMime(options.document.mime_type)
-        ? { type: "input_image", image_url: `data:${options.document.mime_type};base64,${options.document.data_base64}` }
-        : {
-            type: "input_file",
-            filename: options.document.filename || "document",
-            file_data: `data:${options.document.mime_type};base64,${options.document.data_base64}`,
-          })
-    : null;
-  const userInput = filePart
-    ? [{ role: "user", content: [{ type: "input_text", text: input }, filePart] }]
+  const fileParts = normalizeDocs(options).map((doc) =>
+    isImageMime(doc.mime_type)
+      ? { type: "input_image", image_url: `data:${doc.mime_type};base64,${doc.data_base64}` }
+      : {
+          type: "input_file",
+          filename: doc.filename || "document",
+          file_data: `data:${doc.mime_type};base64,${doc.data_base64}`,
+        });
+  const userInput = fileParts.length
+    ? [{ role: "user", content: [{ type: "input_text", text: input }, ...fileParts] }]
     : input;
 
   const body: Record<string, unknown> = {
@@ -373,7 +417,7 @@ async function callOpenAi(model: string, instructions: string, input: string, op
   });
 
   const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data?.error?.message || "OpenAI API 호출에 실패했습니다.");
+  if (!response.ok) throwProviderError("OpenAI", response.status, data);
   return extractOpenAiText(data);
 }
 
@@ -382,8 +426,8 @@ async function callGemini(model: string, instructions: string, input: string, op
   if (!apiKey) throw new Error("GOOGLE_API_KEY Secret이 등록되어 있지 않습니다.");
 
   const parts: unknown[] = [{ text: input }];
-  if (options.document) {
-    parts.push({ inline_data: { mime_type: options.document.mime_type, data: options.document.data_base64 } });
+  for (const doc of normalizeDocs(options)) {
+    parts.push({ inline_data: { mime_type: doc.mime_type, data: doc.data_base64 } });
   }
 
   const generationConfig: Record<string, unknown> = { maxOutputTokens: options.maxOutputTokens || 1600 };
@@ -404,9 +448,7 @@ async function callGemini(model: string, instructions: string, input: string, op
   });
 
   const data = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(data?.error?.message || "Gemini API 호출에 실패했습니다.");
-  }
+  if (!response.ok) throwProviderError("Gemini", response.status, data);
   return extractGeminiText(data);
 }
 
@@ -415,11 +457,11 @@ async function callAnthropic(model: string, instructions: string, input: string,
   if (!apiKey) throw new Error("ANTHROPIC_API_KEY Secret이 등록되어 있지 않습니다.");
 
   const content: unknown[] = [{ type: "text", text: input }];
-  if (options.document) {
+  for (const doc of normalizeDocs(options)) {
     // 이미지는 image 블록, PDF 등은 document 블록으로 보낸다.
     content.push({
-      type: isImageMime(options.document.mime_type) ? "image" : "document",
-      source: { type: "base64", media_type: options.document.mime_type, data: options.document.data_base64 },
+      type: isImageMime(doc.mime_type) ? "image" : "document",
+      source: { type: "base64", media_type: doc.mime_type, data: doc.data_base64 },
     });
   }
 
@@ -439,9 +481,7 @@ async function callAnthropic(model: string, instructions: string, input: string,
   });
 
   const data = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(data?.error?.message || "Anthropic API 호출에 실패했습니다.");
-  }
+  if (!response.ok) throwProviderError("Anthropic", response.status, data);
   return extractAnthropicText(data);
 }
 
@@ -532,10 +572,21 @@ serve(async (req) => {
       throw new HttpError(400, "검토할 예산 제출 항목이 없습니다.");
     }
 
-    const { instructions, input } = buildPrompt(payload);
+    // 함께 첨부된 사업계획서 문서(있을 때만). 각 문서는 mime/크기 allowlist 로 검증한다.
+    const planDocs = (Array.isArray(payload?.documents) ? payload.documents : [])
+      .map((d: any) => ({
+        mime_type: String(d?.mime_type || "application/pdf"),
+        data_base64: String(d?.data_base64 || ""),
+        filename: String(d?.filename || "사업계획서"),
+      }))
+      .filter((d: ProviderDocument) => d.data_base64);
+    planDocs.forEach(validateDocument);
+
+    const { instructions, input } = buildPrompt({ ...payload, documents: planDocs });
     // summary + risks + revision_comment_draft 를 모두 담은 JSON 이 토큰 한도에서
     // 잘려 파싱이 깨지지 않도록 충분한 출력 토큰을 확보한다.
     const rawText = await callProvider(provider, model, instructions, input, {
+      documents: planDocs,
       jsonOutput: true,
       maxOutputTokens: 3000,
     });

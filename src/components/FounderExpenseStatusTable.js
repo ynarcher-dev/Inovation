@@ -17,11 +17,14 @@ function ProcessSteps(status) {
 // - 신청명 / 비목·사업계획서 항목 / 금액(공급가액+부가세) / 제출일 / 현재 단계(배지) / 진행 상태(미니 프로세스)
 // - 행 전체를 클릭하면 상세 페이지로 이동한다(보완 건은 같은 expense.id 를 유지).
 // rows 는 호출부에서 검색/필터를 거친 결과를 받는다. 비어 있으면 emptyMessage 를 표시한다.
-export function FounderExpenseStatusTable(rows, emptyMessage = "표시할 지출 신청 건이 없습니다.") {
+// opts.actionColumn: 진행 상태 우측에 부가 액션 컬럼을 추가한다(관리자 증빙 다운로드 등).
+//   { header: string, cell: (row) => htmlString } — cell 안의 버튼은 row 클릭 이동을 막도록 호출부에서 처리한다.
+export function FounderExpenseStatusTable(rows, emptyMessage = "표시할 지출 신청 건이 없습니다.", opts = {}) {
   if (!rows?.length) {
     return `<p class="empty">${escapeHtml(emptyMessage)}</p>`;
   }
 
+  const action = opts.actionColumn;
   const sorted = [...rows].sort((a, b) =>
     String(b.submitted_at || b.created_at || "").localeCompare(String(a.submitted_at || a.created_at || ""))
   );
@@ -30,12 +33,13 @@ export function FounderExpenseStatusTable(rows, emptyMessage = "표시할 지출
     <div class="table-wrap">
       <table class="founder-expense-table">
         <colgroup>
-          <col style="width:24%">
-          <col style="width:20%">
+          <col style="width:${action ? "21%" : "24%"}">
+          <col style="width:${action ? "17%" : "20%"}">
           <col style="width:12%">
           <col style="width:11%">
           <col style="width:12%">
-          <col style="width:21%">
+          <col style="width:${action ? "15%" : "21%"}">
+          ${action ? `<col style="width:12%">` : ""}
         </colgroup>
         <thead>
           <tr>
@@ -45,6 +49,7 @@ export function FounderExpenseStatusTable(rows, emptyMessage = "표시할 지출
             <th>제출일</th>
             <th>현재 단계</th>
             <th>진행 상태</th>
+            ${action ? `<th>${escapeHtml(action.header || "")}</th>` : ""}
           </tr>
         </thead>
         <tbody>
@@ -64,6 +69,7 @@ export function FounderExpenseStatusTable(rows, emptyMessage = "표시할 지출
                 <td>${row.submitted_at ? formatDate(row.submitted_at) : "-"}</td>
                 <td><span class="badge badge-${getStatusTone(row.status)}">${escapeHtml(getStatusLabel(row.status))}</span></td>
                 <td>${ProcessSteps(row.status)}</td>
+                ${action ? `<td>${action.cell ? action.cell(row) : ""}</td>` : ""}
               </tr>
             `;
           }).join("")}

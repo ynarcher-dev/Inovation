@@ -149,7 +149,7 @@
               <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:12px; flex-wrap:wrap;">
                 <div>
                   <strong>AI 예산 검토</strong>
-                  <p class="muted" style="margin:4px 0 0;">현재 제출안의 감액 불가, 증감 사유, 검토 코멘트 초안을 AI로 점검합니다.</p>
+                  <p class="muted" style="margin:4px 0 0;">제출된 사업계획서(첨부 시)와 함께 감액 불가, 증감 사유, 예산-계획 정합성, 검토 코멘트 초안을 AI로 점검합니다.</p>
                 </div>
                 <button class="button small secondary" id="btn-ai-budget-review" type="button">AI 검토</button>
               </div>
@@ -157,12 +157,17 @@
             </div>
             <div id="budget-review-detail" style="margin: 12px 0;"></div>
             <div id="budget-review-actions" style="display: flex; gap: 12px; margin-top: 12px; align-items: flex-start;">
-              <textarea id="budget-review-comment" placeholder="보완요청 시 구체적인 사유를 작성하세요." style="flex: 1; height: 64px; box-sizing: border-box;"></textarea>
+              <textarea id="budget-review-comment" placeholder="보완요청 시 구체적인 사유를 작성하세요." style="flex: 1; min-height: 64px; box-sizing: border-box; resize: vertical;"></textarea>
               <div style="display: flex; gap: 8px;">
                 <button class="button" id="btn-approve-budget" type="button" style="background-color: #10b981; border-color: #10b981;">승인</button>
                 <button class="button warning" id="btn-revision-budget" type="button" style="background-color: #f59e0b; border-color: #f59e0b;">보완요청</button>
               </div>
             </div>
+          </section>
+          <section class="card" style="margin-top:16px;">
+            <h2>예산 신청 현황</h2>
+            <p class="muted">이 기업이 제출한 예산안/변경 요청과 검토 상태입니다. 행을 클릭하면 비목별 상세 내역을 펼쳐볼 수 있습니다.</p>
+            <div data-budget-submissions></div>
           </section>
         </div>
 
@@ -172,6 +177,11 @@
             <h2>지출 신청 검토 대기</h2>
             <p class="muted">검토가 필요한 지출 신청 목록입니다. 신청 제목을 클릭하여 지출 신청 상세 검토 화면으로 이동합니다.</p>
             <div data-expense-table></div>
+          </section>
+          <section class="card" style="margin-top:16px;">
+            <h2>지출 신청 현황</h2>
+            <p class="muted">이 기업의 모든 지출 신청 내역과 진행 상태입니다. 행을 클릭하면 지출 상세 검토 화면으로 이동합니다.</p>
+            <div data-expense-all-table></div>
           </section>
         </div>
 
@@ -195,7 +205,8 @@
             </div>
           </section>
           <section class="card" style="margin-top:16px;">
-            <button class="button" id="btn-download-all-docs" type="button" style="width: 100%;">📦 증빙 서류 일괄 다운로드 (ZIP)</button>
+            <button class="button" id="btn-download-plans-zip" type="button" style="width: 100%;">📦 사업계획서 일괄 다운로드 (ZIP)</button>
+            <p class="muted" style="font-size:12px; margin-top:8px;">승인 완료된 1차/2차 사업계획서를 하나의 ZIP으로 내려받습니다. 파일명: 기업명_사업계획서_1차 / _2차</p>
           </section>
         </div>
 

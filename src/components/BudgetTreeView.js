@@ -82,6 +82,10 @@ export function BudgetTreeView(tree, isEditable, levelLabels, options = {}) {
   // 2차 배정 컬럼에 표시할 금액: 검토 중(승인 대기/보완)이면 요청 금액, 그 외엔 승인된 2차 금액.
   const round2DisplayOf = (node) =>
     round2Pending ? Number(node.pending_round2_amount || 0) : Number(node.round2_allocated_amount || 0);
+  const totalDisplayOf = (node) =>
+    round2Pending ? Number(node.pending_allocated_amount ?? node.allocated_amount ?? 0) : Number(node.allocated_amount || 0);
+  const remainingDisplayOf = (node) =>
+    round2Pending ? Number(node.pending_remaining_amount ?? node.remaining_amount ?? 0) : Number(node.remaining_amount || 0);
 
   // ---- 금액 셀(컬럼) 렌더러 ----
   const amountCells = (node) => {
@@ -113,7 +117,8 @@ export function BudgetTreeView(tree, isEditable, levelLabels, options = {}) {
             placeholder="0">
         </td>`;
     }
-    const remainingClass = Number(node.remaining_amount) < 0 ? "danger" : "success";
+    const remaining = remainingDisplayOf(node);
+    const remainingClass = remaining < 0 ? "danger" : "success";
     // 1차/2차/총 분리 표시 모드
     if (showRounds) {
       const r2 = round2DisplayOf(node);
@@ -121,10 +126,10 @@ export function BudgetTreeView(tree, isEditable, levelLabels, options = {}) {
       return `
         <td class="budget-amount">${formatCurrency(node.round1_allocated_amount)}</td>
         <td${r2Class}>${r2 ? formatCurrency(r2) : "-"}</td>
-        <td class="budget-amount">${formatCurrency(node.allocated_amount)}</td>
+        <td class="budget-amount${round2Pending ? " muted" : ""}">${formatCurrency(totalDisplayOf(node))}</td>
         <td class="budget-amount">${formatCurrency(node.approved_amount)}</td>
         <td class="budget-amount">${formatCurrency(node.pending_amount)}</td>
-        <td class="budget-amount ${remainingClass}">${formatCurrency(node.remaining_amount)}</td>`;
+        <td class="budget-amount ${remainingClass}${round2Pending ? " muted" : ""}">${formatCurrency(remaining)}</td>`;
     }
     // 레거시 표시 모드: 배정/승인/검토중/잔액
     return `
@@ -157,15 +162,16 @@ export function BudgetTreeView(tree, isEditable, levelLabels, options = {}) {
     if (isEditable) {
       return `<td class="budget-amount"${parentAttr ? ` data-parent-allocation="${escapeHtml(node.id)}"` : ""}>${formatCurrency(node.allocated_amount)}</td>`;
     }
-    const remainingClass = Number(node.remaining_amount) < 0 ? "danger" : "success";
+    const remaining = remainingDisplayOf(node);
+    const remainingClass = remaining < 0 ? "danger" : "success";
     if (showRounds) {
       return `
         <td class="budget-amount">${formatCurrency(node.round1_allocated_amount)}</td>
         <td class="budget-amount${round2Pending ? " muted" : ""}">${formatCurrency(round2DisplayOf(node))}</td>
-        <td class="budget-amount">${formatCurrency(node.allocated_amount)}</td>
+        <td class="budget-amount${round2Pending ? " muted" : ""}">${formatCurrency(totalDisplayOf(node))}</td>
         <td class="budget-amount">${formatCurrency(node.approved_amount)}</td>
         <td class="budget-amount">${formatCurrency(node.pending_amount)}</td>
-        <td class="budget-amount ${remainingClass}">${formatCurrency(node.remaining_amount)}</td>`;
+        <td class="budget-amount ${remainingClass}${round2Pending ? " muted" : ""}">${formatCurrency(remaining)}</td>`;
     }
     return `
       <td class="budget-amount">${formatCurrency(node.allocated_amount)}</td>
@@ -189,10 +195,10 @@ export function BudgetTreeView(tree, isEditable, levelLabels, options = {}) {
       (acc, root) => ({
         round1: acc.round1 + Number(root.round1_allocated_amount || 0),
         round2: acc.round2 + round2DisplayOf(root),
-        allocated: acc.allocated + Number(root.allocated_amount || 0),
+        allocated: acc.allocated + totalDisplayOf(root),
         approved: acc.approved + Number(root.approved_amount || 0),
         pending: acc.pending + Number(root.pending_amount || 0),
-        remaining: acc.remaining + Number(root.remaining_amount || 0),
+        remaining: acc.remaining + remainingDisplayOf(root),
       }),
       { round1: 0, round2: 0, allocated: 0, approved: 0, pending: 0, remaining: 0 },
     );
@@ -201,10 +207,10 @@ export function BudgetTreeView(tree, isEditable, levelLabels, options = {}) {
       ? `
         <td class="budget-amount">${formatCurrency(totals.round1)}</td>
         <td class="budget-amount${round2Pending ? " muted" : ""}">${formatCurrency(totals.round2)}</td>
-        <td class="budget-amount">${formatCurrency(totals.allocated)}</td>
+        <td class="budget-amount${round2Pending ? " muted" : ""}">${formatCurrency(totals.allocated)}</td>
         <td class="budget-amount">${formatCurrency(totals.approved)}</td>
         <td class="budget-amount">${formatCurrency(totals.pending)}</td>
-        <td class="budget-amount ${remainingClass}">${formatCurrency(totals.remaining)}</td>`
+        <td class="budget-amount ${remainingClass}${round2Pending ? " muted" : ""}">${formatCurrency(totals.remaining)}</td>`
       : `
         <td class="budget-amount">${formatCurrency(totals.allocated)}</td>
         <td class="budget-amount">${formatCurrency(totals.approved)}</td>
