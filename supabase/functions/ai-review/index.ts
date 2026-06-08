@@ -191,6 +191,8 @@ function normalizeReviewResult(value: any, rawText: string) {
     ? parsedSummary
     : "AI 응답을 구조화하지 못했습니다. (원문은 raw_text 참고) 다시 시도하거나 관리자가 직접 검토해주세요.";
   return {
+    // structured=false 면 JSON 파싱 실패(빈 risks 가 '위험 없음'이 아니라 '판단 불가'라는 뜻). 화면이 이를 구분해 표기한다.
+    structured: Boolean(value),
     summary,
     decision_suggestion: String(value?.decision_suggestion || "needs_review").trim(),
     risks: Array.isArray(value?.risks) ? value.risks : [],
@@ -203,23 +205,34 @@ function buildPrompt(payload: any) {
   // base64 첨부(documents)는 멀티파트로 따로 전달하므로 텍스트 JSON 에서는 제외한다.
   const { documents, ...rest } = payload || {};
   const hasPlan = Array.isArray(documents) && documents.length > 0;
-  const planNames = hasPlan
-    ? documents.map((d: any) => String(d?.filename || "사업계획서")).join(", ")
+  // 첨부 문서를 차수(1차/2차)와 함께 명시해, 모델이 어느 계획서를 어느 배정액과 대조할지 알 수 있게 한다.
+  const roundLabel = (round: string) =>
+    round === "round2" ? "2차 수정 사업계획서" : round === "round1" ? "1차 사업계획서" : "사업계획서(차수 미상)";
+  const docManifest = hasPlan
+    ? documents.map((d: any) => `- ${roundLabel(String(d?.round || ""))}: ${String(d?.filename || "사업계획서")}`).join("\n")
     : "";
 
   const instructions = [
     "너는 정부지원사업/창업지원사업 예산 심사 보조 AI다.",
     "관리자의 최종 판단을 대체하지 말고, 구조화된 검토 의견만 제공한다.",
-    "감액 불가 위반, 총액/항목 증감의 이상점, 보완요청 코멘트에 필요한 근거를 점검한다.",
     hasPlan
-      ? "첨부된 사업계획서 문서를 읽고, 예산 항목/금액이 사업계획의 활동 내용과 정합하는지(계획에 없는 항목, 과다 책정, 근거 부족, 비목 분류 오류 등)도 함께 점검한다. 사업계획서에서 확인되지 않는 내용은 추정하지 말고 '계획서에서 확인되지 않음'으로 표기한다."
-      : "사업계획서 첨부본이 없으므로 예산 데이터(비목 경로/금액)만으로 점검한다.",
+      ? [
+          "핵심 검토 기준: 첨부된 사업계획서(1차/2차)에 적힌 예산과, 시스템에 입력된 예산 제출안의 금액이 서로 일치하는지를 대조하는 것이다.",
+          "사업계획서 문서에서 예산 표·항목별 금액·총액을 읽어, 입력된 제출안(submission.items 의 비목 경로 budget_path, 요청 금액 requested_allocated_amount, 1차 배정 requested_round1_allocated_amount, 2차 배정 requested_round2_allocated_amount)과 항목별로 비교한다.",
+          "차수를 구분해 대조한다: 1차 사업계획서는 1차 배정액(round1)과, 2차 수정 사업계획서는 2차 배정액(round2)과 맞는지 확인한다.",
+          "불일치는 risk 로 보고한다: ① 금액이 다른 비목, ② 계획서에는 있으나 입력에 없는 항목(또는 그 반대), ③ 총액 불일치, ④ 비목 분류가 계획서와 다른 경우. 각 risk 의 detail 에는 '계획서 금액 vs 입력 금액'을 구체적 숫자로 적는다.",
+          "사업계획서에서 해당 항목·금액을 확인할 수 없으면 추정하지 말고 '계획서에서 확인되지 않음'으로 표기한다.",
+        ].join("\n")
+      : "사업계획서 첨부본이 없어 계획서-입력 예산 대조가 불가능하다. 이 점을 summary 에 명시하고, 입력된 예산 데이터(비목 경로/금액)만으로 점검한다.",
+    "위 대조와 함께 감액 불가 위반, 총액/항목 증감의 명백한 이상점도 점검한다.",
     "반드시 JSON 객체만 반환한다.",
     "스키마: {\"summary\":\"string\",\"decision_suggestion\":\"approve|revision_requested|needs_review\",\"risks\":[{\"level\":\"info|warning|danger\",\"title\":\"string\",\"detail\":\"string\"}],\"revision_comment_draft\":\"string\"}",
   ].join("\n");
 
   const input = [
-    hasPlan ? `다음 예산 제출안을 첨부된 사업계획서(${planNames})와 함께 검토해줘.` : "다음 예산 제출안을 검토해줘.",
+    hasPlan
+      ? `다음 예산 제출안을, 첨부된 사업계획서의 예산 내용과 항목별로 대조해 검토해줘.\n[첨부 문서]\n${docManifest}`
+      : "다음 예산 제출안을 검토해줘.",
     "",
     JSON.stringify(rest, null, 2),
   ].join("\n");
@@ -578,6 +591,7 @@ serve(async (req) => {
         mime_type: String(d?.mime_type || "application/pdf"),
         data_base64: String(d?.data_base64 || ""),
         filename: String(d?.filename || "사업계획서"),
+        round: String(d?.round || ""), // 1차/2차 구분 — buildPrompt 의 첨부 문서 매니페스트에서 사용
       }))
       .filter((d: ProviderDocument) => d.data_base64);
     planDocs.forEach(validateDocument);

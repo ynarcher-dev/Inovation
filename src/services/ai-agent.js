@@ -87,10 +87,19 @@ async function callEdgeFunction(url, body) {
   throw aiError(lastData.error || "AI provider가 일시적으로 혼잡합니다. 잠시 후 다시 시도해주세요.", "overloaded");
 }
 
+// Edge Function 이 JSON 파싱 실패 시 채우는 안내 문구. structured 플래그가 없는 (구버전) 응답을 위해 문자열로도 실패를 감지한다.
+const AI_REVIEW_UNSTRUCTURED_SUMMARY =
+  "AI 응답을 구조화하지 못했습니다. (원문은 raw_text 참고) 다시 시도하거나 관리자가 직접 검토해주세요.";
+
 function normalizeAiReviewResult(result = {}) {
   const risks = Array.isArray(result.risks) ? result.risks : [];
+  const summary = String(result.summary || "").trim();
+  // structured 플래그가 있으면 그대로, 없으면(구버전 Edge Function) 실패 안내 문구로 추론한다.
+  const structured =
+    typeof result.structured === "boolean" ? result.structured : summary !== AI_REVIEW_UNSTRUCTURED_SUMMARY;
   return {
-    summary: String(result.summary || "").trim(),
+    structured,
+    summary,
     decision_suggestion: String(result.decision_suggestion || "needs_review").trim(),
     risks: risks.map((risk) => ({
       level: String(risk.level || "info").trim(),

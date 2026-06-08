@@ -45,12 +45,13 @@ function summaryHtml(requirements, aiEnabled) {
 // AI검토 결과 바(§4.5) — 파일명 행과 분리해 별도 줄에 둔다.
 // 점·박스 색은 결과에 따라 바뀌고(미검토는 회색), 신청자가 이상없음 처리하면 파랑(info)으로 표시.
 // 검토 완료(코멘트 존재) 상태면 클릭 시 모달([data-doc-ai-comment]).
-function aiReviewBar(req, aiEnabled) {
+function aiReviewBar(req, aiEnabled, mode) {
   const file = req.file;
   if (!aiEnabled || !file || !req.ai_review_enabled) return "";
   const cleared = !!file.cleared;
   const tone = cleared ? "info" : aiMeta(file.ai_review_status).tone;
-  const head = cleared ? "신청자 확인" : "AI검토 결과";
+  // 관리자 화면에서는 창업가 결과임을 분명히 하기 위해 '신청자 AI검토'로 표기한다.
+  const head = cleared ? "신청자 확인" : (mode === "admin" ? "신청자 AI검토" : "AI검토 결과");
   const status = cleared ? "이상없음" : aiMeta(file.ai_review_status).label;
   const dot = `<span class="ai-dot ai-dot-${tone}" aria-hidden="true"></span>`;
   const inner = `${dot}<span class="ai-review-bar-label">${head}</span><span class="ai-review-bar-status">${status}</span>`;
@@ -60,15 +61,36 @@ function aiReviewBar(req, aiEnabled) {
   return `<div class="ai-review-bar ai-review-bar-${tone}">${inner}</div>`;
 }
 
-// AI검토 결과 모달 — 행의 [data-doc-ai-comment] 버튼에서 호출한다.
-//  opts: { req, mode, editable, onClear?(comment), onRevert?() }
-//  - 창업자 + 수정가능 + 보완 필요: '이상없음 소명' 입력/표시(§AI 오검출 대응).
-//  - 관리자/읽기전용: AI 결과 + (있으면) 신청자 소명만 표시.
-export function openAiReviewModal({ req, mode, editable, onClear, onRevert }) {
+// 관리자 2차 AI검토 결과 바 — 관리자 화면에서만, 창업가 바 아래에 별도로 표시한다.
+// 창업가 컬럼과 분리된 admin_ai_* 값을 읽으며, 미검토면 회색(neutral)으로 둔다.
+function adminAiReviewBar(req, aiEnabled, mode) {
   const file = req.file;
-  const meta = aiMeta(file.ai_review_status);
-  const cleared = !!file.cleared;
-  const canAct = mode === "founder" && editable && file.ai_review_status === "needs_revision";
+  if (mode !== "admin" || !aiEnabled || !file || !req.ai_review_enabled) return "";
+  const status = file.admin_ai_review_status || "not_requested";
+  const tone = aiMeta(status).tone;
+  const dot = `<span class="ai-dot ai-dot-${tone}" aria-hidden="true"></span>`;
+  const inner = `${dot}<span class="ai-review-bar-label">관리자 AI검토</span><span class="ai-review-bar-status">${aiMeta(status).label}</span>`;
+  if (file.admin_ai_review_comment) {
+    return `<button class="ai-review-bar ai-review-bar-${tone} is-clickable" type="button" data-doc-admin-ai-comment="${escapeHtml(file.id)}">${inner}<span class="ai-review-bar-chevron" aria-hidden="true">›</span></button>`;
+  }
+  return `<div class="ai-review-bar ai-review-bar-${tone}">${inner}</div>`;
+}
+
+// AI검토 결과 모달 — 행의 [data-doc-ai-comment] 버튼에서 호출한다.
+//  opts: { req, mode, editable, source?, onClear?(comment), onRevert?() }
+//  - source "founder"(기본): 창업가(신청자) 1차 검토 결과(ai_review_*). 소명 입력/표시 가능.
+//  - source "admin": 관리자 2차 검토 결과(admin_ai_*). 읽기 전용, 소명 섹션 없음.
+//  - 창업자 + 수정가능 + 보완 필요: '이상없음 소명' 입력/표시(§AI 오검출 대응).
+export function openAiReviewModal({ req, mode, editable, source = "founder", onClear, onRevert }) {
+  const file = req.file;
+  const isAdminSource = source === "admin";
+  const reviewStatus = isAdminSource ? (file.admin_ai_review_status || "not_requested") : file.ai_review_status;
+  const reviewComment = isAdminSource ? (file.admin_ai_review_comment || "") : (file.ai_review_comment || "");
+  const modalTitle = isAdminSource ? "관리자 AI검토 결과" : "AI검토 결과";
+  const meta = aiMeta(reviewStatus);
+  // 소명(cleared)·소명 액션은 창업가 1차 결과에만 해당한다.
+  const cleared = !isAdminSource && !!file.cleared;
+  const canAct = !isAdminSource && mode === "founder" && editable && file.ai_review_status === "needs_revision";
 
   const overrideSection = cleared
     ? `
@@ -92,12 +114,12 @@ export function openAiReviewModal({ req, mode, editable, onClear, onRevert }) {
     <section class="modal" role="dialog" aria-modal="true" aria-labelledby="ai-review-modal-title">
       <div class="modal-header">
         <div>
-          <h2 id="ai-review-modal-title">AI검토 결과</h2>
+          <h2 id="ai-review-modal-title">${modalTitle}</h2>
           <p class="muted">${escapeHtml(req.title || "")} <span class="badge badge-${meta.tone}">${meta.label}</span></p>
         </div>
         <button class="modal-close" type="button" aria-label="닫기">×</button>
       </div>
-      <pre class="ai-review-comment">${escapeHtml(file.ai_review_comment || "")}</pre>
+      <pre class="ai-review-comment">${escapeHtml(reviewComment)}</pre>
       <p class="error" data-ai-error hidden></p>
       ${overrideSection}
     </section>`;
@@ -168,7 +190,8 @@ function requirementRowHtml(req, { editable, mode, aiEnabled }) {
           <button class="doc-file-btn" type="button" data-doc-open="${escapeHtml(file.id)}">다운로드</button>
         </div>
       </div>
-      ${aiReviewBar(req, aiEnabled)}`;
+      ${aiReviewBar(req, aiEnabled, mode)}
+      ${adminAiReviewBar(req, aiEnabled, mode)}`;
   } else if (editable && mode === "founder") {
     body = `
       <button class="doc-dropzone" type="button" data-doc-upload="${escapeHtml(req.id)}">
@@ -212,13 +235,22 @@ export function renderDocumentPhasePanel(container, opts) {
   // AI 일괄검토 버튼: 해금된 단계 + AI검토 사용 서류에 파일이 1건 이상 올라와 있을 때 노출(§4.4).
   const reviewableCount = aiEnabled ? requirements.filter((r) => r.ai_review_enabled && r.file).length : 0;
   const anyReviewed = requirements.some((r) => r.file && r.file.ai_review_status && r.file.ai_review_status !== "not_requested");
-  const batchBtn = editable && mode === "founder" && reviewableCount > 0
-    ? `<div class="doc-phase-actions">
+  // 관리자 2차 검토: 관리자 화면에서는 읽기전용(editable=false)이어도 재검토 버튼을 노출한다.
+  const anyAdminReviewed = requirements.some((r) => r.file && r.file.admin_ai_review_status && r.file.admin_ai_review_status !== "not_requested");
+  let batchBtn = "";
+  if (editable && mode === "founder" && reviewableCount > 0) {
+    batchBtn = `<div class="doc-phase-actions">
          <button class="button small secondary" type="button" data-doc-batch-review>
            ${anyReviewed ? "AI 일괄 재검토" : "AI 일괄검토"} (${reviewableCount}건)
          </button>
-       </div>`
-    : "";
+       </div>`;
+  } else if (mode === "admin" && reviewableCount > 0) {
+    batchBtn = `<div class="doc-phase-actions">
+         <button class="button small secondary" type="button" data-doc-admin-batch-review>
+           ${anyAdminReviewed ? "AI 일괄 재검토 (관리자)" : "AI 재검토 (관리자)"} (${reviewableCount}건)
+         </button>
+       </div>`;
+  }
 
   container.classList.toggle("doc-phase-is-locked", locked);
   container.innerHTML = `

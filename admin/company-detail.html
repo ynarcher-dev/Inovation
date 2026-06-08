@@ -64,6 +64,9 @@
       [data-expense-table] tr[data-budget-category] { cursor: pointer; transition: background 0.15s; }
       [data-expense-table] tr[data-budget-category]:hover td { background: #f0fdf4 !important; }
       [data-expense-table] tr.expense-category-highlight td { background: #dcfce7 !important; outline: 2px solid #22c55e; outline-offset: -2px; }
+      /* 검토할 제출안이 없을 때: 코멘트 입력란·검토 버튼을 비활성 상태로 표시 */
+      #budget-review-comment:disabled { background: #f3f4f6; color: #9ca3af; cursor: not-allowed; }
+      #budget-review-actions .button:disabled { opacity: 0.5; cursor: not-allowed; }
     </style>
   </head>
   <body>
@@ -143,17 +146,10 @@
           <section class="card" id="budget-review-section">
             <h2>예산 심사</h2>
             <p class="muted">스타트업이 제출한 최초 예산안 또는 예산 변경 요청을 검토하여 승인/보완요청을 결정합니다. 승인 시에만 확정 예산에 반영됩니다.</p>
-            <div class="notice notice-info" data-ai-budget-review-panel style="margin-top: 12px;">
-              <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:12px; flex-wrap:wrap;">
-                <div>
-                  <strong>AI 예산 검토</strong>
-                  <p class="muted" style="margin:4px 0 0;">제출된 사업계획서(첨부 시)와 함께 감액 불가, 증감 사유, 예산-계획 정합성, 검토 코멘트 초안을 AI로 점검합니다.</p>
-                </div>
-                <button class="button small secondary" id="btn-ai-budget-review" type="button">AI 검토</button>
-              </div>
-              <div data-ai-budget-review-result style="margin-top: 12px;"></div>
-            </div>
+            <!-- AI 검토 버튼은 렌더 시 '요청 범위' 행으로 이동된다(budget-review-detail 내부 [data-ai-review-slot]). -->
+            <button class="button small secondary" id="btn-ai-budget-review" type="button" title="제출된 사업계획서(첨부 시)와 함께 감액 불가·증감 사유·예산-계획 정합성·검토 코멘트 초안을 AI로 점검합니다.">AI 검토</button>
             <div id="budget-review-detail" style="margin: 12px 0;"></div>
+            <div data-ai-budget-review-result style="margin: 0 0 12px;"></div>
             <div id="budget-review-actions" style="display: flex; gap: 12px; margin-top: 12px; align-items: flex-start;">
               <textarea id="budget-review-comment" placeholder="보완요청 시 구체적인 사유를 작성하세요." style="flex: 1; min-height: 64px; box-sizing: border-box; resize: vertical;"></textarea>
               <div style="display: flex; gap: 8px;">
@@ -177,8 +173,14 @@
             <div data-expense-table></div>
           </section>
           <section class="card" style="margin-top:16px;">
-            <h2>예산 사용 현황</h2>
-            <p class="muted">이 기업의 모든 예산 사용 신청 내역과 진행 상태입니다. 행을 클릭하면 예산 사용 상세 검토 화면으로 이동합니다.</p>
+            <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:12px; flex-wrap:wrap;">
+              <h2 style="margin:0;">예산 사용 현황</h2>
+              <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                <button class="button small secondary" id="btn-evidence-filename-rule" type="button">파일명 정리기</button>
+                <button class="button small secondary" id="btn-voucher-rule" type="button">지출결의 정리기</button>
+              </div>
+            </div>
+            <p class="muted">이 기업의 모든 예산 사용 신청 내역과 진행 상태입니다. 행을 클릭하면 예산 사용 상세 검토 화면으로 이동합니다. '파일명 정리기'에서 증빙 다운로드 파일명 규칙을 설정할 수 있습니다.</p>
             <div data-expense-all-table></div>
           </section>
         </div>

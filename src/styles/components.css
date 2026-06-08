@@ -595,6 +595,69 @@ input:focus, select:focus, textarea:focus {
   background: #dc2626;
 }
 
+/* ---- 증빙 파일명 정리기 모달: 토큰 팔레트 / 칩 / 미리보기 ---- */
+.token-palette {
+  margin-top: 10px;
+  display: grid;
+  gap: 8px;
+}
+.token-group {
+  display: grid;
+  gap: 6px;
+}
+.token-group-title {
+  font-size: var(--text-sm, 12px);
+  font-weight: 700;
+  color: var(--muted, #64748b);
+}
+.token-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.token-chip {
+  border: 1px solid var(--line, #e2e8f0);
+  background: var(--surface-2, #f8fafc);
+  color: var(--text, #0f172a);
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.token-chip:hover {
+  background: var(--primary-50, #eff6ff);
+  border-color: var(--primary, #2563eb);
+}
+[data-evidence-preview] code {
+  word-break: break-all;
+}
+
+/* 액션 셀에 버튼 2개(증빙 다운로드 / 지출결의)를 세로로 쌓는다. */
+.row-action-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: stretch;
+}
+
+/* 지출결의 정리기 미리보기: 줄바꿈/공백 보존 텍스트 블록. */
+.voucher-preview {
+  margin: 0;
+  max-height: 260px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: var(--mono, monospace);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text, #0f172a);
+  background: var(--surface, #fff);
+  border: 1px solid var(--line, #e2e8f0);
+  border-radius: 6px;
+  padding: 10px;
+}
+
 @media (max-width: 640px) {
   .toast-container {
     left: 16px;

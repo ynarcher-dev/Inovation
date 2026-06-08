@@ -1,4 +1,4 @@
-﻿import { mountShell, runWithErrorBoundary, showError, updateAdminNavBadges, showToast, showConfirm } from "../../app.js";
+import { mountShell, runWithErrorBoundary, showError, updateAdminNavBadges, showToast, showConfirm } from "../../app.js";
 import { approveCompany, getAdminDashboard, rejectCompany } from "../../api.js";
 import { requireRole } from "../../auth.js";
 import { escapeHtml, formatDate } from "../../utils.js";
@@ -19,7 +19,7 @@ const approvalText = {
 
 // 열 고정 너비(%). '승인 대기'(관리 열 有)와 '전체 목록'(관리 열 빈칸)이 동일한 너비로 정렬되도록
 //   두 표 모두 같은 colgroup 을 쓰고, 전체 목록은 관리 열 자리를 비워 둔다.
-const SIGNUP_COL_WIDTHS = [13, 16, 9, 13, 13, 9, 13, 14]; // 기업·이메일·대표자·사업자번호·참가사업·상태·가입일·관리
+const SIGNUP_COL_WIDTHS = [13, 16, 9, 26, 9, 13, 14]; // 기업·이메일·대표자·참가사업·상태·가입일·관리
 
 function SignupTable(companies, options = {}) {
   if (!companies?.length) {
@@ -37,7 +37,6 @@ function SignupTable(companies, options = {}) {
             <th>기업명</th>
             <th>ID(이메일)</th>
             <th>대표자</th>
-            <th>사업자등록번호</th>
             <th>참가 사업</th>
             <th>승인 상태</th>
             <th>가입일</th>
@@ -50,7 +49,6 @@ function SignupTable(companies, options = {}) {
               <td><a href="${href(company.id)}">${escapeHtml(company.name)}</a></td>
               <td class="wrap-cell">${escapeHtml(company.owner_email || "-")}</td>
               <td>${escapeHtml(company.representative_name || "-")}</td>
-              <td>${escapeHtml(company.business_number || "-")}</td>
               <td>${escapeHtml(company.support_programs?.name || "-")}</td>
               <td>${escapeHtml(approvalText[company.approval_status] || company.approval_status || "-")}</td>
               <td>${formatDate(company.created_at)}</td>
@@ -109,7 +107,7 @@ try {
     let dashboard = await getAdminDashboard();
     const toolbar = document.querySelector("[data-signup-toolbar]");
     toolbar.innerHTML = FilterToolbar({
-      search: { placeholder: "기업명 · ID(이메일) · 대표자 · 사업자등록번호 검색", ariaLabel: "가입 기업 검색" },
+      search: { placeholder: "기업명 · ID(이메일) · 대표자 검색", ariaLabel: "가입 기업 검색" },
       selects: [
         { key: "status", ariaLabel: "승인 상태 필터", options: SIGNUP_STATUS_OPTIONS },
         { key: "program", ariaLabel: "참가 사업 필터", options: [{ value: "all", label: "전체 참가 사업" }] },

@@ -116,13 +116,15 @@ export function BudgetSubmissionDiff(submission, programBudgets, committedByBudg
     return `
       ${warning}
       ${submissionMeta}
-      <div class="notice" style="margin-bottom:8px; display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
+      <div style="margin:0 0 8px; display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
         <span>요청 범위: <strong>${escapeHtml(scopeNote)}</strong></span>
         <span class="muted" style="font-size:0.82em; display:inline-flex; gap:6px; align-items:center; flex-wrap:wrap;">
           ${chip("증액", "#dcfce7", "#047857")} ${chip("감액", "#fee2e2", "#b91c1c")} ${chip("신규", "#dbeafe", "#1d4ed8")} ${chip("유지", "#f3f4f6", "#6b7280")}
           <span>· 각 칸 위=변경 후, 아래=<span style="text-decoration:line-through;">변경 전</span>·증감</span>
         </span>
       </div>
+      <div data-ai-review-slot style="margin:0 0 8px;"></div>
+      <div data-ai-review-result-slot></div>
       ${round2PlanBlock}
       <div class="table-wrap">
         <table>
@@ -192,6 +194,9 @@ export function BudgetSubmissionDiff(submission, programBudgets, committedByBudg
       · 현재 예산 상태 ${escapeHtml(getBudgetStatusLabel(company.budget_status))}
       ${submission.reason ? `<br>사유: ${escapeHtml(submission.reason)}` : ""}
     </div>
+    <div style="margin:0 0 8px;">요청 범위: <strong>${escapeHtml(typeLabel)}</strong></div>
+    <div data-ai-review-slot style="margin:0 0 8px;"></div>
+    <div data-ai-review-result-slot></div>
     <div class="table-wrap">
       <table>
         <thead>

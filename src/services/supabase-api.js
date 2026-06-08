@@ -367,6 +367,80 @@ export async function updateAiSettings(input) {
 }
 
 // ----------------------------------------------------
+// 4-1. 증빙 파일명 정리기 설정 (Evidence filename settings)
+//   ai_settings 와 동일한 단일 행(id=1) 싱글톤 upsert 패턴.
+// ----------------------------------------------------
+const DEFAULT_EVIDENCE_FILENAME = {
+  template: "{기업명}_{첨부분류}_{신청제목}_{총액}",
+  seq_start: 1,
+  seq_pad: 1,
+};
+
+export async function getEvidenceFilenameSettings() {
+  const supabase = await getSupabase();
+  const { data, error } = await supabase
+    .from("evidence_filename_settings")
+    .select("template, seq_start, seq_pad")
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) return { ...DEFAULT_EVIDENCE_FILENAME };
+  return {
+    template: data.template || DEFAULT_EVIDENCE_FILENAME.template,
+    seq_start: data.seq_start ?? DEFAULT_EVIDENCE_FILENAME.seq_start,
+    seq_pad: data.seq_pad ?? DEFAULT_EVIDENCE_FILENAME.seq_pad,
+  };
+}
+
+export async function updateEvidenceFilenameSettings(input) {
+  const supabase = await getSupabase();
+  const payload = {
+    id: 1,
+    template: input.template || DEFAULT_EVIDENCE_FILENAME.template,
+    seq_start: Number.isFinite(Number(input.seq_start)) ? Number(input.seq_start) : 1,
+    seq_pad: Math.max(1, Number(input.seq_pad) || 1),
+    updated_at: new Date().toISOString(),
+  };
+  // 단일 행(id=1) upsert.
+  const { error } = await supabase
+    .from("evidence_filename_settings")
+    .upsert(payload, { onConflict: "id" });
+  if (error) throw error;
+  return await getEvidenceFilenameSettings();
+}
+
+// ----------------------------------------------------
+// 4-2. 지출결의서 텍스트 템플릿 (Expense voucher settings)
+//   evidence_filename_settings 와 동일한 단일 행(id=1) 싱글톤 upsert 패턴.
+// ----------------------------------------------------
+const DEFAULT_VOUCHER_TEMPLATE =
+  "[지출결의서]\n\n기업명: {기업명}\n대표자: {대표자}\n건명: {신청제목}\n예산항목: {예산항목}\n거래처: {거래처} ({사업자번호})\n공급가액: {공급가액}\n부가세: {부가세}\n합계: {총액}\n지출사유: {적요}\n신청일: {제출일}\n\n[첨부서류]\n{첨부목록}";
+
+export async function getExpenseVoucherSettings() {
+  const supabase = await getSupabase();
+  const { data, error } = await supabase
+    .from("expense_voucher_settings")
+    .select("template")
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) return { template: DEFAULT_VOUCHER_TEMPLATE };
+  return { template: data.template || DEFAULT_VOUCHER_TEMPLATE };
+}
+
+export async function updateExpenseVoucherSettings(input) {
+  const supabase = await getSupabase();
+  const payload = {
+    id: 1,
+    template: input.template || DEFAULT_VOUCHER_TEMPLATE,
+    updated_at: new Date().toISOString(),
+  };
+  const { error } = await supabase
+    .from("expense_voucher_settings")
+    .upsert(payload, { onConflict: "id" });
+  if (error) throw error;
+  return await getExpenseVoucherSettings();
+}
+
+// ----------------------------------------------------
 // 5. 안내 및 유의사항 (Guidance)
 // ----------------------------------------------------
 export async function getGuidanceItems(programId) {
@@ -1135,10 +1209,16 @@ export async function getAdminCompanyDetail(companyId) {
     .eq("company_id", companyId);
 
   // 4. 지출 신청 전체
-  const { data: expenses } = await supabase
+  const { data: expenseRows } = await supabase
     .from("expense_requests")
     .select("*")
     .eq("company_id", companyId);
+  // 지출 신청에 예산 항목(비목 단계 경로) 라벨을 붙인다(예산 사용 현황/검토 표 '예산 항목' 열).
+  //   getAdminDashboard 와 동일 규칙: business_plan_item_id → 확정 배정 → leaf 비목 부모 경로.
+  const expenses = (expenseRows || []).map((e) => ({
+    ...e,
+    business_plan_item_label: resolveBusinessPlanItemLabel(e, allocations || [], programBudgets || []),
+  }));
 
   // 5. 소속원 정보
   const { data: members } = await supabase
@@ -1858,6 +1938,24 @@ export async function mockSaveAiDocumentReviewResult(fileId, data) {
       ai_review_status: data.status,
       ai_review_comment: data.comment,
       ai_check_result: data.ai_check_result,
+    })
+    .eq("id", fileId);
+  if (error) throw error;
+  return { ok: true };
+}
+
+// 관리자 2차 AI 검토 결과 저장. 창업가 컬럼(ai_review_*)은 건드리지 않고
+// admin_ai_* 컬럼에만 기록한다 → 창업가 화면에는 반영되지 않는다.
+export async function mockSaveAdminAiDocumentReviewResult(fileId, data, user) {
+  const supabase = await getSupabase();
+  const { error } = await supabase
+    .from("uploaded_files")
+    .update({
+      admin_ai_review_status: data.status,
+      admin_ai_review_comment: data.comment,
+      admin_ai_check_result: data.ai_check_result,
+      admin_ai_reviewed_by: user?.id || null,
+      admin_ai_reviewed_at: new Date().toISOString(),
     })
     .eq("id", fileId);
   if (error) throw error;

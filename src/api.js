@@ -6,6 +6,12 @@ import {
 } from "./services/ai-agent.js";
 import { parsePdfText } from "./services/pdf-parse.js";
 import { validateUploadFile, sanitizeFilename, getFileExtension } from "./domains/upload-policy.js";
+import {
+  renderEvidenceFilename,
+  buildExpenseTokenValues,
+  buildFileTokenValues,
+} from "./domains/expense/filename-template.js";
+import { buildVoucherTokenValues, renderVoucherText } from "./domains/expense/voucher-template.js";
 import { uploadFileToS3, getS3DownloadUrl } from "./services/s3-storage.js";
 import * as remote from "./services/supabase-api.js";
 import { getCurrentUser } from "./auth.js";
@@ -41,6 +47,14 @@ export const updateAdminPrograms = remote.updateAdminPrograms;
 export const getAiSettings = remote.getAiSettings;
 export const updateAiSettings = remote.updateAiSettings;
 export const requestBudgetAiReview = requestBudgetAiReviewFromEdge;
+
+// 증빙 파일명 정리기 설정(서버 공유 — 모든 관리자 동일 규칙)
+export const getEvidenceFilenameSettings = remote.getEvidenceFilenameSettings;
+export const updateEvidenceFilenameSettings = remote.updateEvidenceFilenameSettings;
+
+// 지출결의서 텍스트 템플릿 설정(서버 공유)
+export const getExpenseVoucherSettings = remote.getExpenseVoucherSettings;
+export const updateExpenseVoucherSettings = remote.updateExpenseVoucherSettings;
 
 // ----------------------------------------------------
 // 안내자료
@@ -157,8 +171,12 @@ function buildDocumentReviewComment(result, { criteriaTitle, batchCount }) {
   return comment;
 }
 
+// 창업가(신청자) 1차 검토 결과 저장 — ai_review_* 컬럼.
+const saveFounderReview = (fileId, payload) => remote.mockSaveAiDocumentReviewResult(fileId, payload);
+
 // 보관된 첨부 파일 한 건을 실제 LLM 으로 검토하고 결과를 저장한다.
-async function reviewStoredDocument({ file, req, expense, criteriaText, criteriaTitle, batchCount }) {
+// save: (fileId, payload) => Promise — 저장 대상(창업가/관리자 컬럼)을 호출부가 주입한다.
+async function reviewStoredDocument({ file, req, expense, criteriaText, criteriaTitle, batchCount, save = saveFounderReview }) {
   const s3Url = await getS3DownloadUrl(file.link_url);
   const res = await fetch(s3Url);
   if (!res.ok) throw new Error("S3에서 첨부 파일을 가져오지 못했습니다.");
@@ -186,7 +204,7 @@ async function reviewStoredDocument({ file, req, expense, criteriaText, criteria
     batchCount: batchCount || 1,
   });
 
-  return await remote.mockSaveAiDocumentReviewResult(file.id, {
+  return await save(file.id, {
     status: result.status,
     comment: buildDocumentReviewComment(result, { criteriaTitle, batchCount }),
     ai_check_result: {
@@ -211,6 +229,18 @@ export async function requestAiBatchDocumentReview(expenseRequestId, phase) {
   if (!targets.length) return { reviewed: 0 };
   for (const req of targets) {
     await reviewStoredDocument({ file: req.file, req, expense, criteriaText, criteriaTitle, batchCount: targets.length });
+  }
+  return { reviewed: targets.length };
+}
+
+// 관리자 2차 일괄 AI 검토: 창업가 검토와 동일한 로직으로 검토하되,
+// 결과는 admin_ai_* 컬럼에만 저장한다(창업가 화면에는 반영되지 않음).
+export async function requestAdminAiBatchDocumentReview(expenseRequestId, phase, user) {
+  const { expense, criteriaText, criteriaTitle, targets } = await remote.mockGetAiDocumentReviewContext(expenseRequestId, phase);
+  if (!targets.length) return { reviewed: 0 };
+  const save = (fileId, payload) => remote.mockSaveAdminAiDocumentReviewResult(fileId, payload, user);
+  for (const req of targets) {
+    await reviewStoredDocument({ file: req.file, req, expense, criteriaText, criteriaTitle, batchCount: targets.length, save });
   }
   return { reviewed: targets.length };
 }
@@ -426,44 +456,97 @@ export async function downloadBusinessPlansZip(company, budgetSubmissions = []) 
   return downloadStoredFilesAsZip(files, `${safeCompany}_사업계획서.zip`);
 }
 
-// 한 지출 신청의 모든 증빙 첨부파일을 모아 ZIP 한 개로 내려받는다.
-//  - 사전승인/최종승인 단계에 업로드된 파일을 모두 포함한다.
-//  - 파일명 정책: "(기업명)_(파일 제목)_(지출 제목)_(총액)"  예) "딜챗2_견적서_사무용품 구매_1100000원"
-//    · 파일 제목 = 첨부서류 대분류(견적서 등). 같은 제목이 여러 건이면 "(2)","(3)" 을 붙인다. 확장자는 원본 유지.
-//  expense: 지출 신청 객체(또는 id 문자열). 객체면 company_name/title/총액을 파일명에 사용한다.
-//  반환: ZIP 에 담긴 파일 수(0이면 첨부가 없는 것 — 호출부에서 안내).
-export async function downloadExpenseEvidenceZip(expense) {
-  const expenseId = typeof expense === "string" ? expense : expense?.id;
-  if (!expenseId) throw new Error("지출 신청 정보를 찾을 수 없습니다.");
-  const exp = typeof expense === "object" && expense ? expense : {};
-  const companyName = exp.company_name || exp.companyName || "기업";
-  const expenseTitle = exp.title || "지출";
-  const totalAmount = Number(
-    exp.total_amount != null ? exp.total_amount : Number(exp.amount_supply || 0) + Number(exp.vat_amount || 0),
-  );
-
-  // 사전/최종 단계의 첨부 요구사항을 모아 실제 업로드된 파일만 추린다.
+// 한 지출 신청의 첨부 요구사항 중 실제 업로드된 파일만, sort_order 순서로 추린다(중복 제거).
+//  - getExpenseDocumentRequirements 가 phase별 sort_order 정렬을 보장한다.
+//  - ZIP 다운로드와 지출결의서 {첨부목록} 이 동일한 목록·순서를 공유하도록 한 곳에 모은다.
+//  반환: [{ ...requirement, file }] 형태의 배열.
+async function collectExpenseEvidenceFiles(expenseId) {
   const reqLists = await Promise.all(
     ["pre", "final"].map((phase) => remote.getExpenseDocumentRequirements(expenseId, phase)),
   );
   const seenFileIds = new Set();
-  const withFiles = reqLists.flat().filter((r) => {
+  return reqLists.flat().filter((r) => {
     if (!r?.file?.link_url || seenFileIds.has(r.file.id)) return false;
     seenFileIds.add(r.file.id);
     return true;
   });
+}
+
+// 한 지출 신청의 모든 증빙 첨부파일을 모아 ZIP 한 개로 내려받는다.
+//  - 사전승인/최종승인 단계에 업로드된 파일을 모두 포함한다.
+//  - 파일명 정책: '파일명 정리기'에서 저장한 템플릿을 따른다(없으면 기본
+//    "{기업명}_{첨부분류}_{신청제목}_{총액}"). 첨부가 여러 건이면 {순번}이 1,2,3…로 매겨지고,
+//    템플릿 결과가 겹치면 "(2)","(3)"을 덧붙인다. 확장자는 원본 유지.
+//  expense: 지출 신청 객체(또는 id 문자열). 객체면 신청 정보 토큰 값으로 사용한다.
+//  options: { template, seqConfig } — 저장된 파일명 규칙. 없으면 기본 템플릿.
+//  반환: ZIP 에 담긴 파일 수(0이면 첨부가 없는 것 — 호출부에서 안내).
+export async function downloadExpenseEvidenceZip(expense, options = {}) {
+  const expenseId = typeof expense === "string" ? expense : expense?.id;
+  if (!expenseId) throw new Error("지출 신청 정보를 찾을 수 없습니다.");
+  const exp = typeof expense === "object" && expense ? expense : {};
+
+  const withFiles = await collectExpenseEvidenceFiles(expenseId);
   if (!withFiles.length) return 0;
 
-  const safeCompany = sanitizeFilename(companyName);
-  const safeTitle = sanitizeFilename(expenseTitle);
-  const totalStr = `${Math.round(totalAmount).toLocaleString("ko-KR")}원`;
-  // (기업명)_(파일 제목=첨부서류 대분류)_(신청명)_(금액)
-  const files = withFiles.map((req) => ({
-    link_url: req.file.link_url,
-    name: `${safeCompany}_${sanitizeFilename(req.title || "증빙서류")}_${safeTitle}_${totalStr}`,
-    originalName: req.file.original_filename,
-  }));
+  // 파일명 템플릿 + 순번 설정(없으면 기본). 신청 토큰 값은 파일 전체에 공통.
+  const template = options.template || undefined;
+  const seqConfig = options.seqConfig || {};
+  const expenseValues = buildExpenseTokenValues(exp);
+  const safeCompany = sanitizeFilename(expenseValues["{기업명}"]);
+  const safeTitle = sanitizeFilename(expenseValues["{신청제목}"]);
+
+  const files = withFiles.map((req, index) => {
+    const fileValues = buildFileTokenValues(
+      { attachLabel: req.title, originalFilename: req.file.original_filename },
+      index,
+      seqConfig,
+    );
+    const name = renderEvidenceFilename(template, { ...expenseValues, ...fileValues });
+    return {
+      link_url: req.file.link_url,
+      // 템플릿 결과가 빈 문자열이면 안전한 기본명으로 대체.
+      name: name || `${safeCompany}_증빙서류_${index + 1}`,
+      originalName: req.file.original_filename,
+    };
+  });
   return downloadStoredFilesAsZip(files, `${safeCompany}_${safeTitle}_증빙서류.zip`);
+}
+
+// 한 지출 신청의 '지출결의서' 텍스트를 생성한다(자사 결재시스템 복붙용 — 순수 텍스트).
+//  - 본문: '지출결의 정리기'에서 저장한 템플릿. {첨부목록} 은 그 신청의 첨부 파일명을
+//    '파일명 정리기' 규칙대로(확장자 포함) 한 줄에 하나씩, sort_order 순서로 나열한다.
+//  expense: 지출 신청 객체(전 컬럼 + company_name/representative_name).
+//  options: { voucherTemplate, filenameSettings } — 저장된 두 설정.
+//  반환: 생성된 텍스트 문자열.
+export async function buildExpenseVoucherText(expense, options = {}) {
+  const expenseId = typeof expense === "string" ? expense : expense?.id;
+  if (!expenseId) throw new Error("지출 신청 정보를 찾을 수 없습니다.");
+  const exp = typeof expense === "object" && expense ? expense : {};
+
+  const filenameSettings = options.filenameSettings || {};
+  const seqConfig = { seq_start: filenameSettings.seq_start, seq_pad: filenameSettings.seq_pad };
+  const expenseValues = buildExpenseTokenValues(exp); // 파일명용(콤마 없음) — {첨부목록} 파일명 토큰에만 사용
+
+  // 첨부 목록: 파일명 정리기 규칙대로 이름 + 원본 확장자, 한 줄에 하나씩.
+  const withFiles = await collectExpenseEvidenceFiles(expenseId);
+  const attachmentLines = withFiles.map((req, index) => {
+    const fileValues = buildFileTokenValues(
+      { attachLabel: req.title, originalFilename: req.file.original_filename },
+      index,
+      seqConfig,
+    );
+    const stem =
+      renderEvidenceFilename(filenameSettings.template || undefined, { ...expenseValues, ...fileValues }) ||
+      `증빙서류_${index + 1}`;
+    const ext = getFileExtension(req.file.original_filename || "");
+    return ext ? `${stem}.${ext}` : stem;
+  });
+
+  const values = {
+    ...buildVoucherTokenValues(exp),
+    "{첨부목록}": attachmentLines.length ? attachmentLines.join("\n") : "(첨부 없음)",
+  };
+  return renderVoucherText(options.voucherTemplate || undefined, values);
 }
 
 export const deleteUploadedFile = remote.mockDeleteUploadedFile;

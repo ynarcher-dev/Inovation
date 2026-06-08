@@ -6,21 +6,24 @@ import {
   getExpenseDocumentRequirements,
   downloadStoredFile,
   getAiSettings,
+  requestAdminAiBatchDocumentReview,
 } from "../../api.js";
 import { StatusBadge } from "../../components/StatusBadge.js";
 import { getReviewKind } from "../../domains/status.js";
 import { renderDocumentPhasePanel, openAiReviewModal } from "../../components/expense/DocumentPhasePanel.js";
 import { escapeHtml, formatCurrency, formatDate, getQueryParam } from "../../utils.js";
 
-// 관리자 상세: 제출된 첨부서류 + AI 검토 결과를 단계별 읽기 전용으로 표시한다(§6).
-async function renderAdminDocPanels(expenseId, aiEnabled) {
+// 관리자 상세: 제출된 첨부서류 + 1차(창업가) AI 검토 결과를 단계별로 표시하고,
+// 관리자가 필요하면 2차로 AI 재검토를 실행할 수 있다(결과는 admin_ai_* 컬럼에 분리 저장).
+async function renderAdminDocPanels(expenseId, aiEnabled, user) {
   const defs = [
     { phase: "pre", title: "사전승인 첨부서류", container: "[data-doc-panel-pre]" },
     { phase: "final", title: "최종승인 첨부서류", container: "[data-doc-panel-final]" },
   ];
-  for (const def of defs) {
+  // 단계 하나를 렌더하고 이벤트를 다시 바인딩한다(재검토 후 재호출 가능).
+  const renderPhase = async (def) => {
     const container = document.querySelector(def.container);
-    if (!container) continue;
+    if (!container) return;
     const requirements = (await getExpenseDocumentRequirements(expenseId, def.phase)) || [];
     renderDocumentPhasePanel(container, {
       phase: def.phase, title: def.title, requirements, editable: false, mode: "admin",
@@ -33,13 +36,30 @@ async function renderAdminDocPanels(expenseId, aiEnabled) {
           await downloadStoredFile(req?.file?.link_url, req?.file?.original_filename);
         }, { button: btn });
       }));
+    // 1차: 창업가(신청자) AI검토 결과 모달
     container.querySelectorAll("[data-doc-ai-comment]").forEach((btn) =>
       btn.addEventListener("click", () => {
         const req = requirements.find((r) => r.file?.id === btn.dataset.docAiComment);
         if (!req?.file) return;
-        openAiReviewModal({ req, mode: "admin", editable: false });
+        openAiReviewModal({ req, mode: "admin", editable: false, source: "founder" });
       }));
-  }
+    // 2차: 관리자 AI검토 결과 모달
+    container.querySelectorAll("[data-doc-admin-ai-comment]").forEach((btn) =>
+      btn.addEventListener("click", () => {
+        const req = requirements.find((r) => r.file?.id === btn.dataset.docAdminAiComment);
+        if (!req?.file) return;
+        openAiReviewModal({ req, mode: "admin", editable: false, source: "admin" });
+      }));
+    // 2차: 관리자 AI 일괄 재검토
+    container.querySelector("[data-doc-admin-batch-review]")?.addEventListener("click", async (e) => {
+      await runWithErrorBoundary(async () => {
+        const { reviewed } = await requestAdminAiBatchDocumentReview(expenseId, def.phase, user);
+        await renderPhase(def);
+        if (!reviewed) showToast("AI 재검토할 업로드 파일이 없습니다.", { type: "info" });
+      }, { button: e.currentTarget });
+    });
+  };
+  for (const def of defs) await renderPhase(def);
 }
 
 const REVIEW_DECISIONS = {
@@ -138,7 +158,7 @@ try {
       </dl>
     `;
     renderReviews(reviews);
-    await renderAdminDocPanels(expense.id, aiSettings.enabled);
+    await renderAdminDocPanels(expense.id, aiSettings.enabled, user);
 
     // 현재 상태에 따라 검토 종류(사전승인/최종승인)와 폼을 분기한다.
     //  - 검토 결과는 승인/보완요청 두 가지다(반려 없음).
