@@ -1,14 +1,12 @@
 import { mountShell, setText, showError } from "../../app.js";
 import { getAdminDashboard } from "../../api.js";
 import { requireRole } from "../../auth.js";
-import { ADMIN_REVIEW_STATUSES, EXPENSE_SEGMENTS, getExpenseSegment, getReviewKind } from "../../domains/status.js";
-import { escapeHtml, formatCurrency, formatDate } from "../../utils.js";
+import { ADMIN_REVIEW_STATUSES, EXPENSE_SEGMENTS, getExpenseSegment } from "../../domains/status.js";
 import { ExpenseTable } from "../../components/ExpenseTable.js";
 import { FilterToolbar, bindFilters, fillFilterSelect, readFilters } from "../../components/admin/FilterToolbar.js";
 
 // 예산 사용(지출) 검토 대기 상태 — 사전승인 검토 + 최종승인 검토
 const EXPENSE_PENDING_STATUSES = ADMIN_REVIEW_STATUSES;
-const reviewKindLabel = (status) => (getReviewKind(status) === "final" ? "최종승인 검토" : "사전승인 검토");
 const expenseDetailHref = (id) => `expense-detail.html?id=${encodeURIComponent(id)}`;
 
 // 결재 구간 필터 옵션(EXPENSE_SEGMENTS 기준). 라벨/순서는 도메인 상수를 단일 출처로 쓴다.
@@ -21,42 +19,29 @@ const SEGMENT_OPTIONS = EXPENSE_SEGMENTS
 const isSubmittedToAdmin = (expense) => expense.status !== "draft";
 
 // 상단: 예산 사용 승인 (지출 사전/최종 승인 검토 대기 목록)
+//   하단 '전체 지출 현황'과 동일한 ExpenseTable 구조를 공유하고, 여기에만 '처리' 열을 덧붙인다.
 function renderExpenseApprovalSection(expenses) {
   const pending = (expenses || []).filter((e) => EXPENSE_PENDING_STATUSES.includes(e.status));
   const target = document.querySelector("[data-expense-approval-section]");
 
-  if (!pending.length) {
-    target.innerHTML = `<p class="empty">검토 대기 중인 예산 사용 신청이 없습니다.</p>`;
-    return;
-  }
+  target.innerHTML = ExpenseTable(pending, {
+    admin: true,
+    hideChecklist: true,
+    emptyText: "검토 대기 중인 예산 사용 신청이 없습니다.",
+    action: (row) => `<a class="button small" href="${expenseDetailHref(row.id)}">검토하기</a>`,
+  });
 
-  target.innerHTML = `
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr><th>기업명</th><th>신청 제목</th><th>검토 종류</th><th>비목</th><th>공급가액</th><th>제출일</th><th>처리</th></tr>
-        </thead>
-        <tbody>
-          ${pending.map((e) => `
-            <tr>
-              <td>${escapeHtml(e.company_name || "-")}</td>
-              <td>${escapeHtml(e.title || "-")}</td>
-              <td>${escapeHtml(reviewKindLabel(e.status))}</td>
-              <td>${escapeHtml(e.budget_category || "-")}</td>
-              <td>${formatCurrency(e.amount_supply)}</td>
-              <td>${formatDate(e.submitted_at || e.final_submitted_at)}</td>
-              <td><a class="button small" href="${expenseDetailHref(e.id)}">검토하기</a></td>
-            </tr>
-          `).join("")}
-        </tbody>
-      </table>
-    </div>
-  `;
+  target.querySelectorAll("tr[data-href]").forEach((row) => {
+    row.addEventListener("click", (event) => {
+      if (event.target.closest("a, button")) return;
+      window.location.href = row.dataset.href;
+    });
+  });
 }
 
 function matchesSearch(expense, term) {
   if (!term) return true;
-  return [expense.company_name, expense.title, expense.budget_category]
+  return [expense.company_name, expense.title, expense.business_plan_item_label, expense.budget_category]
     .filter(Boolean)
     .join(" ")
     .toLowerCase()
@@ -88,7 +73,7 @@ try {
     const toolbar = document.querySelector("[data-expense-toolbar]");
     const listTarget = document.querySelector("[data-expense-all]");
     toolbar.innerHTML = FilterToolbar({
-      search: { placeholder: "기업명 · 신청 제목 · 비목 검색", ariaLabel: "지출 신청 검색" },
+      search: { placeholder: "기업명 · 신청 제목 · 예산 항목 검색", ariaLabel: "지출 신청 검색" },
       selects: [
         { key: "segment", ariaLabel: "결재 구간 필터", options: SEGMENT_OPTIONS },
         { key: "program", ariaLabel: "참가 사업 필터", options: [{ value: "all", label: "전체 참가 사업" }] },
@@ -106,7 +91,7 @@ try {
         && inDateRange(e, dateFrom, dateTo)
         && matchesSearch(e, term)
       );
-      listTarget.innerHTML = ExpenseTable(filtered, { admin: true, hideChecklist: true });
+      listTarget.innerHTML = ExpenseTable(filtered, { admin: true, hideChecklist: true, reserveActionColumn: true });
       listTarget.querySelectorAll("[data-href]").forEach((row) => {
         row.addEventListener("click", (event) => {
           if (event.target.closest("a, button")) return;

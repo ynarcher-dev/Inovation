@@ -82,9 +82,8 @@
         <div class="tabs-nav">
           <button class="tab-button active" data-tab="tab-budget-status" type="button">예산 현황</button>
           <button class="tab-button" data-tab="tab-budget-review" type="button">예산 검토<span data-badge-budget-review hidden class="status-badge" style="margin-left:6px;">●</span></button>
-          <button class="tab-button" data-tab="tab-expense-review" type="button">지출 검토<span data-badge-expense-review hidden class="status-badge" style="margin-left:6px;">●</span></button>
+          <button class="tab-button" data-tab="tab-expense-review" type="button">예산 사용<span data-badge-expense-review hidden class="status-badge" style="margin-left:6px;">●</span></button>
           <button class="tab-button" data-tab="tab-plan" type="button">사업계획서</button>
-          <button class="tab-button" data-tab="tab-history" type="button">검토 이력</button>
           <button class="tab-button" data-tab="tab-memo" type="button">내부 메모</button>
           <button class="tab-button" data-tab="tab-summary" type="button">기업/계정 정보</button>
         </div>
@@ -109,7 +108,6 @@
               <h2>계정 가입 현황</h2>
               <div class="info-grid" style="grid-template-columns: 1fr;">
                 <div class="info-row"><span class="label">로그인 이메일</span><span class="value" data-account-email>-</span></div>
-                <div class="info-row"><span class="label">담당자명</span><span class="value" data-account-name>-</span></div>
                 <div class="info-row"><span class="label">가입 상태</span><span class="value" data-account-status>-</span></div>
                 <div class="info-row"><span class="label">가입 신청일</span><span class="value" data-account-created>-</span></div>
                 <div class="info-row"><span class="label">승인일</span><span class="value" data-account-approved>-</span></div>
@@ -171,16 +169,16 @@
           </section>
         </div>
 
-        <!-- Tab 4: 지출 검토 -->
+        <!-- Tab 4: 예산 사용 -->
         <div id="tab-expense-review" class="tab-content">
           <section class="card">
-            <h2>지출 신청 검토 대기</h2>
-            <p class="muted">검토가 필요한 지출 신청 목록입니다. 신청 제목을 클릭하여 지출 신청 상세 검토 화면으로 이동합니다.</p>
+            <h2>예산 사용 검토 대기</h2>
+            <p class="muted">검토가 필요한 예산 사용 신청 목록입니다. 신청 제목을 클릭하여 예산 사용 상세 검토 화면으로 이동합니다.</p>
             <div data-expense-table></div>
           </section>
           <section class="card" style="margin-top:16px;">
-            <h2>지출 신청 현황</h2>
-            <p class="muted">이 기업의 모든 지출 신청 내역과 진행 상태입니다. 행을 클릭하면 지출 상세 검토 화면으로 이동합니다.</p>
+            <h2>예산 사용 현황</h2>
+            <p class="muted">이 기업의 모든 예산 사용 신청 내역과 진행 상태입니다. 행을 클릭하면 예산 사용 상세 검토 화면으로 이동합니다.</p>
             <div data-expense-all-table></div>
           </section>
         </div>
@@ -204,22 +202,9 @@
               <button class="button small secondary" data-bp-download="round2" type="button" hidden>다운로드</button>
             </div>
           </section>
-          <section class="card" style="margin-top:16px;">
-            <button class="button" id="btn-download-plans-zip" type="button" style="width: 100%;">📦 사업계획서 일괄 다운로드 (ZIP)</button>
-            <p class="muted" style="font-size:12px; margin-top:8px;">승인 완료된 1차/2차 사업계획서를 하나의 ZIP으로 내려받습니다. 파일명: 기업명_사업계획서_1차 / _2차</p>
-          </section>
         </div>
 
-        <!-- Tab 6: 검토 이력 -->
-        <div id="tab-history" class="tab-content">
-          <section class="card">
-            <h2>검토 이력 히스토리</h2>
-            <p class="muted">이 기업의 예산 및 지출 검토 이력(승인, 보완 요청 등)이 최신순으로 나열됩니다.</p>
-            <div data-review-history></div>
-          </section>
-        </div>
-
-        <!-- Tab 7: 내부 메모 -->
+        <!-- Tab 6: 내부 메모 -->
         <div id="tab-memo" class="tab-content">
           <section class="card">
             <h2>관리자 내부 메모</h2>

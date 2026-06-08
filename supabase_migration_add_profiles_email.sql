@@ -1,16 +1,15 @@
--- ============================================================
--- 마이그레이션: 창업자 자가가입 RLS 위반 수정
---
--- 문제: 클라이언트가 companies 에 직접 INSERT 했으나 founder INSERT 를
---       허용하는 RLS 정책이 없어 "new row violates row-level security
---       policy for table companies" 로 실패했다.
--- 해결: handle_new_user(SECURITY DEFINER) 트리거가 회원가입 메타데이터로
---       프로필 + 회사 + 소속을 원자적으로 생성하도록 확장한다.
---
--- 적용: Supabase Dashboard > SQL Editor 에 붙여넣고 실행.
---       (supabase_schema.sql 의 3.1 함수와 동일 내용)
--- ============================================================
+-- ============================================================================
+-- profiles 에 로그인 이메일(email) 컬럼 추가 + 가입 트리거 동기화 + 기존 사용자 백필
+--   목적: 관리자 '가입신청 관리' 화면에서 가입자 ID(로그인 이메일)를 노출한다.
+--   배경: 로그인 이메일은 auth.users.email 에만 있고, 브라우저 클라이언트는
+--         auth 스키마를 조회할 수 없다. 따라서 public.profiles 에 email 을 복제해 둔다.
+-- ============================================================================
 
+-- 1) 컬럼 추가 (멱등)
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS email text;
+
+-- 2) 신규 가입 시 auth.users.email 을 profiles.email 에 함께 저장하도록 트리거 갱신
+--    (기존 본문에 email 저장만 추가. 나머지 로직은 동일하게 유지)
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS trigger AS $$
 DECLARE
@@ -21,12 +20,13 @@ DECLARE
   v_support_program_id  uuid;
   v_company_id          uuid;
 BEGIN
-  -- 1. 프로필은 항상 founder 로 생성
-  INSERT INTO public.profiles (id, role, name, company_name, phone)
-  VALUES (new.id, 'founder', v_name, v_company_name, v_phone);
+  -- 1. 프로필은 항상 founder 로 생성 (로그인 이메일 포함)
+  INSERT INTO public.profiles (id, role, name, company_name, phone, email)
+  VALUES (new.id, 'founder', v_name, v_company_name, v_phone, new.email);
 
   -- 2. 창업자 자가가입인 경우에만 회사 + 소속 생성
   IF COALESCE(new.raw_user_meta_data->>'is_founder_signup', 'false') = 'true' THEN
+    -- 잘못된 uuid 문자열은 NULL 로 안전 처리
     BEGIN
       v_support_program_id := NULLIF(new.raw_user_meta_data->>'support_program_id', '')::uuid;
     EXCEPTION WHEN others THEN
@@ -56,9 +56,9 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
--- 트리거는 기존 것을 그대로 재사용한다(함수 본문만 교체됨).
--- 안전을 위해 재생성:
-DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
-CREATE TRIGGER on_auth_user_created
-  AFTER INSERT ON auth.users
-  FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+-- 3) 기존 사용자 백필: auth.users.email 을 profiles.email 로 채운다.
+UPDATE public.profiles p
+SET email = u.email
+FROM auth.users u
+WHERE u.id = p.id
+  AND p.email IS DISTINCT FROM u.email;

@@ -139,6 +139,41 @@ tr:last-child td {
   border-bottom: 0;
 }
 
+/* 표 안의 기업명/항목 링크는 초록색 강조 없이 일반 텍스트와 동일하게 보이게 하되,
+   클릭 가능 표시는 hover 시 밑줄로만 남긴다. */
+td a {
+  color: inherit;
+  font-weight: inherit;
+}
+td a:hover {
+  color: inherit;
+  text-decoration: underline;
+}
+
+/* 승인 대기/전체 현황 표 정렬용 — '처리' 열 유무와 무관하게 두 표의 열 너비가 일치하도록
+   colgroup 으로 너비를 고정한다. 긴 텍스트 셀(.wrap-cell)은 한 줄 고정(nowrap) 대신 줄바꿈으로 넘긴다. */
+.fixed-table {
+  table-layout: fixed;
+}
+.fixed-table .wrap-cell {
+  white-space: normal;
+  word-break: break-word;
+}
+/* 표 안의 처리/관리 버튼은 좌측 정렬(전역 .actions 는 우측 정렬이라 여기서만 덮어쓴다). */
+.fixed-table .actions {
+  justify-content: flex-start;
+}
+
+/* 클릭 가능한 표 행 — 행 어디를 눌러도 상세로 이동. 안의 링크/버튼 클릭은 각 핸들러가 우선 처리한다. */
+tr[data-href],
+tr[data-company-row] {
+  cursor: pointer;
+}
+tr[data-href]:hover,
+tr[data-company-row]:hover {
+  background: var(--surface-muted);
+}
+
 .badge {
   display: inline-flex;
   align-items: center;
@@ -248,7 +283,9 @@ tr:last-child td {
   color: #0f172a;
   padding: 0 8px;
 }
-.field { display: grid; gap: 8px; }
+/* align-content: start — 같은 행의 다른 필드(예: 도움말 한 줄이 더 붙은 Model)
+   때문에 셀이 늘어나도 라벨/입력이 위로 붙어 정렬이 어긋나지 않게 한다. */
+.field { display: grid; gap: 8px; align-content: start; }
 label { font-weight: 700; font-size: var(--text-sm); color: #334155; }
 /* 체크박스 한 줄(예: 로그인 유지) — 전역 input 규칙(width:100%)을 무시하고 라벨과 인라인 배치 */
 .checkbox-row { display: flex; align-items: center; gap: 8px; font-weight: 500; cursor: pointer; }
@@ -270,8 +307,21 @@ input, select, textarea {
   min-height: 44px;
   padding: 10px 14px;
   font: inherit;
+  line-height: 1.4;
   background: #fff;
   outline: none;
+}
+/* 네이티브 select 의 기본 화살표·내부 높이 계산을 제거해 input 과 동일한 높이로 맞춘다.
+   커스텀 caret 을 배경 이미지로 그리고, 그 자리만큼 우측 패딩을 확보한다. */
+select {
+  height: 44px;
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  padding-right: 38px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='none' stroke='%2364748b' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round' d='M1 1.5l5 5 5-5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 14px center;
 }
 input:focus, select:focus, textarea:focus {
   border-color: var(--primary);

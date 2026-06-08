@@ -15,24 +15,42 @@
   gap: 12px;
 }
 .guidance-admin-row > div { display: grid; gap: 8px; }
+/* 저장/삭제 버튼은 세로로 쌓지 않고 한 줄에 나란히 둔다(위 grid 규칙을 덮어쓴다). */
+/* 입력 칸은 위에 라벨이 있어 아래에서 시작하므로, 버튼도 행 아래쪽에 맞춰 입력 칸과 정렬한다. */
+.guidance-admin-row > .actions { display: flex; flex-direction: row; flex-wrap: nowrap; align-items: center; gap: 8px; align-self: flex-end; }
+/* 저장/삭제 버튼은 입력 칸 높이(44px)에 맞춘 정방형으로 표시한다. */
+.guidance-admin-row > .actions .icon-button {
+  width: 44px;
+  min-width: 44px;
+  height: 44px;
+  min-height: 44px;
+}
 .guidance-file-button { width: fit-content; }
 
 /* Program edit */
 .program-edit-fields {
   display: grid;
-  grid-template-columns: minmax(220px, 1fr) 120px;
+  grid-template-columns: minmax(340px, 1fr) 96px 150px 150px;
   align-items: start;
   gap: 12px;
   width: 100%;
+}
+@media (max-width: 900px) {
+  .program-edit-fields { grid-template-columns: minmax(180px, 1fr) 120px; }
 }
 .program-edit-fields input[readonly] {
   background: var(--surface-muted);
   color: var(--muted);
   font-weight: 700;
 }
-.program-edit-fields label,
-.program-name-code { display: grid; gap: 6px; }
-.program-name-code { gap: 10px; }
+.program-edit-fields label { display: grid; gap: 6px; }
+/* 신규사업명 + 사업코드를 세로로 쌓지 않고 한 줄에 나란히 둔다(전체 행을 한 줄로 표시). */
+.program-name-code {
+  display: grid;
+  grid-template-columns: minmax(160px, 1fr) 140px;
+  gap: 12px;
+  align-items: start;
+}
 
 /* Login */
 .login-page {

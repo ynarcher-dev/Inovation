@@ -4,6 +4,7 @@ import {
   getAdminCompanyDetail,
   reviewBudgetSubmission,
   downloadStoredFile,
+  downloadStoredFileToDisk,
   updateCompanyInternalMemo,
   approveCompany,
   rejectCompany,
@@ -11,16 +12,14 @@ import {
   requestBudgetAiReview,
   fetchStoredFileBase64,
   downloadExpenseEvidenceZip,
-  downloadBusinessPlansZip,
 } from "../../api.js";
 import { BudgetTreeView } from "../../components/BudgetTreeView.js";
-import { FlatReviewHistoryTable } from "../../components/FlatReviewHistoryTable.js";
 import { BudgetSubmissionDiff } from "../../components/budget/BudgetSubmissionDiff.js";
 import { BudgetHistoryTable } from "../../components/budget/BudgetHistoryTable.js";
-import { ExpenseRequestsTable } from "../../components/expense/ExpenseRequestsTable.js";
-import { FounderExpenseStatusTable } from "../../components/FounderExpenseStatusTable.js";
-import { getBudgetCategoryPaths, attachCategoryHighlight, attachAllocationHandlers } from "../../dom/admin-company-detail.js";
+import { ExpenseTable } from "../../components/ExpenseTable.js";
+import { attachCategoryHighlight, attachAllocationHandlers } from "../../dom/admin-company-detail.js";
 import { getBudgetStatusLabel } from "../../domains/budget/budget-status.js";
+import { ADMIN_REVIEW_STATUSES } from "../../domains/status.js";
 import {
   escapeHtml,
   formatDate,
@@ -33,6 +32,8 @@ const approvalText = {
   rejected: "가입 반려",
 };
 
+const expenseDetailHref = (id) => `expense-detail.html?id=${encodeURIComponent(id)}`;
+
 try {
   mountShell();
   const user = await requireRole(["admin", "super_admin"]);
@@ -44,7 +45,6 @@ try {
     const expenseTableEl = document.querySelector("[data-expense-table]");
     const expenseAllTableEl = document.querySelector("[data-expense-all-table]");
     const budgetSubmissionsEl = document.querySelector("[data-budget-submissions]");
-    const reviewHistoryEl = document.querySelector("[data-review-history]");
     const internalMemoEl = document.getElementById("admin-internal-memo");
     const aiBudgetReviewBtn = document.getElementById("btn-ai-budget-review");
     const aiBudgetReviewResultEl = document.querySelector("[data-ai-budget-review-result]");
@@ -222,8 +222,11 @@ try {
       setText("[data-summary-name]", company.name);
       setText("[data-phone]", company.phone || "-");
       setText("[data-program-name]", company.support_programs?.name || "-");
-      const agreement = company.agreement_start_date && company.agreement_end_date
-        ? `${formatDate(company.agreement_start_date)} ~ ${formatDate(company.agreement_end_date)}`
+      // 협약 기간은 참가 사업(신규사업 관리)에서 세팅한 값을 우선 사용한다(기업별 레거시 값은 대체용).
+      const agreeStart = company.support_programs?.agreement_start_date || company.agreement_start_date;
+      const agreeEnd = company.support_programs?.agreement_end_date || company.agreement_end_date;
+      const agreement = agreeStart && agreeEnd
+        ? `${formatDate(agreeStart)} ~ ${formatDate(agreeEnd)}`
         : "-";
       setText("[data-agreement]", agreement);
       setText("[data-approval-status-2]", approvalText[company.approval_status] || company.approval_status || "-");
@@ -232,7 +235,6 @@ try {
       // 기업/계정 정보 탭: 계정 가입 현황
       const account = detail.account || {};
       setText("[data-account-email]", account.email || "-");
-      setText("[data-account-name]", account.name || company.representative_name || "-");
       setText("[data-account-status]", approvalText[company.approval_status] || company.approval_status || "-");
       setText("[data-account-created]", company.created_at ? formatDate(company.created_at) : "-");
       setText("[data-account-approved]", company.approved_at ? formatDate(company.approved_at) : "-");
@@ -258,19 +260,30 @@ try {
         renderHeader();
       });
 
-      const categoryPaths = getBudgetCategoryPaths(detail.programBudgets);
-      const pendingExpenses = detail.expenses.filter((row) => row.status?.includes("submitted"));
+      // 지출 검토 대기: 관리자 '지출 신청 승인 대기' 목록과 동일한 표(ExpenseTable)를 쓰되,
+      // 기업 상세 화면이므로 기업 열만 숨긴다(검토 대기 상태 = 사전/최종 승인 검토 대기).
+      const pendingExpenses = detail.expenses.filter((row) => ADMIN_REVIEW_STATUSES.includes(row.status));
 
-      expenseTableEl.innerHTML = ExpenseRequestsTable(pendingExpenses, categoryPaths);
-      // 지출 검토 탭: 검토 대기 외에 이 기업의 모든 지출 신청 내역/진행 상태를 함께 보여준다.
-      // 진행 상태 우측에 '증빙 다운로드'(첨부서류 ZIP) 버튼 컬럼을 추가한다.
+      expenseTableEl.innerHTML = ExpenseTable(pendingExpenses, {
+        admin: true,
+        hideCompany: true,
+        hideChecklist: true,
+        emptyText: "검토 대기 중인 예산 사용 신청이 없습니다.",
+        action: (row) => `<a class="button small" href="${expenseDetailHref(row.id)}">검토하기</a>`,
+      });
+      // 지출 신청 현황: 검토 대기와 동일한 표 구성에, 처리 열 대신 '증빙 다운로드'(첨부서류 ZIP) 버튼 열을 둔다.
       if (expenseAllTableEl) {
-        expenseAllTableEl.innerHTML = FounderExpenseStatusTable(detail.expenses, "아직 등록된 지출 신청이 없습니다.", {
-          actionColumn: {
-            header: "증빙",
-            cell: (row) =>
-              `<button class="button small secondary" type="button" data-evidence-zip="${escapeHtml(row.id)}">증빙 다운로드</button>`,
-          },
+        const allExpenses = [...detail.expenses].sort((a, b) =>
+          String(b.submitted_at || b.created_at || "").localeCompare(String(a.submitted_at || a.created_at || "")),
+        );
+        expenseAllTableEl.innerHTML = ExpenseTable(allExpenses, {
+          admin: true,
+          hideCompany: true,
+          hideChecklist: true,
+          emptyText: "아직 등록된 지출 신청이 없습니다.",
+          actionLabel: "증빙",
+          action: (row) =>
+            `<button class="button small secondary" type="button" data-evidence-zip="${escapeHtml(row.id)}">증빙 다운로드</button>`,
         });
       }
       // 예산 검토 탭: 검토 패널 외에 이 기업의 예산안 제출/변경 요청 이력과 상태를 함께 보여준다.
@@ -280,7 +293,6 @@ try {
           detail.company?.business_plans?.round2?.budget_submission_id || null,
         );
       }
-      reviewHistoryEl.innerHTML = FlatReviewHistoryTable(detail.reviewHistory, true);
 
       // 탭 배지: 검토 대기 표시
       const budgetReviewBadge = document.querySelector("[data-badge-budget-review]");
@@ -488,26 +500,29 @@ try {
     });
 
     // 사업계획서 1차/2차 다운로드(승인 완료 파일만 버튼 노출 — renderBusinessPlanTab 에서 제어).
+    // 새 탭에서 여는 대신 원본 파일명으로 실제 파일을 내려받는다.
     document.querySelectorAll("[data-bp-download]").forEach((btn) => {
       btn.addEventListener("click", async () => {
         const plan = detail.company?.business_plans?.[btn.dataset.bpDownload];
         if (!plan?.original_filename) return;
         await runWithErrorBoundary(async () => {
-          await downloadStoredFile(plan.link_url, plan.original_filename);
+          await downloadStoredFileToDisk(plan.link_url, plan.original_filename);
         }, { button: btn });
       });
     });
 
-    // 지출 신청 현황 표: 행 클릭 → 지출 상세 검토 페이지로 이동(컨테이너에 1회 위임 바인딩, 표는 매 렌더마다 갱신됨).
-    const gotoExpense = (row) => {
-      const href = row?.dataset.expenseHref;
-      if (href) window.location.href = href;
+    // 지출 검토 대기/현황 표: 행 클릭 → 지출 상세 검토 페이지로 이동(컨테이너에 1회 위임 바인딩, 표는 매 렌더마다 갱신됨).
+    //   링크/버튼(검토하기·증빙 다운로드) 클릭은 자체 동작에 맡기고 행 이동은 막는다.
+    const navigateExpenseRow = (e) => {
+      if (e.target.closest("a, button")) return;
+      const row = e.target.closest("tr[data-href]");
+      if (row) window.location.href = row.dataset.href;
     };
+    expenseTableEl?.addEventListener("click", navigateExpenseRow);
     expenseAllTableEl?.addEventListener("click", async (e) => {
-      // 증빙 다운로드 버튼: 행 이동을 막고 이 기업의 첨부서류를 ZIP 으로 내려받는다.
+      // 증빙 다운로드 버튼: 이 기업의 첨부서류를 ZIP 으로 내려받는다.
       const zipBtn = e.target.closest("[data-evidence-zip]");
       if (zipBtn) {
-        e.stopPropagation();
         const expenseId = zipBtn.dataset.evidenceZip;
         const expenseRow = detail.expenses.find((row) => row.id === expenseId) || { id: expenseId };
         await runWithErrorBoundary(async () => {
@@ -520,15 +535,7 @@ try {
         }, { button: zipBtn });
         return;
       }
-      const row = e.target.closest(".clickable-row");
-      if (row) gotoExpense(row);
-    });
-    expenseAllTableEl?.addEventListener("keydown", (e) => {
-      if (e.key !== "Enter") return;
-      // 증빙 다운로드 버튼에 포커스가 있을 땐 버튼 자체 동작(클릭)에 맡기고 행 이동은 막는다.
-      if (e.target.closest("[data-evidence-zip]")) return;
-      const row = e.target.closest(".clickable-row");
-      if (row) { e.preventDefault(); gotoExpense(row); }
+      navigateExpenseRow(e);
     });
 
     // 예산 신청 현황 표: 행 클릭/Enter → 비목별 상세 펼침(창업자 히스토리 표와 동일 동작).
@@ -549,18 +556,6 @@ try {
       if (e.key !== "Enter" && e.key !== " ") return;
       const row = e.target.closest("[data-history-row]");
       if (row) { e.preventDefault(); toggleBudgetRow(row); }
-    });
-
-    // 사업계획서 일괄 다운로드: 승인 완료된 1차/2차 계획서를 ZIP 한 개로 내려받는다.
-    document.getElementById("btn-download-plans-zip")?.addEventListener("click", async (e) => {
-      await runWithErrorBoundary(async () => {
-        const count = await downloadBusinessPlansZip(detail.company, detail.budgetSubmissions);
-        if (count === 0) {
-          showToast("다운로드할 승인된 사업계획서가 없습니다.", { type: "info" });
-        } else {
-          showToast(`사업계획서 ${count}건을 ZIP으로 내려받았습니다.`, { type: "success" });
-        }
-      }, { button: e.currentTarget });
     });
 
     renderHeader();

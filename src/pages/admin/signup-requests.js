@@ -17,39 +17,49 @@ const approvalText = {
   rejected: "반려",
 };
 
+// 열 고정 너비(%). '승인 대기'(관리 열 有)와 '전체 목록'(관리 열 빈칸)이 동일한 너비로 정렬되도록
+//   두 표 모두 같은 colgroup 을 쓰고, 전체 목록은 관리 열 자리를 비워 둔다.
+const SIGNUP_COL_WIDTHS = [13, 16, 9, 13, 13, 9, 13, 14]; // 기업·이메일·대표자·사업자번호·참가사업·상태·가입일·관리
+
 function SignupTable(companies, options = {}) {
-  if (!companies?.length) return `<p class="empty">표시할 가입 신청이 없습니다.</p>`;
+  if (!companies?.length) {
+    return `<p class="empty">${escapeHtml(options.emptyText || "표시할 가입 신청이 없습니다.")}</p>`;
+  }
+  const showActions = options.actions === true;
+  const colgroup = `<colgroup>${SIGNUP_COL_WIDTHS.map((w) => `<col style="width:${w}%" />`).join("")}</colgroup>`;
+  const href = (id) => `company-detail.html?id=${encodeURIComponent(id)}`;
   return `
     <div class="table-wrap">
-      <table>
+      <table class="fixed-table">
+        ${colgroup}
         <thead>
           <tr>
             <th>기업명</th>
+            <th>ID(이메일)</th>
             <th>대표자</th>
             <th>사업자등록번호</th>
             <th>참가 사업</th>
             <th>승인 상태</th>
             <th>가입일</th>
-            ${options.actions ? "<th>관리</th>" : ""}
+            <th>${showActions ? "관리" : ""}</th>
           </tr>
         </thead>
         <tbody>
           ${companies.map((company) => `
-            <tr>
-              <td><a href="company-detail.html?id=${encodeURIComponent(company.id)}">${escapeHtml(company.name)}</a></td>
+            <tr data-href="${href(company.id)}">
+              <td><a href="${href(company.id)}">${escapeHtml(company.name)}</a></td>
+              <td class="wrap-cell">${escapeHtml(company.owner_email || "-")}</td>
               <td>${escapeHtml(company.representative_name || "-")}</td>
               <td>${escapeHtml(company.business_number || "-")}</td>
               <td>${escapeHtml(company.support_programs?.name || "-")}</td>
               <td>${escapeHtml(approvalText[company.approval_status] || company.approval_status || "-")}</td>
               <td>${formatDate(company.created_at)}</td>
-              ${options.actions ? `
-                <td>
+              <td>${showActions ? `
                   <div class="actions">
                     <button class="button small" type="button" data-approve-company="${escapeHtml(company.id)}">승인</button>
                     <button class="button small danger" type="button" data-reject-company="${escapeHtml(company.id)}">반려</button>
                   </div>
-                </td>
-              ` : ""}
+              ` : ""}</td>
             </tr>
           `).join("")}
         </tbody>
@@ -62,6 +72,7 @@ function matchesSearch(company, term) {
   if (!term) return true;
   const haystack = [
     company.name,
+    company.owner_email,
     company.representative_name,
     company.business_number,
     company.support_programs?.name,
@@ -70,6 +81,16 @@ function matchesSearch(company, term) {
     .join(" ")
     .toLowerCase();
   return haystack.includes(term);
+}
+
+// 표 행 전체를 클릭하면 상세로 이동. 행 안의 링크/버튼 클릭은 해당 동작이 우선한다.
+function bindRowNavigation(container) {
+  container.querySelectorAll("tr[data-href]").forEach((row) => {
+    row.addEventListener("click", (event) => {
+      if (event.target.closest("a, button")) return;
+      window.location.href = row.dataset.href;
+    });
+  });
 }
 
 function inDateRange(company, from, to) {
@@ -88,7 +109,7 @@ try {
     let dashboard = await getAdminDashboard();
     const toolbar = document.querySelector("[data-signup-toolbar]");
     toolbar.innerHTML = FilterToolbar({
-      search: { placeholder: "기업명 · 대표자 · 사업자등록번호 검색", ariaLabel: "가입 기업 검색" },
+      search: { placeholder: "기업명 · ID(이메일) · 대표자 · 사업자등록번호 검색", ariaLabel: "가입 기업 검색" },
       selects: [
         { key: "status", ariaLabel: "승인 상태 필터", options: SIGNUP_STATUS_OPTIONS },
         { key: "program", ariaLabel: "참가 사업 필터", options: [{ value: "all", label: "전체 참가 사업" }] },
@@ -109,12 +130,16 @@ try {
         && inDateRange(company, dateFrom, dateTo)
         && matchesSearch(company, term)
       );
-      document.querySelector("[data-all-signups]").innerHTML = SignupTable(filtered);
+      const allTarget = document.querySelector("[data-all-signups]");
+      allTarget.innerHTML = SignupTable(filtered);
+      bindRowNavigation(allTarget);
     };
 
     const render = () => {
       const pending = dashboard.companies.filter((company) => company.approval_status === "pending");
-      document.querySelector("[data-pending-signups]").innerHTML = SignupTable(pending, { actions: true });
+      const pendingTarget = document.querySelector("[data-pending-signups]");
+      pendingTarget.innerHTML = SignupTable(pending, { actions: true });
+      bindRowNavigation(pendingTarget);
       renderAll();
       updateAdminNavBadges();
 

@@ -552,8 +552,9 @@ try {
       setText("[data-representative]", detail.company?.representative_name || "-");
       setText("[data-support-program]", detail.company?.support_programs?.name || "-");
       // 참가 사업 아래 협약 기간 표시 (양쪽 날짜가 모두 있을 때만)
-      const agreeStart = detail.company?.agreement_start_date;
-      const agreeEnd = detail.company?.agreement_end_date;
+      // 협약 기간은 참가 사업(신규사업)에 세팅된 값을 우선 사용한다(기업별 레거시 값은 대체용).
+      const agreeStart = detail.company?.support_programs?.agreement_start_date || detail.company?.agreement_start_date;
+      const agreeEnd = detail.company?.support_programs?.agreement_end_date || detail.company?.agreement_end_date;
       setText("[data-agreement]", (agreeStart || agreeEnd)
         ? `협약기간 ${formatDate(agreeStart)} ~ ${formatDate(agreeEnd)}`
         : "협약기간 미정");

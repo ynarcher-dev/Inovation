@@ -88,6 +88,7 @@ export const reviewExpenseRequest = remote.reviewExpenseRequest;
 // 예산 항목별 커스텀 첨부서류 / 운영사업 공통 AI 검토 기준 문서
 // ----------------------------------------------------
 export const getBudgetDocumentRequirements = remote.getBudgetDocumentRequirements;
+export const getInheritedBudgetDocumentRequirements = remote.getInheritedBudgetDocumentRequirements;
 export const createBudgetDocumentRequirement = remote.createBudgetDocumentRequirement;
 export const updateBudgetDocumentRequirement = remote.updateBudgetDocumentRequirement;
 export const deactivateBudgetDocumentRequirement = remote.deactivateBudgetDocumentRequirement;
@@ -302,6 +303,16 @@ export async function downloadStoredFile(linkUrl) {
   if (!linkUrl) throw new Error("파일을 찾을 수 없습니다.");
   const s3Url = await getS3DownloadUrl(linkUrl);
   window.open(s3Url, "_blank", "noopener,noreferrer");
+}
+
+// 보관된 첨부 파일(S3) 한 건을 지정한 파일명으로 즉시 내려받는다(새 탭 열기가 아니라 실제 다운로드).
+export async function downloadStoredFileToDisk(linkUrl, filename) {
+  if (!linkUrl) throw new Error("파일을 찾을 수 없습니다.");
+  const s3Url = await getS3DownloadUrl(linkUrl);
+  const res = await fetch(s3Url);
+  if (!res.ok) throw new Error("S3에서 파일을 가져오지 못했습니다.");
+  const blob = await res.blob();
+  triggerBlobDownload(blob, filename || "download");
 }
 
 // 보관된 첨부 파일(S3) 한 건을 내려받아 base64 로 반환한다.

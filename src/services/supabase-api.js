@@ -61,6 +61,8 @@ export async function createSupportProgram(input, adminUserId) {
       sort_order: Number(input.sort_order || 0),
       active: true,
       level_labels: { "1": "대분류", "2": "중분류", "3": "소분류" },
+      agreement_start_date: input.agreement_start_date || null,
+      agreement_end_date: input.agreement_end_date || null,
       created_by: adminUserId,
     })
     .select("*")
@@ -82,7 +84,12 @@ export async function updateSupportProgram(id, input) {
   const supabase = await getSupabase();
   const { data, error } = await supabase
     .from("support_programs")
-    .update({ name: input.name, sort_order: Number(input.sort_order || 0) })
+    .update({
+      name: input.name,
+      sort_order: Number(input.sort_order || 0),
+      agreement_start_date: input.agreement_start_date || null,
+      agreement_end_date: input.agreement_end_date || null,
+    })
     .eq("id", id)
     .select("*")
     .single();
@@ -785,6 +792,11 @@ export async function getFounderDashboard() {
     .select("*")
     .eq("company_id", company.id);
 
+  // 4-1. 관리자가 등록한 안내 및 유의사항(첨부파일 포함) — 사업개요 탭에서 노출한다.
+  const guidanceItems = company.support_program_id
+    ? await getGuidanceItems(company.support_program_id)
+    : [];
+
   // 5. 예산 제출 이력 + 파생 필드(검토 대기 제출안/라운드 트리/2차 상태 등) 일괄 구성.
   //    mock 제거(7a03da5) 때 사라졌던 pendingSubmission/round2Status/pendingBudgetTree 를 복원한다.
   const derived = await buildBudgetDerived(supabase, {
@@ -802,6 +814,8 @@ export async function getFounderDashboard() {
     budgetSummary: buildBudgetSummary(allocations, programBudgets, expenses),
     allocations: allocations || [],
     expenses: expenses || [],
+    // 사업개요 탭의 '안내 및 유의사항' 렌더용(dashboard.js → AttachmentList).
+    manualLinks: guidanceItems || [],
     programBudgets: programBudgets || [],
     budgetSubmissions: derived.budgetSubmissions,
     pendingSubmission: derived.pendingSubmission,
@@ -884,7 +898,7 @@ export async function submitFounderBudgetAllocations(companyId, inputAllocations
   //   쌓여(누적) 검토 화면에 직전 1차/2차 요청값이 계속 남아 보이던 문제를 막는다.
   //   - 보완요청(*_revision_requested) 이력은 '보완→재제출→승인' 흐름 보존을 위해 삭제하지 않는다(AWAITING_REVIEW_STATUSES 만 대상).
   //   - 이번에 만든 제출안(sub.id)은 제외. 항목은 FK ON DELETE CASCADE 로 함께 삭제.
-  //   - member DELETE 정책(supabase_migration_budget_submission_member_delete.sql)이 적용돼야 실제로 지워진다.
+  //   - member DELETE 정책(supabase/migrations/supabase_migration_budget_submission_member_delete.sql)이 적용돼야 실제로 지워진다.
   const { error: cleanupErr } = await supabase
     .from("budget_submissions")
     .delete()
@@ -922,9 +936,28 @@ export async function getAdminDashboard() {
   const approvedCount = companies.filter((c) => c.approval_status === "approved").length;
   const budgetApprovedCount = companies.filter((c) => c.budget_status === "budget_approved").length;
   
-  // 지출 신청 전체 조회 (예산 사용 승인 화면의 검토 대기 목록 + 전체 현황 공용)
+  // 가입 신청 화면에서 가입자 ID(로그인 이메일)를 노출하기 위해 회사별 소유자(owner) 이메일을 붙인다.
+  //   창업자↔기업 연결은 company_members 가 단일 소스. owner 우선, 없으면 첫 멤버 이메일로 보정한다.
   const companyIds = companies.map((c) => c.id);
   const companyNameById = new Map(companies.map((c) => [c.id, c.name]));
+  if (companyIds.length > 0) {
+    const { data: memberRows } = await supabase
+      .from("company_members")
+      .select("company_id, member_role, profiles(email)")
+      .in("company_id", companyIds);
+    const ownerEmailByCompany = new Map();
+    for (const m of memberRows || []) {
+      const email = m.profiles?.email;
+      if (!email) continue;
+      // owner 는 항상 덮어쓰고, 그 외 역할은 아직 값이 없을 때만 채운다.
+      if (m.member_role === "owner" || !ownerEmailByCompany.has(m.company_id)) {
+        ownerEmailByCompany.set(m.company_id, email);
+      }
+    }
+    for (const c of companies) c.owner_email = ownerEmailByCompany.get(c.id) || null;
+  }
+
+  // 지출 신청 전체 조회 (예산 사용 승인 화면의 검토 대기 목록 + 전체 현황 공용)
   let expenses = [];
   if (companyIds.length > 0) {
     const { data: expenseRows, error: expErr } = await supabase
@@ -936,6 +969,28 @@ export async function getAdminDashboard() {
       ...e,
       company_name: companyNameById.get(e.company_id) || "",
     }));
+
+    // 지출 신청에 예산 항목(비목 단계 경로) 라벨을 붙인다(관리자 현황/검토 표시용).
+    //   business_plan_item_id(=확정 배정 id) → leaf 비목 부모 경로. getExpenseDetail 과 동일 규칙.
+    if (expenses.length > 0) {
+      const programIds = [...new Set(companies.map((c) => c.support_program_id).filter(Boolean))];
+      const [{ data: allocRows }, budgetRes] = await Promise.all([
+        supabase
+          .from("company_budget_allocations")
+          .select("id, support_program_budget_id")
+          .in("company_id", companyIds),
+        programIds.length
+          ? supabase
+              .from("support_program_budgets")
+              .select("id, parent_id, title, budget_category")
+              .in("support_program_id", programIds)
+          : Promise.resolve({ data: [] }),
+      ]);
+      expenses = expenses.map((e) => ({
+        ...e,
+        business_plan_item_label: resolveBusinessPlanItemLabel(e, allocRows || [], budgetRes.data || []),
+      }));
+    }
   }
   // 결재 대기 건수 세기 (회사별 지출 신청 중 대기 상태 세기)
   const expensePendingCount = expenses.filter((e) =>
@@ -951,6 +1006,11 @@ export async function getAdminDashboard() {
   const pendingByCompany = new Map();
   const confirmedRound2ByCompany = new Map();
   const pendingRound2ByCompany = new Map();
+  // 확정 총 예산(1차+2차) — companies.support_total_amount 는 승인 RPC 가 갱신하지 않아
+  //   0 으로 남는 경우가 많으므로, 실제 배정 테이블에서 비목별 합으로 직접 계산한다.
+  const confirmedTotalByCompany = new Map();
+  // 회사별 예산 사용 요약(승인/대기 금액) — 기업 목록의 '승인/제출 금액'·'진행률' 계산용.
+  const budgetSummaryByCompany = new Map();
   if (companyIds.length > 0) {
     // (a) 회사별 최신 검토 대기 제출안
     const { data: pendingSubs } = await supabase
@@ -963,13 +1023,40 @@ export async function getAdminDashboard() {
       if (!pendingByCompany.has(s.company_id)) pendingByCompany.set(s.company_id, s); // desc 정렬 → 첫 건이 최신
     }
 
-    // (b) 확정 2차 배정 존재 여부
+    // (b) 확정 2차 배정 존재 여부 + 비목별 합으로 확정 총 예산(1차+2차) 집계
     const { data: allocs } = await supabase
       .from("company_budget_allocations")
-      .select("company_id, round2_allocated_amount")
+      .select("id, company_id, support_program_budget_id, round1_allocated_amount, round2_allocated_amount, allocated_amount")
       .in("company_id", companyIds);
+    const allocsByCompany = new Map();
     for (const a of allocs || []) {
-      if (Number(a.round2_allocated_amount || 0) > 0) confirmedRound2ByCompany.set(a.company_id, true);
+      const round1 = Number(a.round1_allocated_amount || 0);
+      const round2 = Number(a.round2_allocated_amount || 0);
+      if (round2 > 0) confirmedRound2ByCompany.set(a.company_id, true);
+      confirmedTotalByCompany.set(a.company_id, (confirmedTotalByCompany.get(a.company_id) || 0) + round1 + round2);
+      if (!allocsByCompany.has(a.company_id)) allocsByCompany.set(a.company_id, []);
+      allocsByCompany.get(a.company_id).push(a);
+    }
+
+    // (b-2) 회사별 예산 사용 요약 구성 — buildBudgetSummary 로 승인/대기 금액을 산출한다.
+    //   '승인/제출 금액'(승인+대기)·'진행률' 계산에 사용. (mock 제거 때 누락됐던 budgetSummary 복원)
+    const programIdsForSummary = [...new Set(companies.map((c) => c.support_program_id).filter(Boolean))];
+    const { data: summaryBudgets } = programIdsForSummary.length
+      ? await supabase
+          .from("support_program_budgets")
+          .select("id, parent_id, title, budget_category")
+          .in("support_program_id", programIdsForSummary)
+      : { data: [] };
+    const expensesByCompany = new Map();
+    for (const e of expenses) {
+      if (!expensesByCompany.has(e.company_id)) expensesByCompany.set(e.company_id, []);
+      expensesByCompany.get(e.company_id).push(e);
+    }
+    for (const cid of companyIds) {
+      budgetSummaryByCompany.set(
+        cid,
+        buildBudgetSummary(allocsByCompany.get(cid) || [], summaryBudgets || [], expensesByCompany.get(cid) || []),
+      );
     }
 
     // (c) 검토 중 2차 요청 존재 여부(변경 제출안 항목 기준)
@@ -1010,7 +1097,12 @@ export async function getAdminDashboard() {
     companies: companies.map((c) => ({
       ...c,
       program_name: c.support_programs?.name || "",
+      // 확정 총 예산은 실제 배정(1차+2차) 합을 우선 사용하고, 배정 행이 없을 때만 기존 컬럼으로 폴백한다.
+      support_total_amount: confirmedTotalByCompany.has(c.id)
+        ? confirmedTotalByCompany.get(c.id)
+        : c.support_total_amount,
       pendingBudgetSubmission: pendingByCompany.get(c.id) || null,
+      budgetSummary: budgetSummaryByCompany.get(c.id) || [],
       round2Status: getRound2Status(c.budget_status, {
         hasConfirmedRound2: !!confirmedRound2ByCompany.get(c.id),
         hasPendingRound2: !!pendingRound2ByCompany.get(c.id),
@@ -1135,9 +1227,10 @@ export async function getAdminCompanyDetail(companyId) {
 
 export async function approveCompany(companyId) {
   const supabase = await getSupabase();
+  // 승인 시각을 함께 기록해 '계정 가입 현황'의 승인일에 노출한다.
   const { error } = await supabase
     .from("companies")
-    .update({ approval_status: "approved" })
+    .update({ approval_status: "approved", approved_at: new Date().toISOString() })
     .eq("id", companyId);
   if (error) throw error;
   return { ok: true };
@@ -1160,87 +1253,14 @@ export async function resetFounderPassword(userId, newPassword) {
 
 export async function reviewBudgetSubmission(submissionId, decision, comment) {
   const supabase = await getSupabase();
-  const { profile } = await getMyProfile(supabase);
+  const normalizedDecision = decision === "approved" ? "approved" : "revision_requested";
+  const { error } = await supabase.rpc("review_budget_submission", {
+    p_submission_id: submissionId,
+    p_decision: normalizedDecision,
+    p_comment: comment || null,
+  });
 
-  // 제출 차수(initial/change)에 맞는 스키마 CHECK 허용 상태값을 사용한다.
-  //  - 승인:   initial -> budget_approved,            change -> change_approved
-  //  - 보완요청: initial -> budget_revision_requested,  change -> change_revision_requested
-  const { data: subType } = await supabase
-    .from("budget_submissions").select("type, status").eq("id", submissionId).maybeSingle();
-  if (!subType) throw new Error("예산 제출안을 찾을 수 없습니다.");
-  // 이미 결재(승인/보완요청)된 제출안은 다시 결재하지 않는다(기존 검토 이력 덮어쓰기 방지).
-  if (!AWAITING_REVIEW_STATUSES.includes(subType.status)) {
-    throw new Error("이미 검토가 완료된 제출안입니다. 창업자가 다시 제출한 최신 제출안을 검토해 주세요.");
-  }
-  const isChange = subType?.type === "change";
-  const status = decision === "approved"
-    ? (isChange ? "change_approved" : "budget_approved")
-    : (isChange ? "change_revision_requested" : "budget_revision_requested");
-
-  // 1. 제출 내역 정보 및 심사 기록 업데이트
-  const { data: sub, error: subErr } = await supabase
-    .from("budget_submissions")
-    .update({
-      status,
-      reviewed_by: profile.id,
-      reviewed_at: new Date().toISOString(),
-      review_comment: comment,
-    })
-    .eq("id", submissionId)
-    .select("company_id")
-    .single();
-
-  if (subErr) throw subErr;
-
-  // 2. 승인일 경우, 각 비목별 확정 예산(company_budget_allocations)을 업데이트한다.
-  if (decision === "approved") {
-    const { data: items } = await supabase
-      .from("budget_submission_items")
-      .select("*")
-      .eq("budget_submission_id", submissionId);
-
-    for (const item of items || []) {
-      const { data: currentAlloc } = await supabase
-        .from("company_budget_allocations")
-        .select("id")
-        .eq("company_id", sub.company_id)
-        .eq("support_program_budget_id", item.support_program_budget_id)
-        .maybeSingle();
-
-      // 1차/2차를 분리해 확정한다. (이전엔 총액을 전부 round1 에 넣고 round2 를 비워, 2차 승인이
-      //  확정 테이블에 0원으로 남아 '2차 값 0원 + 2차 미승인으로 재표시'되는 버그가 있었다.)
-      const r2 = Number(item.requested_round2_allocated_amount || 0);
-      const r1 = item.requested_round1_allocated_amount != null
-        ? Number(item.requested_round1_allocated_amount)
-        : Number(item.requested_allocated_amount || 0) - r2; // 구버전 호환: 총 요청 - 2차로 역산
-      const total = r1 + r2;
-      const payload = {
-        company_id: sub.company_id,
-        support_program_budget_id: item.support_program_budget_id,
-        round1_allocated_amount: r1,
-        round2_allocated_amount: r2,
-        allocated_amount: total,
-      };
-
-      if (currentAlloc?.id) {
-        await supabase.from("company_budget_allocations").update(payload).eq("id", currentAlloc.id);
-      } else {
-        await supabase.from("company_budget_allocations").insert(payload);
-      }
-
-      await supabase
-        .from("budget_submission_items")
-        .update({ approved_allocated_amount: total })
-        .eq("id", item.id);
-    }
-  }
-
-  // 3. 기업 테이블 예산 상태 동기화
-  await supabase
-    .from("companies")
-    .update({ budget_status: status })
-    .eq("id", sub.company_id);
-
+  if (error) throw error;
   return { ok: true };
 }
 
@@ -1415,6 +1435,7 @@ export async function createExpense(input) {
       company_id: profile.company_id,
       founder_id: profile.id,
       title: input.title,
+      business_plan_item_id: input.business_plan_item_id || null,
       expense_type: input.expense_type,
       budget_category: input.budget_category,
       amount_supply: Number(input.amount_supply || 0),
@@ -1423,6 +1444,7 @@ export async function createExpense(input) {
       vendor_name: input.vendor_name || "",
       vendor_business_number: input.vendor_business_number || "",
       purpose: input.purpose || "",
+      expected_completion_date: input.expected_completion_date || null,
       status: "draft",
     })
     .select("*")
@@ -1438,6 +1460,7 @@ export async function updateExpenseRequest(id, input) {
     .from("expense_requests")
     .update({
       title: input.title,
+      business_plan_item_id: input.business_plan_item_id || null,
       expense_type: input.expense_type,
       budget_category: input.budget_category,
       amount_supply: Number(input.amount_supply || 0),
@@ -1560,6 +1583,59 @@ export async function getBudgetDocumentRequirements(budgetId) {
   return requirements.map((r) => ({ ...r, upload_count: countByReq[r.id] || 0 }));
 }
 
+async function getBudgetAncestorIds(supabase, budgetId) {
+  if (!budgetId) return [];
+  const { data: leaf, error: leafError } = await supabase
+    .from("support_program_budgets")
+    .select("id, parent_id, support_program_id")
+    .eq("id", budgetId)
+    .maybeSingle();
+  if (leafError) throw leafError;
+  if (!leaf) return [];
+
+  const { data: budgets, error: budgetsError } = await supabase
+    .from("support_program_budgets")
+    .select("id, parent_id")
+    .eq("support_program_id", leaf.support_program_id);
+  if (budgetsError) throw budgetsError;
+
+  const byId = new Map((budgets || []).map((budget) => [budget.id, budget]));
+  const ids = [];
+  const seen = new Set();
+  let current = leaf;
+  while (current && !seen.has(current.id)) {
+    ids.push(current.id);
+    seen.add(current.id);
+    current = current.parent_id ? byId.get(current.parent_id) : null;
+  }
+  return ids.reverse();
+}
+
+async function getBudgetDocumentRequirementsByBudgetIds(supabase, budgetIds) {
+  if (!budgetIds?.length) return [];
+  const { data, error } = await supabase
+    .from("budget_document_requirements")
+    .select("*")
+    .in("support_program_budget_id", budgetIds)
+    .eq("active", true);
+  if (error) throw error;
+
+  const orderByBudgetId = new Map(budgetIds.map((id, index) => [id, index]));
+  return (data || []).sort((a, b) => {
+    const budgetOrder = (orderByBudgetId.get(a.support_program_budget_id) ?? 0)
+      - (orderByBudgetId.get(b.support_program_budget_id) ?? 0);
+    if (budgetOrder) return budgetOrder;
+    return Number(a.sort_order || 0) - Number(b.sort_order || 0);
+  });
+}
+
+export async function getInheritedBudgetDocumentRequirements(budgetId) {
+  if (!budgetId) return [];
+  const supabase = await getSupabase();
+  const budgetIds = await getBudgetAncestorIds(supabase, budgetId);
+  return getBudgetDocumentRequirementsByBudgetIds(supabase, budgetIds);
+}
+
 export async function createBudgetDocumentRequirement(input) {
   const supabase = await getSupabase();
   const { profile } = await getMyProfile(supabase);
@@ -1585,15 +1661,18 @@ export async function createBudgetDocumentRequirement(input) {
 
 export async function updateBudgetDocumentRequirement(id, input) {
   const supabase = await getSupabase();
+  const payload = {};
+  if ("title" in input) payload.title = input.title;
+  if ("description" in input) payload.description = input.description;
+  if ("phase" in input) payload.phase = input.phase;
+  if ("required" in input) payload.required = input.required;
+  if ("ai_review_enabled" in input) payload.ai_review_enabled = input.ai_review_enabled;
+  if ("sort_order" in input) payload.sort_order = Number(input.sort_order || 0);
+  if ("active" in input) payload.active = input.active;
+
   const { data, error } = await supabase
     .from("budget_document_requirements")
-    .update({
-      title: input.title,
-      description: input.description,
-      required: input.required,
-      ai_review_enabled: input.ai_review_enabled,
-      sort_order: Number(input.sort_order || 0),
-    })
+    .update(payload)
     .eq("id", id)
     .select("*")
     .single();
@@ -1657,14 +1736,48 @@ export async function getExpenseDocumentRequirements(expenseRequestId, phase) {
     .single();
     
   const programId = expense.companies?.support_program_id;
+  let budgetId = null;
+
+  if (expense.business_plan_item_id) {
+    const { data: allocation, error: allocationError } = await supabase
+      .from("company_budget_allocations")
+      .select("support_program_budget_id")
+      .eq("id", expense.business_plan_item_id)
+      .maybeSingle();
+    if (allocationError) throw allocationError;
+    budgetId = allocation?.support_program_budget_id || null;
+  }
 
   // 해당 프로그램의 활성화된 요구 사항 목록
-  const { data: requirements } = await supabase
+  let requirementsQuery = supabase
     .from("budget_document_requirements")
     .select("*")
     .eq("support_program_id", programId)
-    .eq("active", true)
-    .order("sort_order", { ascending: true });
+    .eq("active", true);
+
+  if (budgetId) {
+    requirementsQuery = requirementsQuery.eq("support_program_budget_id", budgetId);
+  } else if (expense.budget_category) {
+    const { data: budget, error: budgetError } = await supabase
+      .from("support_program_budgets")
+      .select("id")
+      .eq("support_program_id", programId)
+      .eq("budget_category", expense.budget_category)
+      .maybeSingle();
+    if (budgetError) throw budgetError;
+    if (budget?.id) budgetId = budget.id;
+  }
+
+  let requirements = [];
+  if (budgetId) {
+    const budgetIds = await getBudgetAncestorIds(supabase, budgetId);
+    requirements = await getBudgetDocumentRequirementsByBudgetIds(supabase, budgetIds);
+  } else {
+    const { data, error: requirementsError } = await requirementsQuery
+      .order("sort_order", { ascending: true });
+    if (requirementsError) throw requirementsError;
+    requirements = data || [];
+  }
 
   // 현재 이 지출 신청에 업로드된 파일 목록
   const { data: uploadedFiles } = await supabase

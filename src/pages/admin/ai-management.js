@@ -96,13 +96,71 @@ function sampleBudgetReviewPayload() {
   };
 }
 
-function renderTestResult(result) {
+const PROVIDER_LABELS = {
+  openai: "OpenAI",
+  google: "Google Gemini",
+  anthropic: "Anthropic Claude",
+};
+
+// 원인 code 별 사용자 친화 카피. ai-agent.js 가 던지는 error.code 와 매핑된다.
+const FAILURE_COPY = {
+  no_url: {
+    title: "연결 정보가 비어 있어요",
+    detail: "'Supabase Edge Function URL'을 입력한 뒤 다시 시도해 주세요. (예: /functions/v1/ai-review)",
+  },
+  auth: {
+    title: "권한을 확인할 수 없어요",
+    detail: "관리자 계정으로 로그인했는지 확인하고, API Key가 서버(Edge Function Secret)에 등록되어 있는지 점검해 주세요.",
+  },
+  rate_limit: {
+    title: "요청이 잠시 몰렸어요",
+    detail: "1~2분 후 다시 '테스트 실행'을 눌러 주세요.",
+  },
+  overloaded: {
+    title: "AI 서버가 잠시 혼잡해요",
+    detail: "자동으로 3번까지 다시 시도했지만 실패했습니다. 잠시 후 다시 시도해 주세요.",
+  },
+  payload: {
+    title: "전송한 데이터를 처리할 수 없어요",
+    detail: "설정을 확인한 뒤 다시 시도해 주세요. 문제가 계속되면 개발팀에 문의해 주세요.",
+  },
+};
+
+const FAILURE_FALLBACK = {
+  title: "연결에 실패했어요",
+  detail: "설정(Provider·모델·URL·API Key 등록 상태)을 다시 확인하고 시도해 주세요. 문제가 계속되면 개발팀에 문의해 주세요.",
+};
+
+function renderTestSuccess(result, form) {
   const target = document.querySelector("[data-ai-test-result]");
   if (!target) return;
+  const providerLabel = PROVIDER_LABELS[form.provider] || form.provider || "선택한 AI";
+  const modelLabel = form.model ? ` · ${form.model}` : "";
+  const summary = String(result.summary || "").trim();
+  const previewBlock = summary
+    ? `
+      <div style="margin-top:10px; padding-top:10px; border-top:1px solid rgba(6,95,70,0.2);">
+        <p class="muted" style="margin:0 0 4px; font-size:0.85rem;">샘플 분석 결과 미리보기</p>
+        <p style="margin:0;">${escapeHtml(summary)}</p>
+      </div>`
+    : "";
   target.innerHTML = `
     <div class="notice notice-success" style="padding:12px 14px;">
-      <strong>테스트 성공</strong>
-      <p style="margin:6px 0 0;">${escapeHtml(result.summary || "AI provider가 정상 응답했습니다.")}</p>
+      <strong>✅ AI 연결 성공</strong>
+      <p style="margin:6px 0 0;">선택하신 AI(${escapeHtml(providerLabel + modelLabel)})가 정상적으로 응답했어요.<br>이제 예산 심사 화면에서 'AI 검토' 기능을 사용할 수 있습니다.</p>
+      ${previewBlock}
+    </div>
+  `;
+}
+
+function renderTestFailure(error) {
+  const target = document.querySelector("[data-ai-test-result]");
+  if (!target) return;
+  const copy = FAILURE_COPY[error?.code] || FAILURE_FALLBACK;
+  target.innerHTML = `
+    <div class="notice notice-danger" style="padding:12px 14px;">
+      <strong>❌ ${escapeHtml(copy.title)}</strong>
+      <p style="margin:6px 0 0;">${escapeHtml(copy.detail)}</p>
     </div>
   `;
 }
@@ -127,20 +185,29 @@ try {
       const originalSettings = settings;
       const testResultEl = document.querySelector("[data-ai-test-result]");
       if (testResultEl) {
-        testResultEl.innerHTML = `<p class="empty">AI 연결을 테스트하는 중입니다...</p>`;
+        testResultEl.innerHTML = `<p class="empty">AI 연결을 확인하고 있어요. 잠시만 기다려 주세요…</p>`;
       }
 
-      await runWithErrorBoundary(async () => {
+      // 성공/실패 모두 결과 박스에 안내 카피로 표시한다(상단 빨간 에러 대신).
+      button.disabled = true;
+      const form = readForm();
+      try {
+        settings = await updateAiSettings({ ...form, enabled: true, api_key_configured: true }, user.id);
+        const result = await requestBudgetAiReview(sampleBudgetReviewPayload());
+        renderTestSuccess(result, form);
+        showToast("AI 연결 테스트가 성공했습니다.", { type: "success" });
+      } catch (error) {
+        console.error(error);
+        renderTestFailure(error);
+      } finally {
         try {
-          settings = await updateAiSettings({ ...readForm(), enabled: true, api_key_configured: true }, user.id);
-          const result = await requestBudgetAiReview(sampleBudgetReviewPayload());
-          renderTestResult(result);
-          showToast("AI 연결 테스트가 성공했습니다.", { type: "success" });
-        } finally {
           settings = await updateAiSettings(originalSettings, user.id);
           setForm(settings);
+        } catch (restoreError) {
+          console.error(restoreError);
         }
-      }, { button });
+        button.disabled = false;
+      }
     });
 
     document.querySelector("[data-ai-settings-form]").addEventListener("submit", async (event) => {

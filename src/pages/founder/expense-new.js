@@ -6,7 +6,7 @@ import {
   submitExpenseRequest,
   getExpenseDetail,
   getFounderDashboard,
-  getBudgetDocumentRequirements,
+  getInheritedBudgetDocumentRequirements,
   getExpenseDocumentRequirements,
   uploadExpenseDocumentFile,
   deleteExpenseDocumentFile,
@@ -32,7 +32,7 @@ function matchesPhase(reqPhase, phase) {
 // 선택한 예산 비목의 활성 첨부서류 요구사항을 단계별로 조회한다(미리보기·검증용).
 async function activeRequirementsFor(budgetId, phase) {
   if (!budgetId) return [];
-  const reqs = await getBudgetDocumentRequirements(budgetId);
+  const reqs = await getInheritedBudgetDocumentRequirements(budgetId);
   return (reqs || []).filter((r) => r.active && matchesPhase(r.phase, phase));
 }
 

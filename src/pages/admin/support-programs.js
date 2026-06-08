@@ -79,6 +79,14 @@ function SupportProgramList(items) {
               <span>표시 순서</span>
               <input type="number" value="${Number(item.sort_order || 0)}" data-program-sort="${escapeHtml(item.id)}" aria-label="표시 순서">
             </label>
+            <label>
+              <span>협약 시작일</span>
+              <input type="date" value="${escapeHtml(item.agreement_start_date || "")}" data-program-agreement-start="${escapeHtml(item.id)}" aria-label="협약 시작일">
+            </label>
+            <label>
+              <span>협약 종료일</span>
+              <input type="date" value="${escapeHtml(item.agreement_end_date || "")}" data-program-agreement-end="${escapeHtml(item.id)}" aria-label="협약 종료일">
+            </label>
           </div>
           <div class="actions">
             <button class="button small secondary icon-button" type="button" data-save-support-program="${escapeHtml(item.id)}" aria-label="저장" title="저장"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg></button>
@@ -131,6 +139,8 @@ try {
             await updateSupportProgram(id, {
               name: document.querySelector(`[data-program-name="${CSS.escape(id)}"]`).value.trim(),
               sort_order: document.querySelector(`[data-program-sort="${CSS.escape(id)}"]`).value,
+              agreement_start_date: document.querySelector(`[data-program-agreement-start="${CSS.escape(id)}"]`).value || null,
+              agreement_end_date: document.querySelector(`[data-program-agreement-end="${CSS.escape(id)}"]`).value || null,
             });
             supportPrograms = await getSupportPrograms();
             render();

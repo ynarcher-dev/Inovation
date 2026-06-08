@@ -7,6 +7,14 @@ const DEFAULT_MODEL_BY_PROVIDER = {
   anthropic: "claude-3-5-sonnet-latest",
 };
 
+// AI 호출 실패 시 원인을 식별할 수 있도록 code 를 붙인 Error 를 만든다.
+// (예: 테스트 화면이 code 별로 사용자 친화 카피를 매핑한다)
+function aiError(message, code) {
+  const error = new Error(message);
+  if (code) error.code = code;
+  return error;
+}
+
 function joinUrl(base, path) {
   return `${String(base || "").replace(/\/+$/, "")}/${String(path || "").replace(/^\/+/, "")}`;
 }
@@ -63,17 +71,20 @@ async function callEdgeFunction(url, body) {
       continue;
     }
     if (response.status === 401 || response.status === 403) {
-      throw new Error(data.error || "AI 기능을 사용할 권한이 없습니다. 관리자 계정으로 로그인했는지 확인해주세요.");
+      throw aiError(data.error || "AI 기능을 사용할 권한이 없습니다. 관리자 계정으로 로그인했는지 확인해주세요.", "auth");
     }
     if (response.status === 429) {
-      throw new Error(data.error || "요청이 너무 많습니다. 잠시 후 다시 시도해주세요.");
+      throw aiError(data.error || "요청이 너무 많습니다. 잠시 후 다시 시도해주세요.", "rate_limit");
     }
     if (response.status === 413 || response.status === 415) {
-      throw new Error(data.error || "첨부 파일 형식 또는 크기가 허용되지 않습니다.");
+      throw aiError(data.error || "첨부 파일 형식 또는 크기가 허용되지 않습니다.", "payload");
     }
-    throw new Error(data.error || "AI 요청에 실패했습니다.");
+    if (response.status === 502 || response.status === 503) {
+      throw aiError(data.error || "AI provider가 일시적으로 혼잡합니다. 잠시 후 다시 시도해주세요.", "overloaded");
+    }
+    throw aiError(data.error || "AI 요청에 실패했습니다.", "request_failed");
   }
-  throw new Error(lastData.error || "AI provider가 일시적으로 혼잡합니다. 잠시 후 다시 시도해주세요.");
+  throw aiError(lastData.error || "AI provider가 일시적으로 혼잡합니다. 잠시 후 다시 시도해주세요.", "overloaded");
 }
 
 function normalizeAiReviewResult(result = {}) {
@@ -109,15 +120,15 @@ function normalizeDocumentReviewResult(result = {}) {
 export async function requestBudgetAiReview(input = {}) {
   const settings = await getAiSettings();
   if (!settings.enabled) {
-    throw new Error("AI 기능이 비활성화되어 있습니다. AI 관리에서 기능 상태를 켜주세요.");
+    throw aiError("AI 기능이 비활성화되어 있습니다. AI 관리에서 기능 상태를 켜주세요.", "disabled");
   }
   if (!settings.api_key_configured) {
-    throw new Error("API Key 등록 상태가 미등록입니다. 선택한 provider의 Secret을 Supabase Edge Function에 등록한 뒤 AI 관리에서 등록됨으로 바꿔주세요.");
+    throw aiError("API Key 등록 상태가 미등록입니다. 선택한 provider의 Secret을 Supabase Edge Function에 등록한 뒤 AI 관리에서 등록됨으로 바꿔주세요.", "no_key");
   }
 
   const url = resolveEdgeFunctionUrl(settings.edge_function_url);
   if (!url) {
-    throw new Error("Supabase Edge Function URL을 입력해주세요. 예: /functions/v1/ai-review");
+    throw aiError("Supabase Edge Function URL을 입력해주세요. 예: /functions/v1/ai-review", "no_url");
   }
 
   const provider = settings.provider || "openai";
