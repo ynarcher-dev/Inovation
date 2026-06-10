@@ -6,7 +6,8 @@
 
 - `supabase/config.toml` 의 `verify_jwt = true` → 게이트웨이가 JWT 를 1차 검증한다. **절대 false 로 배포하지 않는다.**
 - 함수 코드도 `Authorization: Bearer <jwt>` 를 직접 검증하고(`auth.getUser`), `profiles.role` 을 확인한다.
-- 허용 역할은 `AI_ALLOWED_ROLES`(기본 `admin,super_admin`). 그 외 역할/미인증은 **401/403** 으로 차단.
+- 허용 역할은 `AI_ALLOWED_ROLES`(기본 `founder,admin,super_admin`). 그 외 역할/미인증은 **401/403** 으로 차단.
+- `founder`는 `document_review`, `document_batch_review`만 호출할 수 있으며 예산 심사·기준 추출은 관리자 역할만 가능하다.
 
 > ⚠️ 전환 의존성: 현재 프론트 인증은 mock(localStorage)이라 실제 access_token 이 없다.
 > AI 기능을 켜려면 **실제 Supabase Auth 전환(P0-03/T6)** 이 선행돼야 하며,
@@ -17,8 +18,9 @@
 | 항목 | 환경변수 | 기본값 |
 |------|----------|--------|
 | 허용 origin allowlist | `ALLOWED_ORIGINS` | (미설정 시 전체 허용 + 경고 로그) |
-| 호출 허용 역할 | `AI_ALLOWED_ROLES` | `admin,super_admin` |
+| 호출 허용 역할 | `AI_ALLOWED_ROLES` | `founder,admin,super_admin` |
 | base64 최대 길이 | `AI_MAX_BASE64_LEN` | `7000000` (~5MB) |
+| 일괄 요청 전체 base64 최대 길이 | `AI_MAX_REQUEST_BASE64_LEN` | `25000000` |
 | 허용 MIME | `AI_ALLOWED_MIME` | `application/pdf,image/png,image/jpeg,image/jpg,image/webp` |
 | 사용자별 분당 요청 | `AI_RATE_PER_MIN` | `10` |
 | provider/model allowlist | 코드 내 `MODEL_ALLOWLIST` | provider별 고정 목록 |
@@ -53,7 +55,7 @@ URL="https://<ref>.functions.supabase.co/ai-review"
 curl -i -X POST "$URL" -H "apikey: $ANON" -H "Content-Type: application/json" \
   -d '{"type":"budget_submission_review","payload":{"submission":{"items":[1]}}}'
 
-# 2) 권한 없음(founder JWT) → 403
+# 2) 권한 없음(허용 목록에 없는 역할 JWT) → 403
 curl -i -X POST "$URL" -H "Authorization: Bearer $FOUNDER_JWT" -H "apikey: $ANON" ...
 
 # 3) 과대 파일(>5MB base64) → 413 / 실행파일 MIME → 415

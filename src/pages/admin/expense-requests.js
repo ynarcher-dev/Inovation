@@ -1,9 +1,18 @@
-import { mountShell, setText, showError } from "../../app.js";
-import { getAdminDashboard } from "../../api.js";
+import { mountShell, setText, showError, showToast, runWithErrorBoundary } from "../../app.js";
+import {
+  getAdminDashboard,
+  getEvidenceFilenameSettings,
+  getExpenseVoucherSettings,
+  downloadExpenseEvidenceZip,
+  buildExpenseVoucherText,
+} from "../../api.js";
 import { requireRole } from "../../auth.js";
 import { ADMIN_REVIEW_STATUSES, EXPENSE_SEGMENTS, getExpenseSegment } from "../../domains/status.js";
 import { ExpenseTable } from "../../components/ExpenseTable.js";
+import { openVoucherTextModal } from "../../components/ExpenseVoucherModal.js";
 import { FilterToolbar, bindFilters, fillFilterSelect, readFilters } from "../../components/admin/FilterToolbar.js";
+import { createPaginatedList } from "../../components/admin/Pagination.js";
+import { escapeHtml } from "../../utils.js";
 
 // 예산 사용(지출) 검토 대기 상태 — 사전승인 검토 + 최종승인 검토
 const EXPENSE_PENDING_STATUSES = ADMIN_REVIEW_STATUSES;
@@ -18,20 +27,9 @@ const SEGMENT_OPTIONS = EXPENSE_SEGMENTS
 // 관리자에게 제출된 적이 있는(=현황 추적 대상) 지출인지. draft 는 제출 전이므로 제외.
 const isSubmittedToAdmin = (expense) => expense.status !== "draft";
 
-// 상단: 예산 사용 승인 (지출 사전/최종 승인 검토 대기 목록)
-//   하단 '전체 지출 현황'과 동일한 ExpenseTable 구조를 공유하고, 여기에만 '처리' 열을 덧붙인다.
-function renderExpenseApprovalSection(expenses) {
-  const pending = (expenses || []).filter((e) => EXPENSE_PENDING_STATUSES.includes(e.status));
-  const target = document.querySelector("[data-expense-approval-section]");
-
-  target.innerHTML = ExpenseTable(pending, {
-    admin: true,
-    hideChecklist: true,
-    emptyText: "검토 대기 중인 예산 사용 신청이 없습니다.",
-    action: (row) => `<a class="button small" href="${expenseDetailHref(row.id)}">검토하기</a>`,
-  });
-
-  target.querySelectorAll("tr[data-href]").forEach((row) => {
+// 표 행 클릭 → 상세 이동. 페이지 전환마다 다시 그려지므로 컨테이너 범위로 재바인딩한다.
+function bindRowNav(root) {
+  root.querySelectorAll("[data-href]").forEach((row) => {
     row.addEventListener("click", (event) => {
       if (event.target.closest("a, button")) return;
       window.location.href = row.dataset.href;
@@ -63,7 +61,34 @@ try {
   if (user) {
     const { expenses, companies, supportPrograms } = await getAdminDashboard();
     setText("[data-user-name]", user.profile.name);
-    renderExpenseApprovalSection(expenses);
+
+    // 증빙 ZIP 다운로드/지출결의 생성에 쓰는 전역 설정(좌측 '예산사용 정리기'에서 관리).
+    //   로드 실패해도 기본값으로 동작하도록 한다.
+    let evidenceFilenameSettings = { template: "{기업명}_{첨부분류}_{신청제목}_{총액}", seq_start: 1, seq_pad: 1 };
+    try { evidenceFilenameSettings = await getEvidenceFilenameSettings(); } catch (e) { /* 기본값 유지 */ }
+    let voucherSettings = { template: "" };
+    try { voucherSettings = await getExpenseVoucherSettings(); } catch (e) { /* 기본값 유지 */ }
+
+    // 지출 행에는 company_name 만 있고 대표자명은 없으므로 기업 목록에서 보강한다(지출결의 {대표자} 토큰용).
+    const companyById = new Map((companies || []).map((c) => [c.id, c]));
+    const enrichExpense = (row) => ({
+      ...row,
+      company_name: row.company_name || companyById.get(row.company_id)?.name || "",
+      representative_name: companyById.get(row.company_id)?.representative_name || "",
+    });
+
+    // 상단: 예산 사용 승인 (검토 대기 목록) — 전체 현황과 동일 ExpenseTable + '처리' 열.
+    const pendingList = createPaginatedList({
+      container: document.querySelector("[data-expense-approval-section]"),
+      renderItems: (rows) => ExpenseTable(rows, {
+        admin: true,
+        hideChecklist: true,
+        emptyText: "검토 대기 중인 예산 사용 신청이 없습니다.",
+        action: (row) => `<a class="button small" href="${expenseDetailHref(row.id)}">검토하기</a>`,
+      }),
+      onRendered: bindRowNav,
+    });
+    pendingList.setItems((expenses || []).filter((e) => EXPENSE_PENDING_STATUSES.includes(e.status)));
 
     // 지출에는 참가 사업 id 가 직접 없으므로 기업 → 사업 매핑으로 보정한다.
     const programByCompany = new Map((companies || []).map((c) => [c.id, c.support_program_id]));
@@ -71,7 +96,6 @@ try {
 
     // 하단: 전체 지출 신청 현황 (처리 이력 추적)
     const toolbar = document.querySelector("[data-expense-toolbar]");
-    const listTarget = document.querySelector("[data-expense-all]");
     toolbar.innerHTML = FilterToolbar({
       search: { placeholder: "기업명 · 신청 제목 · 예산 항목 검색", ariaLabel: "지출 신청 검색" },
       selects: [
@@ -82,6 +106,54 @@ try {
     });
     fillFilterSelect(toolbar, "program", (supportPrograms || []).map((p) => ({ value: p.id, label: p.name })));
 
+    const allContainer = document.querySelector("[data-expense-all]");
+    const allList = createPaginatedList({
+      container: allContainer,
+      // 처리 열에 '증빙 다운로드'(ZIP) + '지출결의'(텍스트) 버튼을 둔다(기업 상세 현황표와 동일).
+      renderItems: (rows) => ExpenseTable(rows, {
+        admin: true,
+        hideChecklist: true,
+        actionLabel: "처리",
+        action: (row) =>
+          `<div class="row-action-stack">
+            <button class="button small secondary" type="button" data-evidence-zip="${escapeHtml(row.id)}">증빙 다운로드</button>
+            <button class="button small secondary" type="button" data-voucher-text="${escapeHtml(row.id)}">지출결의</button>
+          </div>`,
+      }),
+      onRendered: bindRowNav,
+    });
+
+    // 증빙 다운로드/지출결의 버튼은 컨테이너에 1회 위임 바인딩한다(페이지 전환으로 표가 다시 그려져도 유지).
+    allContainer.addEventListener("click", async (e) => {
+      const zipBtn = e.target.closest("[data-evidence-zip]");
+      if (zipBtn) {
+        const expense = enrichExpense((expenses || []).find((r) => r.id === zipBtn.dataset.evidenceZip) || { id: zipBtn.dataset.evidenceZip });
+        await runWithErrorBoundary(async () => {
+          const count = await downloadExpenseEvidenceZip(expense, {
+            template: evidenceFilenameSettings.template,
+            seqConfig: { seq_start: evidenceFilenameSettings.seq_start, seq_pad: evidenceFilenameSettings.seq_pad },
+          });
+          showToast(
+            count === 0 ? "첨부된 증빙서류가 없습니다." : `증빙서류 ${count}건을 ZIP으로 내려받았습니다.`,
+            { type: count === 0 ? "info" : "success" },
+          );
+        }, { button: zipBtn });
+        return;
+      }
+
+      const voucherBtn = e.target.closest("[data-voucher-text]");
+      if (voucherBtn) {
+        const expense = enrichExpense((expenses || []).find((r) => r.id === voucherBtn.dataset.voucherText) || { id: voucherBtn.dataset.voucherText });
+        await runWithErrorBoundary(async () => {
+          const text = await buildExpenseVoucherText(expense, {
+            voucherTemplate: voucherSettings.template,
+            filenameSettings: evidenceFilenameSettings,
+          });
+          openVoucherTextModal({ title: expense.title, text });
+        }, { button: voucherBtn });
+      }
+    });
+
     const renderAll = () => {
       const { term, selects, dateFrom, dateTo } = readFilters(toolbar);
       const filtered = (expenses || []).filter((e) =>
@@ -91,13 +163,7 @@ try {
         && inDateRange(e, dateFrom, dateTo)
         && matchesSearch(e, term)
       );
-      listTarget.innerHTML = ExpenseTable(filtered, { admin: true, hideChecklist: true, reserveActionColumn: true });
-      listTarget.querySelectorAll("[data-href]").forEach((row) => {
-        row.addEventListener("click", (event) => {
-          if (event.target.closest("a, button")) return;
-          window.location.href = row.dataset.href;
-        });
-      });
+      allList.setItems(filtered);
     };
 
     bindFilters(toolbar, renderAll);

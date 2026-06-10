@@ -85,8 +85,19 @@
           </div>
 
           <div class="field">
+            <label for="ai-review-instructions">공통 추가 검토 지침</label>
+            <textarea id="ai-review-instructions" data-ai-review-instructions rows="7" maxlength="4000"
+              placeholder="예: 견적서와 계약서의 공급가액이 일치하는지 확인하고, 발행일자가 협약 기간 밖이면 보완 필요로 판단하세요."></textarea>
+            <p class="muted" style="margin:0;">
+              예산 심사와 지출 증빙 AI 검토에 공통으로 추가 적용됩니다. 사업별 기준 문서보다 상위의 운영 지침이므로 구체적인 확인 항목과 판단 방식을 작성하세요.
+              <span data-ai-review-instructions-count>0 / 4000자</span>
+            </p>
+          </div>
+
+          <div class="field">
             <label for="ai-memo">운영 메모</label>
             <textarea id="ai-memo" data-ai-memo rows="4" placeholder="비용 확인 후 활성화, 특정 기간만 사용 등"></textarea>
+            <p class="muted" style="margin:0;">운영 메모는 관리자 참고용이며 AI 판단에는 전달되지 않습니다.</p>
           </div>
 
           <div class="actions">

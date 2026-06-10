@@ -13,13 +13,10 @@ import {
   fetchStoredFileBase64,
   downloadExpenseEvidenceZip,
   getEvidenceFilenameSettings,
-  updateEvidenceFilenameSettings,
   getExpenseVoucherSettings,
-  updateExpenseVoucherSettings,
   buildExpenseVoucherText,
 } from "../../api.js";
-import { openEvidenceFilenameModal } from "../../components/EvidenceFilenameModal.js";
-import { openExpenseVoucherSettingsModal, openVoucherTextModal } from "../../components/ExpenseVoucherModal.js";
+import { openVoucherTextModal } from "../../components/ExpenseVoucherModal.js";
 import { BudgetTreeView } from "../../components/BudgetTreeView.js";
 import { BudgetSubmissionDiff } from "../../components/budget/BudgetSubmissionDiff.js";
 import { BudgetHistoryTable } from "../../components/budget/BudgetHistoryTable.js";
@@ -71,37 +68,8 @@ try {
       // 설정 조회 실패 시 기본값(빈 template → 엔진이 기본 양식 사용) 유지.
     }
 
-    // 미리보기/생성에 쓸 샘플 신청(회사명·대표자 보강).
-    const sampleExpenseForModal = () =>
-      detail.expenses?.[0]
-        ? {
-            ...detail.expenses[0],
-            company_name: detail.company?.name,
-            representative_name: detail.company?.representative_name,
-          }
-        : null;
-
-    document.getElementById("btn-evidence-filename-rule")?.addEventListener("click", () => {
-      openEvidenceFilenameModal({
-        settings: evidenceFilenameSettings,
-        sampleExpense: sampleExpenseForModal(),
-        onSave: async (payload) => {
-          evidenceFilenameSettings = await updateEvidenceFilenameSettings(payload);
-          showToast("증빙 파일명 규칙을 저장했습니다.", { type: "success" });
-        },
-      });
-    });
-
-    document.getElementById("btn-voucher-rule")?.addEventListener("click", () => {
-      openExpenseVoucherSettingsModal({
-        settings: voucherSettings,
-        sampleExpense: sampleExpenseForModal(),
-        onSave: async (payload) => {
-          voucherSettings = await updateExpenseVoucherSettings(payload);
-          showToast("지출결의 양식을 저장했습니다.", { type: "success" });
-        },
-      });
-    });
+    // 증빙 파일명·지출결의 양식 설정은 좌측 메뉴의 '예산사용 정리기'(expense-tools)로 분리했다.
+    // 여기서는 위에서 로드한 설정값을 증빙 ZIP 다운로드/지출결의서 생성에만 사용한다.
 
     const budgetTitleById = () => new Map((detail.programBudgets || []).map((budget) => [budget.id, budget]));
     const budgetPathOf = (budgetId) => {
@@ -196,6 +164,11 @@ try {
       if (["success", "ok", "low"].includes(level)) return "notice-success";
       return "notice-info";
     };
+    const AI_DECISION_LABELS = {
+      approve: "승인 검토 가능",
+      revision_requested: "보완요청 권고",
+      needs_review: "관리자 직접 확인 필요",
+    };
     // draftApplied=true 면 보완요청 코멘트 초안이 코멘트 입력란에 이미 채워졌으므로, 응답 패널에는 중복 표기하지 않는다.
     const renderBudgetAiReviewResult = (result, { draftApplied = false } = {}) => {
       if (!aiBudgetReviewResultEl) return;
@@ -204,7 +177,7 @@ try {
         aiBudgetReviewResultEl.innerHTML = `
           <div class="notice notice-warning" style="padding:12px 14px;">
             <strong>AI 검토 실패</strong>
-            <p style="margin:6px 0 0;">${escapeHtml(result.summary || "AI 응답을 구조화하지 못했습니다. 다시 시도하거나 관리자가 직접 검토해주세요.")}</p>
+            <p style="margin:6px 0 0;">${escapeHtml(result.summary || "AI 검토 결과를 정리하지 못했어요. 다시 시도하거나, 아래 원문을 참고해 직접 확인해주세요.")}</p>
             ${result.raw_text ? `
               <details style="margin-top:8px;">
                 <summary style="cursor:pointer;">AI 원문 보기</summary>
@@ -222,8 +195,9 @@ try {
         : `<div class="notice notice-success" style="margin-top:8px; padding:12px 14px;">특이 위험 항목이 감지되지 않았습니다.</div>`;
       aiBudgetReviewResultEl.innerHTML = `
         <div class="notice notice-info" style="padding:12px 14px;">
-          <strong>AI 제안: ${escapeHtml(result.decision_suggestion || "needs_review")}</strong>
+          <strong>AI 제안: ${escapeHtml(AI_DECISION_LABELS[result.decision_suggestion] || "관리자 직접 확인 필요")}</strong>
           ${result.summary ? `<p style="margin:6px 0 0;">${escapeHtml(result.summary)}</p>` : ""}
+          ${result.provider || result.model ? `<p class="muted caption" style="margin:6px 0 0;">실행 모델: ${escapeHtml([result.provider, result.model].filter(Boolean).join(" / "))}</p>` : ""}
         </div>
         ${risks}
         ${result.revision_comment_draft && !draftApplied ? `
@@ -417,6 +391,7 @@ try {
         if (aiSlot && aiBudgetReviewBtn) aiSlot.appendChild(aiBudgetReviewBtn);
         const aiResultSlot = detailEl.querySelector("[data-ai-review-result-slot]");
         if (aiResultSlot && aiBudgetReviewResultEl) aiResultSlot.appendChild(aiBudgetReviewResultEl);
+        if (actionsEl) actionsEl.style.display = "flex";
         reviewButtons.forEach((b) => (b.disabled = false));
         if (commentInput) commentInput.disabled = false;
         if (aiBudgetReviewBtn) aiBudgetReviewBtn.disabled = false;
@@ -432,6 +407,8 @@ try {
       } else {
         const status = detail.company.budget_status || "not_submitted";
         detailEl.innerHTML = `<p class="empty">현재 검토할 예산 제출안이 없습니다. (예산안 상태: ${escapeHtml(getBudgetStatusLabel(status))})</p>`;
+        // 검토할 제출안이 없으면 코멘트 입력란·승인/보완요청 버튼 영역 자체를 숨긴다.
+        if (actionsEl) actionsEl.style.display = "none";
         reviewButtons.forEach((b) => (b.disabled = true));
         if (commentInput) commentInput.disabled = true;
         // 검토할 제출안이 없으면 슬롯이 없으므로 AI 버튼/응답 패널을 DOM에서 분리해 숨긴다(JS 참조는 유지).
@@ -508,7 +485,7 @@ try {
         }
         renderBudgetAiReviewResult(result, { draftApplied });
         showToast("AI 검토가 완료되었습니다.", { type: "success" });
-      }, { button: e.currentTarget });
+      }, { button: e.currentTarget, loadingText: "검토 중…" });
     });
 
     // 계정 가입 승인/반려: 처리 후 상세를 다시 불러와 현황을 갱신한다.

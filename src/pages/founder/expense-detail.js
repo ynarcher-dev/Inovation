@@ -6,6 +6,7 @@ import {
   getExpenseDocumentRequirements,
   uploadExpenseDocumentFile,
   deleteExpenseDocumentFile,
+  requestAiDocumentReview,
   requestAiBatchDocumentReview,
   setExpenseDocumentUserReview,
   validateRequiredDocuments,
@@ -100,8 +101,18 @@ try {
           const { reviewed } = await requestAiBatchDocumentReview(id, phase);
           await renderDocPanels();
           if (!reviewed) showToast("AI검토할 업로드 파일이 없습니다.", { type: "info" });
-        }, { button: e.currentTarget });
+        }, { button: e.currentTarget, loadingText: "일괄 검토 중…" });
       });
+
+      // 파일별 AI검토: 교체하거나 보완한 문서만 빠르게 다시 확인한다.
+      container.querySelectorAll("[data-doc-review]").forEach((btn) =>
+        btn.addEventListener("click", async () => {
+          await runWithErrorBoundary(async () => {
+            await requestAiDocumentReview(btn.dataset.docReview);
+            await renderDocPanels();
+            showToast("파일 AI검토가 완료되었습니다.", { type: "success" });
+          }, { button: btn, loadingText: "검토 중…" });
+        }));
 
       container.querySelectorAll("[data-doc-open]").forEach((btn) =>
         btn.addEventListener("click", async () => {
@@ -112,7 +123,7 @@ try {
           }, { button: btn });
         }));
 
-      // AI검토 결과 모달: 행의 점/버튼에서 호출. 보완 필요 건은 '이상없음' 소명도 여기서 처리.
+      // AI검토 결과 모달: 행의 점/버튼에서 호출. 보완 필요 건은 신청자 소명도 여기서 처리.
       const editable = isDocumentPhaseEditable(expense.status, phase);
       container.querySelectorAll("[data-doc-ai-comment]").forEach((btn) =>
         btn.addEventListener("click", () => {
@@ -209,7 +220,23 @@ try {
               return;
             }
           }
-          const confirmed = await showConfirm(`${label} 신청을 진행하시겠습니까? 제출 후에는 관리자 검토가 시작됩니다.`, {
+          let aiWarning = "";
+          if (phase && aiSettings.enabled) {
+            const requirements = (await getExpenseDocumentRequirements(id, phase)) || [];
+            const reviewable = requirements.filter((req) => req.ai_review_enabled && req.file);
+            const incomplete = reviewable.filter((req) =>
+              !req.file.ai_review_status
+              || ["not_requested", "pending", "failed"].includes(req.file.ai_review_status));
+            const unresolved = reviewable.filter((req) =>
+              req.file.ai_review_status === "needs_revision" && !req.file.cleared);
+            if (incomplete.length || unresolved.length) {
+              const parts = [];
+              if (incomplete.length) parts.push(`AI 검토 미완료 ${incomplete.length}건`);
+              if (unresolved.length) parts.push(`AI 보완 필요 ${unresolved.length}건`);
+              aiWarning = `\n\n주의: ${parts.join(", ")}이 있습니다. 제출은 가능하지만 관리자 검토에서 보완 요청될 수 있습니다.`;
+            }
+          }
+          const confirmed = await showConfirm(`${label} 신청을 진행하시겠습니까? 제출 후에는 관리자 검토가 시작됩니다.${aiWarning}`, {
             title: `${label} 신청`,
             confirmText: "신청",
             cancelText: "취소",

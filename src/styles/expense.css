@@ -118,6 +118,10 @@
 }
 .amount-select__option:hover,
 .amount-select__option[aria-selected="true"] { background: var(--surface-muted); }
+/* 키보드 화살표로 이동 중인 활성 항목 — 선택(aria-selected)과 구분되도록 테두리 링을 준다. */
+.amount-select__option.is-active { background: var(--surface-muted); box-shadow: inset 0 0 0 2px var(--primary); }
+/* activedescendant 로 강조를 그리므로 리스트 자체의 기본 포커스 아웃라인은 숨긴다. */
+.amount-select__list:focus { outline: none; }
 .amount-select__path {
   flex: 1;
   min-width: 0;
@@ -183,12 +187,12 @@
 .checklist-status.doc-verified { color: var(--success); }
 .checklist-status.doc-rejected { color: var(--danger); }
 
-/* 2줄: 동작 영역 */
+/* 첨부 완료: 첫 줄은 파일, 둘째 줄은 파일 동작으로 분리한다. */
 .doc-item-foot {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
   min-width: 0;
 }
 /* 미제출: 하단 풀폭 버튼 — 차분한 아웃라인 */
@@ -303,39 +307,51 @@
 }
 /* 제출 완료: 파일명 + 수정/삭제 텍스트 버튼 */
 .doc-file-name {
-  flex: 1 1 auto;
-  display: inline-flex;
+  width: 100%;
+  display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-muted, #f9fafb);
   font-size: var(--text-sm);
-  font-weight: 500;
+  font-weight: 600;
   color: var(--text);
+  box-sizing: border-box;
 }
 .doc-file-label {
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  line-height: 1.45;
 }
-.doc-file-icon { flex: none; opacity: 0.6; }
+.doc-file-icon { flex: none; opacity: 0.7; }
 .doc-file-empty { color: var(--muted); }
 .doc-file-actions {
-  flex: none;
-  display: flex;
-  align-items: center;
-  gap: 4px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(64px, 1fr));
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
 }
 .doc-file-btn {
-  border: none;
-  background: none;
-  padding: 4px 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 36px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  padding: 6px 8px;
   font: inherit;
   font-size: var(--text-sm);
   font-weight: 600;
   color: var(--muted);
   cursor: pointer;
   border-radius: 6px;
+  white-space: nowrap;
+  box-sizing: border-box;
 }
 .doc-file-btn:hover { color: var(--text); background: var(--surface-muted); }
 .doc-file-btn.is-danger:hover { color: var(--danger); background: #fef2f2; }
@@ -369,6 +385,11 @@
 }
 .modal {
   width: min(560px, 100%);
+  /* 내용이 많은 모달(예: '지출결의 정리기')이 뷰포트를 넘기면
+     백드롭(place-items:center + position:fixed)에서 위·아래가 잘리고 스크롤도 안 되므로,
+     높이를 뷰포트로 제한하고 내부에서 스크롤되도록 한다. (백드롭 padding 20px*2 = 40px) */
+  max-height: calc(100vh - 40px);
+  overflow-y: auto;
   background: #fff;
   border-radius: var(--radius);
   border: 1px solid var(--line);
@@ -455,6 +476,13 @@
 .ai-dot-danger { background: var(--danger, #dc2626); }
 .ai-dot-info { background: var(--primary, #2563eb); }
 .ai-dot-neutral { background: var(--muted); }
+.doc-file-btn.is-ai {
+  color: var(--primary, #2563eb);
+  border-color: color-mix(in srgb, var(--primary, #2563eb) 35%, var(--line));
+}
+.doc-file-btn.is-ai:hover {
+  background: color-mix(in srgb, var(--primary, #2563eb) 8%, transparent);
+}
 /* AI 검토 결과 바 — 파일명 행과 분리된 별도 줄. 결과에 따라 박스 색을 바꾼다. */
 .ai-review-bar {
   margin-top: 8px;
@@ -541,6 +569,42 @@
   color: var(--text);
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+.ai-modal-findings,
+.ai-modal-audit {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.ai-modal-findings h3,
+.ai-modal-audit h3 {
+  margin: 0 0 10px;
+  font-size: 0.95rem;
+}
+
+.ai-modal-finding {
+  padding: 10px 0;
+}
+
+.ai-modal-finding + .ai-modal-finding {
+  border-top: 1px solid var(--line);
+}
+
+.ai-modal-finding .badge {
+  margin-left: 8px;
+}
+
+.ai-modal-finding p,
+.ai-modal-audit ul {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.ai-modal-audit ul {
+  padding-left: 18px;
 }
 /* expense-new 필요 서류 미리보기 */
 .doc-preview-list { list-style: none; margin: 12px 0 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }

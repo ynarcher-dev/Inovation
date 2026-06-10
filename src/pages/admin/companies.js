@@ -4,6 +4,7 @@ import { requireRole } from "../../auth.js";
 import { escapeHtml, formatCurrency, formatDate } from "../../utils.js";
 import { getRound1StatusLabel, getRound2StatusLabel, isChangeStatus } from "../../domains/budget/budget-status.js";
 import { FilterToolbar, bindFilters, fillFilterSelect, readFilters } from "../../components/admin/FilterToolbar.js";
+import { createPaginatedList } from "../../components/admin/Pagination.js";
 
 // 예산 승인 완료로 보는 상태
 const BUDGET_APPROVED_STATUSES = ["budget_approved", "change_approved"];
@@ -146,8 +147,25 @@ try {
       (dashboard.supportPrograms || []).map((p) => ({ value: p.id, label: p.name }))
     );
 
+    setText("[data-user-name]", user.profile.name);
+
+    // 행 클릭 → 상세 이동. 페이지 전환마다 다시 그려지므로 컨테이너 범위로 재바인딩한다.
+    const bindRows = (root) => {
+      root.querySelectorAll("[data-company-row]").forEach((row) => {
+        row.addEventListener("click", (event) => {
+          if (event.target.closest("a, button")) return;
+          window.location.href = `company-detail.html?id=${encodeURIComponent(row.dataset.companyId)}`;
+        });
+      });
+    };
+
+    const list = createPaginatedList({
+      container,
+      renderItems: (rows) => CompanyMonitorTable(rows),
+      onRendered: bindRows,
+    });
+
     const render = () => {
-      setText("[data-user-name]", user.profile.name);
       const { term, selects } = readFilters(toolbar);
       const filtered = dashboard.companies.filter((company) =>
         (selects.status === "all" || company.approval_status === selects.status)
@@ -156,14 +174,7 @@ try {
         && (selects.program === "all" || company.support_program_id === selects.program)
         && matchesSearch(company, term)
       );
-      container.innerHTML = CompanyMonitorTable(filtered);
-
-      container.querySelectorAll("[data-company-row]").forEach((row) => {
-        row.addEventListener("click", (event) => {
-          if (event.target.closest("a, button")) return;
-          window.location.href = `company-detail.html?id=${encodeURIComponent(row.dataset.companyId)}`;
-        });
-      });
+      list.setItems(filtered);
     };
 
     bindFilters(toolbar, render);

@@ -5,7 +5,7 @@ import { FounderExpenseStatusTable } from "../../components/FounderExpenseStatus
 import { BudgetTreeView } from "../../components/BudgetTreeView.js";
 import { BUDGET_APPROVED_STATUSES, EXPENSE_STATUS_ORDER, EXPENSE_SEGMENTS, getExpenseSegment, getStatusLabel, getStatusTone } from "../../domains/status.js";
 import { hasApprovedBudget, isBudgetPendingReview, isChangeStatus, founderBudgetBanners } from "../../domains/budget/budget-status.js";
-import { escapeHtml, formatCurrency, formatDate, formatNumber, parseNumber } from "../../utils.js";
+import { escapeHtml, formatCurrency, formatDate, formatMoneyInput, parseNumber } from "../../utils.js";
 import { AttachmentList } from "../../components/attachments/AttachmentList.js";
 import { BudgetHistoryTable } from "../../components/budget/BudgetHistoryTable.js";
 
@@ -18,18 +18,27 @@ try {
     const approvalNotice = document.querySelector("[data-approval-notice]");
     const newExpenseLink = document.querySelector("[data-new-expense-link]");
 
-    // Tabs switching
+    // Tabs switching — 활성 탭을 URL 해시(#tab=...)에 저장해 새로고침 후에도 같은 탭을 유지한다.
     const tabButtons = document.querySelectorAll(".tab-button");
     const tabContents = document.querySelectorAll(".tab-content");
+    const activateTab = (targetTab) => {
+      const btn = Array.from(tabButtons).find((b) => b.dataset.tab === targetTab);
+      if (!btn) return;
+      tabButtons.forEach((b) => b.classList.remove("active"));
+      tabContents.forEach((c) => c.classList.remove("active"));
+      btn.classList.add("active");
+      document.getElementById(targetTab)?.classList.add("active");
+    };
     tabButtons.forEach((btn) => {
       btn.addEventListener("click", () => {
-        const targetTab = btn.dataset.tab;
-        tabButtons.forEach((b) => b.classList.remove("active"));
-        tabContents.forEach((c) => c.classList.remove("active"));
-        btn.classList.add("active");
-        document.getElementById(targetTab)?.classList.add("active");
+        activateTab(btn.dataset.tab);
+        // 콘텐츠 요소 id 와 겹치지 않는 prefix(#tab=)를 써서 해시 변경 시 스크롤 점프를 막는다.
+        history.replaceState(null, "", `#tab=${btn.dataset.tab}`);
       });
     });
+    // 최초 진입 시 해시에 저장된 탭이 있으면 복원한다(없으면 HTML 기본 활성 탭 유지).
+    const savedTab = (location.hash.match(/^#tab=(.+)$/) || [])[1];
+    if (savedTab) activateTab(savedTab);
 
     // Recalculate allocation sums dynamically in editing mode
     const recalculateTreeSums = () => {
@@ -135,6 +144,40 @@ try {
       const container = document.getElementById("budget-tree-container");
       container.hidden = false;
 
+      // 작성 중 이탈/취소 보호: 예산 입력이 한 번이라도 바뀌면 dirty 로 표시한다.
+      // budget-form 은 정적 래퍼라 재진입 시 리스너가 누적되므로 나갈 때 teardownGuard 로 제거한다.
+      const budgetForm = document.getElementById("budget-form");
+      let treeDirty = false;
+      const markTreeDirty = () => { treeDirty = true; };
+      const onBeforeUnload = (event) => {
+        if (!treeDirty) return;
+        event.preventDefault();
+        event.returnValue = "";
+      };
+      const teardownGuard = () => {
+        budgetForm.removeEventListener("input", markTreeDirty);
+        budgetForm.removeEventListener("change", markTreeDirty);
+        window.removeEventListener("beforeunload", onBeforeUnload);
+      };
+      budgetForm.addEventListener("input", markTreeDirty);
+      budgetForm.addEventListener("change", markTreeDirty);
+      window.addEventListener("beforeunload", onBeforeUnload);
+
+      // 취소: 변경 내용이 있으면 확인 후 폐기하고, 가드를 해제한 뒤 초기 화면으로 돌아간다.
+      const cancelEdit = async () => {
+        if (treeDirty) {
+          const ok = await showConfirm("작성 중인 예산 내용을 취소하시겠습니까? 입력한 내용은 저장되지 않습니다.", {
+            title: "예산 작성 취소",
+            confirmText: "취소하고 나가기",
+            cancelText: "계속 작성",
+            tone: "danger",
+          });
+          if (!ok) return;
+        }
+        teardownGuard();
+        renderInitialState();
+      };
+
       // 비목별 감액 하한 = 이미 사용(승인/제출)된 지출. 승인 후 총 배정(1차+2차)이 이 값 이상이어야 한다(new.md §10.7).
       const leaves = collectLeaves(detail.budgetTree);
       const floorByLeafId = {};
@@ -221,14 +264,12 @@ try {
         const table = document.getElementById("budget-matrix-table");
         table?.addEventListener("input", (event) => {
           if (event.target.classList.contains("budget-alloc-input")) {
-            const cursorAtEnd = event.target.selectionStart === event.target.value.length;
-            event.target.value = formatNumber(event.target.value);
-            if (cursorAtEnd) event.target.setSelectionRange(event.target.value.length, event.target.value.length);
+            formatMoneyInput(event.target);
             recalcChangeSums();
           }
         });
 
-        document.getElementById("cancel-budget-btn").addEventListener("click", () => { renderInitialState(); });
+        document.getElementById("cancel-budget-btn").addEventListener("click", cancelEdit);
 
         document.getElementById("budget-form").onsubmit = async (event) => {
           event.preventDefault();
@@ -317,6 +358,7 @@ try {
             }
             showToast("예산 변경 요청이 제출되었습니다. 관리자 승인 전까지는 변경한 금액이 지출 가능 예산에 반영되지 않습니다.", { type: "success", duration: 5000 });
             detail = await getFounderDashboard();
+            teardownGuard();
             renderInitialState();
           }, { button: saveBtn });
           saveBtn.disabled = false;
@@ -356,16 +398,12 @@ try {
       const table = document.getElementById("budget-matrix-table");
       table?.addEventListener("input", (event) => {
         if (event.target.classList.contains("budget-alloc-input")) {
-          const cursorAtEnd = event.target.selectionStart === event.target.value.length;
-          event.target.value = formatNumber(event.target.value);
-          if (cursorAtEnd) {
-            event.target.setSelectionRange(event.target.value.length, event.target.value.length);
-          }
+          formatMoneyInput(event.target);
           recalculateTreeSums();
         }
       });
 
-      document.getElementById("cancel-budget-btn").addEventListener("click", () => { renderInitialState(); });
+      document.getElementById("cancel-budget-btn").addEventListener("click", cancelEdit);
 
       // onsubmit 할당으로 재진입 시 핸들러 중복 누적을 방지한다.
       document.getElementById("budget-form").onsubmit = async (event) => {
@@ -418,6 +456,7 @@ try {
           }
           showToast("예산안이 제출되었습니다. 관리자 승인 후 지출 신청이 가능합니다.", { type: "success", duration: 5000 });
           detail = await getFounderDashboard();
+          teardownGuard();
           renderInitialState();
         }, { button: saveBtn });
         saveBtn.disabled = false;

@@ -20,7 +20,7 @@ import { hasApprovedBudget } from "../../domains/budget/budget-status.js";
 import { FOUNDER_EDITABLE_STATUSES, COMMITTED_STATUSES, getSubmitDocumentPhase } from "../../domains/status.js";
 import { getExpenseTypesForBudgetCategory } from "../../domains/expense/rules-engine.js";
 import { renderDocumentPhasePanel, openAiReviewModal } from "../../components/expense/DocumentPhasePanel.js";
-import { escapeHtml, formatNumber, getQueryParam, parseNumber } from "../../utils.js";
+import { escapeHtml, formatMoneyInput, formatNumber, getQueryParam, parseNumber } from "../../utils.js";
 
 // 단계(phase) 매칭: 사전승인(pre)은 pre+both, 최종승인(final)은 final+both 서류.
 function matchesPhase(reqPhase, phase) {
@@ -125,40 +125,112 @@ function renderBusinessPlanOptions(items) {
 
   const trigger = dropdown.querySelector(".amount-select__trigger");
   const list = dropdown.querySelector(".amount-select__list");
+  const options = Array.from(list.querySelectorAll(".amount-select__option"));
+  // 리스트에 포커스를 줄 수 있게 하고, 활성 항목 표시(aria-activedescendant)용 id 를 부여한다.
+  list.setAttribute("tabindex", "-1");
+  options.forEach((option, i) => { option.id = `plan-opt-${i}`; });
 
   const syncTrigger = () => {
     const current = items.find((item) => item.id === select.value) || items[0];
     const { path, remaining } = planItemLabel(current);
     dropdown.querySelector("[data-trigger-path]").textContent = path;
     dropdown.querySelector("[data-trigger-amount]").textContent = `잔액 ${remaining}`;
-    list.querySelectorAll(".amount-select__option").forEach((option) => {
+    options.forEach((option) => {
       option.setAttribute("aria-selected", option.dataset.value === select.value ? "true" : "false");
     });
   };
 
-  const close = () => {
+  // 키보드 탐색 중 강조할 항목(시각 강조 + activedescendant)을 갱신한다.
+  let activeIndex = -1;
+  const highlight = (index) => {
+    activeIndex = index;
+    options.forEach((option, i) => option.classList.toggle("is-active", i === index));
+    if (options[index]) {
+      list.setAttribute("aria-activedescendant", options[index].id);
+      options[index].scrollIntoView({ block: "nearest" });
+    }
+  };
+  const indexOfSelected = () => Math.max(0, options.findIndex((o) => o.dataset.value === select.value));
+
+  const open = (start = "selected") => {
+    list.hidden = false;
+    trigger.setAttribute("aria-expanded", "true");
+    highlight(start === "last" ? options.length - 1 : indexOfSelected());
+    list.focus();
+  };
+  const close = ({ focusTrigger = false } = {}) => {
     list.hidden = true;
     trigger.setAttribute("aria-expanded", "false");
+    list.removeAttribute("aria-activedescendant");
+    options.forEach((option) => option.classList.remove("is-active"));
+    if (focusTrigger) trigger.focus();
+  };
+  const selectAt = (index) => {
+    const option = options[index];
+    if (!option) return;
+    select.value = option.dataset.value;
+    syncTrigger();
+    close({ focusTrigger: true });
+    select.dispatchEvent(new Event("change", { bubbles: true }));
   };
 
   trigger.addEventListener("click", () => {
-    const open = list.hidden;
-    list.hidden = !open;
-    trigger.setAttribute("aria-expanded", String(open));
+    if (list.hidden) open(); else close();
+  });
+  // 트리거에서 Enter/Space/방향키로 열기. preventDefault 로 버튼의 기본 클릭(중복 토글)을 막는다.
+  trigger.addEventListener("keydown", (event) => {
+    if (["ArrowDown", "ArrowUp", "Enter", " ", "Spacebar"].includes(event.key)) {
+      event.preventDefault();
+      open(event.key === "ArrowUp" ? "last" : "selected");
+    }
   });
 
-  list.querySelectorAll(".amount-select__option").forEach((option) => {
-    option.addEventListener("click", () => {
-      select.value = option.dataset.value;
-      syncTrigger();
-      close();
-      select.dispatchEvent(new Event("change", { bubbles: true }));
-    });
+  list.addEventListener("keydown", (event) => {
+    switch (event.key) {
+      case "ArrowDown":
+        event.preventDefault();
+        highlight(Math.min(options.length - 1, activeIndex + 1));
+        break;
+      case "ArrowUp":
+        event.preventDefault();
+        highlight(Math.max(0, activeIndex - 1));
+        break;
+      case "Home":
+        event.preventDefault();
+        highlight(0);
+        break;
+      case "End":
+        event.preventDefault();
+        highlight(options.length - 1);
+        break;
+      case "Enter":
+      case " ":
+      case "Spacebar":
+        event.preventDefault();
+        selectAt(activeIndex);
+        break;
+      case "Escape":
+        event.preventDefault();
+        close({ focusTrigger: true });
+        break;
+      case "Tab":
+        close();
+        break;
+      default:
+        break;
+    }
   });
 
-  document.addEventListener("click", (event) => {
-    if (!dropdown.contains(event.target)) close();
+  options.forEach((option, index) => {
+    option.addEventListener("click", () => selectAt(index));
+    // 마우스가 항목 위로 오면 키보드 활성 위치도 따라 맞춘다.
+    option.addEventListener("mousemove", () => { if (activeIndex !== index) highlight(index); });
   });
+
+  // 바깥 클릭 시 닫기. 재렌더 시 이전 핸들러를 제거해 document 리스너가 누적되지 않게 한다.
+  if (dropdown._outsideClick) document.removeEventListener("click", dropdown._outsideClick);
+  dropdown._outsideClick = (event) => { if (!dropdown.contains(event.target)) close(); };
+  document.addEventListener("click", dropdown._outsideClick);
 
   syncTrigger();
 }
@@ -201,8 +273,11 @@ try {
   mountShell();
   const user = await requireRole(["founder"]);
   if (user) {
-    const { budgetSummary, company } = await getFounderDashboard();
-    const aiSettings = await getAiSettings();
+    // 대시보드 데이터와 AI 설정은 서로 의존성이 없어 병렬로 가져온다(첫 로딩 단축).
+    const [{ budgetSummary, company }, aiSettings] = await Promise.all([
+      getFounderDashboard(),
+      getAiSettings(),
+    ]);
     if (company?.approval_status !== "approved" || !hasApprovedBudget(company?.budget_status)) {
       showToast("예산안 승인 완료 후 지출 신청을 생성할 수 있습니다.", { type: "warning" });
       setTimeout(() => { window.location.href = "dashboard.html"; }, 800);
@@ -330,7 +405,7 @@ try {
           const { reviewed } = await requestAiBatchDocumentReview(editId, phase);
           await renderDocSection();
           if (!reviewed) showToast("AI검토할 업로드 파일이 없습니다.", { type: "info" });
-        }, { button: e.currentTarget });
+        }, { button: e.currentTarget, loadingText: "일괄 검토 중…" });
       });
 
       container.querySelectorAll("[data-doc-open]").forEach((btn) =>
@@ -371,13 +446,40 @@ try {
     renderDocSection();
 
     const form = document.querySelector("#expense-form");
+
+    // 작성 중 이탈 경고: 입력이 한 번이라도 바뀌면 dirty 로 표시하고, 저장/이동 직전에 해제한다.
+    // 첨부 업로드는 즉시 서버에 저장되므로 dirty 대상이 아니며, 폼 텍스트/금액/항목 변경만 추적한다.
+    let formDirty = false;
+    const markDirty = () => { formDirty = true; };
+    form.addEventListener("input", markDirty);
+    form.addEventListener("change", markDirty);
+    // 누락 강조된 입력란은 값을 채우는 즉시 강조를 해제한다.
+    form.addEventListener("input", (event) => {
+      event.target.classList?.remove("input-invalid");
+    });
+    window.addEventListener("beforeunload", (event) => {
+      if (!formDirty) return;
+      event.preventDefault();
+      event.returnValue = "";
+    });
+
     document.querySelectorAll("[data-money-input]").forEach((input) => {
       input.value = formatNumber(input.value);
-      input.addEventListener("input", () => {
-        const cursorAtEnd = input.selectionStart === input.value.length;
-        input.value = formatNumber(input.value);
-        if (cursorAtEnd) input.setSelectionRange(input.value.length, input.value.length);
-      });
+      input.addEventListener("input", () => formatMoneyInput(input));
+    });
+
+    // 부가세 자동계산: 공급가액의 10%를 부가세에 채운다(수정 가능).
+    // 사용자가 부가세를 직접 입력하면 자동계산을 멈춰 수동 값을 보존한다.
+    // 자동으로 채울 때는 .value 만 직접 대입하므로 input 이벤트가 발생하지 않아 무한 루프가 없다.
+    const supplyInput = document.querySelector("#amount_supply");
+    const vatInput = document.querySelector("#vat_amount");
+    // 편집 모드 등 이미 부가세 값이 채워져 있으면 수동 입력으로 간주해 덮어쓰지 않는다.
+    let vatManuallyEdited = parseNumber(vatInput.value) > 0;
+    vatInput.addEventListener("input", () => { vatManuallyEdited = true; });
+    supplyInput.addEventListener("input", () => {
+      if (vatManuallyEdited) return;
+      vatInput.value = formatNumber(String(Math.round(parseNumber(supplyInput.value) * 0.1)));
+      vatInput.classList.remove("input-invalid");
     });
 
     form.addEventListener("submit", async (event) => {
@@ -393,10 +495,14 @@ try {
 
       // 제출 시에만 모든 항목이 입력됐는지 검증한다(임시저장은 일부만 채워도 허용).
       if (action === "submit") {
-        const missing = REQUIRED_FIELDS.find(({ id }) => !document.querySelector(`#${id}`).value.trim());
-        if (missing) {
-          showToast(`${missing.label}은(는) 필수 입력 항목입니다.`, { type: "warning" });
-          document.querySelector(`#${missing.id}`).focus();
+        // 누락된 필수 항목을 한 번에 모아 강조·안내한다(하나씩 채워 재제출하는 반복을 없앤다).
+        const missing = REQUIRED_FIELDS.filter(({ id }) => !document.querySelector(`#${id}`).value.trim());
+        REQUIRED_FIELDS.forEach(({ id }) => {
+          document.querySelector(`#${id}`).classList.toggle("input-invalid", missing.some((m) => m.id === id));
+        });
+        if (missing.length) {
+          showToast(`다음 필수 항목을 입력해주세요.\n- ${missing.map((m) => m.label).join("\n- ")}`, { type: "warning", duration: 5000 });
+          document.querySelector(`#${missing[0].id}`).focus();
           return;
         }
       }
@@ -447,6 +553,8 @@ try {
         } else {
           setPendingToast("임시저장되었습니다.", "info");
         }
+        // 저장이 끝났으므로 이탈 경고를 끄고 이동한다.
+        formDirty = false;
         window.location.href = `expense-detail.html?id=${encodeURIComponent(targetId)}`;
       }, { button: event.submitter });
     });

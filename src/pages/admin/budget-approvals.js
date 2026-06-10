@@ -4,6 +4,7 @@ import { requireRole } from "../../auth.js";
 import { getRound1StatusLabel, getRound2StatusLabel, isChangeStatus } from "../../domains/budget/budget-status.js";
 import { escapeHtml, formatCurrency } from "../../utils.js";
 import { FilterToolbar, bindFilters, fillFilterSelect, readFilters } from "../../components/admin/FilterToolbar.js";
+import { createPaginatedList } from "../../components/admin/Pagination.js";
 
 // 예산(예산안/변경) 검토 대기 상태
 const BUDGET_PENDING_STATUSES = ["budget_submitted", "change_submitted"];
@@ -81,17 +82,6 @@ function bindRowNavigation(container) {
   });
 }
 
-// 상단: 예산 승인/변경 (최초 예산안 · 변경 요청 검토 대기 목록) — 전체 현황과 동일 구조 + '처리' 열.
-function renderBudgetApprovalSection(companies) {
-  const pending = companies.filter((c) => BUDGET_PENDING_STATUSES.includes(c.budget_status));
-  const target = document.querySelector("[data-budget-approval-section]");
-  target.innerHTML = BudgetTable(pending, {
-    emptyText: "검토 대기 중인 예산 요청이 없습니다.",
-    action: (c) => `<a class="button small" href="${companyDetailHref(c.id)}">검토하기</a>`,
-  });
-  bindRowNavigation(target);
-}
-
 function matchesSearch(company, term) {
   if (!term) return true;
   return [company.name, company.representative_name]
@@ -107,10 +97,19 @@ try {
   if (user) {
     const { companies, supportPrograms } = await getAdminDashboard();
     setText("[data-user-name]", user.profile.name);
-    renderBudgetApprovalSection(companies);
+
+    // 상단: 예산 승인/변경 (검토 대기 목록) — 전체 현황과 동일 구조 + '처리' 열.
+    const pendingList = createPaginatedList({
+      container: document.querySelector("[data-budget-approval-section]"),
+      renderItems: (rows) => BudgetTable(rows, {
+        emptyText: "검토 대기 중인 예산 요청이 없습니다.",
+        action: (c) => `<a class="button small" href="${companyDetailHref(c.id)}">검토하기</a>`,
+      }),
+      onRendered: bindRowNavigation,
+    });
+    pendingList.setItems(companies.filter((c) => BUDGET_PENDING_STATUSES.includes(c.budget_status)));
 
     const toolbar = document.querySelector("[data-budget-toolbar]");
-    const listTarget = document.querySelector("[data-budget-all]");
     toolbar.innerHTML = FilterToolbar({
       search: { placeholder: "기업명 · 대표자 검색", ariaLabel: "기업 검색" },
       selects: [
@@ -121,6 +120,12 @@ try {
     });
     fillFilterSelect(toolbar, "program", (supportPrograms || []).map((p) => ({ value: p.id, label: p.name })));
 
+    const allList = createPaginatedList({
+      container: document.querySelector("[data-budget-all]"),
+      renderItems: (rows) => BudgetTable(rows, { reserveActionColumn: true }),
+      onRendered: bindRowNavigation,
+    });
+
     const renderAll = () => {
       const { term, selects } = readFilters(toolbar);
       const filtered = (companies || []).filter((c) =>
@@ -129,8 +134,7 @@ try {
         && (selects.program === "all" || c.support_program_id === selects.program)
         && matchesSearch(c, term)
       );
-      listTarget.innerHTML = BudgetTable(filtered, { reserveActionColumn: true });
-      bindRowNavigation(listTarget);
+      allList.setItems(filtered);
     };
 
     bindFilters(toolbar, renderAll);

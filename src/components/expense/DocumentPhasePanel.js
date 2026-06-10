@@ -1,6 +1,6 @@
 // 단계별(사전/최종) 첨부서류 패널 — 창업자 상세·관리자 상세 공용.
 // custom-document-requirements-plan.md §4.3(잠금/해금)·§4.4(AI검토 버튼)·§4.5(코멘트 위치) 구현.
-import { escapeHtml } from "../../utils.js";
+import { escapeHtml, formatDate } from "../../utils.js";
 
 // 파일 선택 드롭존 아이콘(feather upload) — 이모지 대신 라인 아이콘으로 통일.
 const UPLOAD_ICON = `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>`;
@@ -27,13 +27,13 @@ function summaryHtml(requirements, aiEnabled) {
   const reviewed = requirements.filter((r) => r.file);
   const cleared = reviewed.filter((r) => r.file.cleared).length;
   const passed = reviewed.filter((r) => r.file.ai_review_status === "passed" && !r.file.cleared).length;
-  // 신청자가 이상없음으로 소명한 건은 '보완 필요'에서 제외한다.
+  // 신청자가 소명한 건은 AI 보완 필요와 구분해 표시한다.
   const revision = reviewed.filter((r) => r.file.ai_review_status === "needs_revision" && !r.file.cleared).length;
   const notReviewed = reviewed.filter((r) => !r.file.ai_review_status || r.file.ai_review_status === "not_requested").length;
   const aiParts = [];
   if (passed) aiParts.push(`제출 가능 ${passed}건`);
   if (revision) aiParts.push(`보완 필요 ${revision}건`);
-  if (cleared) aiParts.push(`이상없음 처리 ${cleared}건`);
+  if (cleared) aiParts.push(`신청자 소명 ${cleared}건`);
   if (notReviewed) aiParts.push(`미검토 ${notReviewed}건`);
   return `
     <p class="doc-phase-summary">
@@ -43,7 +43,7 @@ function summaryHtml(requirements, aiEnabled) {
 }
 
 // AI검토 결과 바(§4.5) — 파일명 행과 분리해 별도 줄에 둔다.
-// 점·박스 색은 결과에 따라 바뀌고(미검토는 회색), 신청자가 이상없음 처리하면 파랑(info)으로 표시.
+// 점·박스 색은 결과에 따라 바뀌고(미검토는 회색), 신청자가 소명하면 파랑(info)으로 표시.
 // 검토 완료(코멘트 존재) 상태면 클릭 시 모달([data-doc-ai-comment]).
 function aiReviewBar(req, aiEnabled, mode) {
   const file = req.file;
@@ -51,8 +51,8 @@ function aiReviewBar(req, aiEnabled, mode) {
   const cleared = !!file.cleared;
   const tone = cleared ? "info" : aiMeta(file.ai_review_status).tone;
   // 관리자 화면에서는 창업가 결과임을 분명히 하기 위해 '신청자 AI검토'로 표기한다.
-  const head = cleared ? "신청자 확인" : (mode === "admin" ? "신청자 AI검토" : "AI검토 결과");
-  const status = cleared ? "이상없음" : aiMeta(file.ai_review_status).label;
+  const head = cleared ? "신청자 소명" : (mode === "admin" ? "신청자 AI검토" : "AI검토 결과");
+  const status = cleared ? "관리자 확인 필요" : aiMeta(file.ai_review_status).label;
   const dot = `<span class="ai-dot ai-dot-${tone}" aria-hidden="true"></span>`;
   const inner = `${dot}<span class="ai-review-bar-label">${head}</span><span class="ai-review-bar-status">${status}</span>`;
   if (file.ai_review_comment || cleared) {
@@ -86,6 +86,7 @@ export function openAiReviewModal({ req, mode, editable, source = "founder", onC
   const isAdminSource = source === "admin";
   const reviewStatus = isAdminSource ? (file.admin_ai_review_status || "not_requested") : file.ai_review_status;
   const reviewComment = isAdminSource ? (file.admin_ai_review_comment || "") : (file.ai_review_comment || "");
+  const checkResult = isAdminSource ? (file.admin_ai_check_result || {}) : (file.ai_check_result || {});
   const modalTitle = isAdminSource ? "관리자 AI검토 결과" : "AI검토 결과";
   const meta = aiMeta(reviewStatus);
   // 소명(cleared)·소명 액션은 창업가 1차 결과에만 해당한다.
@@ -95,18 +96,47 @@ export function openAiReviewModal({ req, mode, editable, source = "founder", onC
   const overrideSection = cleared
     ? `
       <div class="ai-modal-override is-cleared">
-        <div class="ai-modal-override-head"><span class="ai-dot ai-dot-info" aria-hidden="true"></span>신청자 확인 · 이상없음</div>
+        <div class="ai-modal-override-head"><span class="ai-dot ai-dot-info" aria-hidden="true"></span>신청자 소명 · 관리자 확인 필요</div>
         <p class="ai-modal-override-comment">${escapeHtml(file.user_review_comment || "")}</p>
-        ${canAct ? `<button class="button small secondary" type="button" data-ai-revert>이상없음 처리 취소</button>` : ""}
+        ${canAct ? `<button class="button small secondary" type="button" data-ai-revert>소명 취소</button>` : ""}
       </div>`
     : canAct
       ? `
         <div class="ai-modal-override">
-          <p class="muted caption" style="margin:0 0 8px">AI 검토가 착오라고 판단되면, 직접 확인한 내용을 사유로 남기고 이상없음으로 표시할 수 있습니다. 관리자 검토 시 함께 표시됩니다.</p>
+          <p class="muted caption" style="margin:0 0 8px">AI 검토가 착오라고 판단되면 확인 근거를 소명으로 남길 수 있습니다. 소명은 AI 결과를 삭제하지 않으며 관리자 확인이 필요합니다.</p>
           <textarea class="ai-modal-textarea" data-ai-comment placeholder="예: 견적서 하단에 발행일자와 공급가액이 정상 표기되어 있어 보완이 불필요합니다."></textarea>
-          <button class="button small" type="button" data-ai-clear>이상없음으로 표시</button>
+          <button class="button small" type="button" data-ai-clear>소명 등록</button>
         </div>`
       : "";
+
+  const findings = Array.isArray(checkResult.findings) ? checkResult.findings : [];
+  const findingsSection = findings.length
+    ? `<div class="ai-modal-findings">
+        <h3>세부 확인 항목</h3>
+        ${findings.map((finding) => `
+          <div class="ai-modal-finding">
+            <strong>${escapeHtml(finding.label || "확인 항목")}</strong>
+            <span class="badge badge-${finding.ok ? "success" : "warning"}">${finding.ok ? "일치" : "확인 필요"}</span>
+            ${finding.detail ? `<p>${escapeHtml(finding.detail)}</p>` : ""}
+          </div>`).join("")}
+      </div>`
+    : "";
+  // 판단 근거 정보(적용 기준·실행 모델·검토 규칙·추가 지침)는 창업가에게 노출하지 않는다(관리자 전용).
+  const auditItems = mode === "founder" ? [] : [
+    checkResult.criteria_title ? `적용 기준: ${checkResult.criteria_title}` : "적용 기준: 기본 검토",
+    checkResult.provider || checkResult.model
+      ? `실행 모델: ${[checkResult.provider, checkResult.model].filter(Boolean).join(" / ")}`
+      : "",
+    checkResult.reviewed_at ? `검토 시점: ${formatDate(checkResult.reviewed_at)}` : "",
+    checkResult.prompt_version ? `검토 규칙 버전: ${checkResult.prompt_version}` : "",
+    checkResult.review_instructions ? `추가 검토 지침: ${checkResult.review_instructions}` : "",
+  ].filter(Boolean);
+  const auditSection = auditItems.length
+    ? `<div class="ai-modal-audit">
+        <h3>판단 근거 정보</h3>
+        <ul>${auditItems.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>
+      </div>`
+    : "";
 
   const backdrop = document.createElement("div");
   backdrop.className = "modal-backdrop";
@@ -120,6 +150,8 @@ export function openAiReviewModal({ req, mode, editable, source = "founder", onC
         <button class="modal-close" type="button" aria-label="닫기">×</button>
       </div>
       <pre class="ai-review-comment">${escapeHtml(reviewComment)}</pre>
+      ${findingsSection}
+      ${auditSection}
       <p class="error" data-ai-error hidden></p>
       ${overrideSection}
     </section>`;
@@ -155,7 +187,7 @@ export function openAiReviewModal({ req, mode, editable, source = "founder", onC
     if (!comment.trim()) {
       const errEl = backdrop.querySelector("[data-ai-error]");
       errEl.hidden = false;
-      errEl.textContent = "이상없음 사유를 입력해주세요.";
+      errEl.textContent = "소명 사유를 입력해주세요.";
       return;
     }
     runAction(() => onClear(comment), event.currentTarget);
@@ -176,17 +208,31 @@ function requirementRowHtml(req, { editable, mode, aiEnabled }) {
 
   let body;
   if (file) {
-    // AI 검토는 단계별 일괄검토(패널 상단 버튼)로 수행한다. 행에는 AI검토 점·파일 동작만 둔다(§4.4 코멘트는 모달 분리).
     const fileEdit = mode === "founder" && editable
       ? `
         <button class="doc-file-btn" type="button" data-doc-replace="${escapeHtml(req.id)}">파일 교체</button>
         <button class="doc-file-btn is-danger" type="button" data-doc-delete="${escapeHtml(file.id)}">삭제</button>`
+      : "";
+    const reviewStatus = mode === "admin"
+      ? file.admin_ai_review_status
+      : file.ai_review_status;
+    const reviewDataAttr = mode === "admin"
+      ? "data-doc-admin-review"
+      : "data-doc-review";
+    const canReview = aiEnabled
+      && req.ai_review_enabled
+      && (mode === "admin" || editable);
+    const reviewAction = canReview
+      ? `<button class="doc-file-btn is-ai" type="button" ${reviewDataAttr}="${escapeHtml(file.id)}">${
+          reviewStatus && reviewStatus !== "not_requested" ? "AI 재검토" : "AI 검토"
+        }</button>`
       : "";
     body = `
       <div class="doc-item-foot">
         <span class="doc-file-name"><span class="doc-file-icon">📄</span><span class="doc-file-label">${escapeHtml(file.original_filename)}</span></span>
         <div class="doc-file-actions">
           ${fileEdit}
+          ${reviewAction}
           <button class="doc-file-btn" type="button" data-doc-open="${escapeHtml(file.id)}">다운로드</button>
         </div>
       </div>

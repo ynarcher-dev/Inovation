@@ -6,6 +6,7 @@ import {
   getExpenseDocumentRequirements,
   downloadStoredFile,
   getAiSettings,
+  requestAdminAiDocumentReview,
   requestAdminAiBatchDocumentReview,
 } from "../../api.js";
 import { StatusBadge } from "../../components/StatusBadge.js";
@@ -50,13 +51,22 @@ async function renderAdminDocPanels(expenseId, aiEnabled, user) {
         if (!req?.file) return;
         openAiReviewModal({ req, mode: "admin", editable: false, source: "admin" });
       }));
+    // 관리자 파일별 AI 재검토
+    container.querySelectorAll("[data-doc-admin-review]").forEach((btn) =>
+      btn.addEventListener("click", async () => {
+        await runWithErrorBoundary(async () => {
+          await requestAdminAiDocumentReview(btn.dataset.docAdminReview, user);
+          await renderPhase(def);
+          showToast("파일 AI 재검토가 완료되었습니다.", { type: "success" });
+        }, { button: btn, loadingText: "재검토 중…" });
+      }));
     // 2차: 관리자 AI 일괄 재검토
     container.querySelector("[data-doc-admin-batch-review]")?.addEventListener("click", async (e) => {
       await runWithErrorBoundary(async () => {
         const { reviewed } = await requestAdminAiBatchDocumentReview(expenseId, def.phase, user);
         await renderPhase(def);
         if (!reviewed) showToast("AI 재검토할 업로드 파일이 없습니다.", { type: "info" });
-      }, { button: e.currentTarget });
+      }, { button: e.currentTarget, loadingText: "일괄 재검토 중…" });
     });
   };
   for (const def of defs) await renderPhase(def);

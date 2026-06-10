@@ -20,7 +20,7 @@ async function getAuthToken() {
 }
 
 // S3 Presigned URL 요청 헬퍼
-async function requestPresignedUrl(action, filePath, mimeType) {
+async function requestPresignedUrl(action, filePath, mimeType, filename) {
   const token = await getAuthToken();
   const headers = {
     "Content-Type": "application/json",
@@ -33,7 +33,7 @@ async function requestPresignedUrl(action, filePath, mimeType) {
   const response = await fetch(CONFIG.s3FunctionUrl, {
     method: "POST",
     headers,
-    body: JSON.stringify({ action, filePath, mimeType }),
+    body: JSON.stringify({ action, filePath, mimeType, filename }),
   });
 
   const data = await response.json().catch(() => ({}));
@@ -71,8 +71,9 @@ export async function uploadFileToS3(file, filePath) {
 /**
  * S3 파일을 열람/다운로드하기 위한 Presigned GET URL을 발급받습니다.
  * @param {string} filePath S3 파일 경로 (Key)
+ * @param {string} [filename] 다운로드 시 사용할 파일명
  * @returns {Promise<string>} Presigned GET URL
  */
-export async function getS3DownloadUrl(filePath) {
-  return await requestPresignedUrl("download", filePath);
+export async function getS3DownloadUrl(filePath, filename) {
+  return await requestPresignedUrl("download", filePath, undefined, filename);
 }

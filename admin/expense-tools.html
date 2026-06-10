@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="ko">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>예산사용 정리기</title>
+  <link rel="stylesheet" href="../src/styles.css">
+  <style>
+    .tool-card { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+    .tool-card .tool-meta { flex: 1 1 320px; min-width: 0; }
+    .tool-card .tool-meta h2 { margin: 0 0 4px; }
+    .tool-card .tool-current { margin-top: 8px; font-size: 13px; color: #6b7280; }
+    .tool-card .tool-current code {
+      display: inline-block;
+      max-width: 100%;
+      overflow-wrap: anywhere;
+      background: #f3f4f6;
+      border-radius: 6px;
+      padding: 2px 8px;
+    }
+    .tool-card .tool-actions { flex: 0 0 auto; }
+  </style>
+</head>
+
+<body>
+  <div class="app-shell">
+    <aside class="sidebar"></aside>
+    <main class="main">
+      <div class="topbar">
+        <div>
+          <h1>예산사용 정리기</h1>
+          <p class="muted">증빙 다운로드 파일명과 지출결의서 양식을 설정합니다. 모든 기업·관리자에게 공통 적용됩니다.</p>
+        </div>
+      </div>
+      <p class="error" data-error hidden></p>
+
+      <section class="card">
+        <div class="tool-card">
+          <div class="tool-meta">
+            <h2>증빙 파일명 정리기</h2>
+            <p class="muted" style="margin:0;">증빙 다운로드 시 ZIP 안 파일명을 만들 규칙(토큰·순번)을 설정합니다.</p>
+            <p class="tool-current">현재 규칙: <code data-evidence-current>-</code></p>
+          </div>
+          <div class="tool-actions">
+            <button class="button" id="btn-evidence-filename-rule" type="button">설정</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="card" style="margin-top:16px;">
+        <div class="tool-card">
+          <div class="tool-meta">
+            <h2>지출결의 정리기</h2>
+            <p class="muted" style="margin:0;">지출결의서 텍스트 양식을 설정합니다. 신청별 지출결의서 생성에 사용됩니다.</p>
+            <p class="tool-current">현재 양식: <code data-voucher-current>-</code></p>
+          </div>
+          <div class="tool-actions">
+            <button class="button" id="btn-voucher-rule" type="button">설정</button>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+  <script type="module" src="../src/pages/admin/expense-tools.js"></script>
+</body>
+
+</html>

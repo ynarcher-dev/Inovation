@@ -325,7 +325,7 @@ export async function getAiSettings() {
     .select("*")
     .maybeSingle();
   if (error) throw error;
-  if (!data) return { enabled: false, provider: "openai", model: "gpt-4o" };
+  if (!data) return { enabled: false, provider: "openai", model: "gpt-4o", review_instructions: "" };
   // 테이블 컬럼 -> UI/mock 계약으로 매핑한다. model 은 openai_model 컬럼에 저장한다.
   return {
     ...data,
@@ -335,6 +335,7 @@ export async function getAiSettings() {
     api_key_configured: data.api_key_configured ?? false,
     edge_function_url: data.edge_function_url || "",
     api_key_hint: data.api_key_hint || "",
+    review_instructions: data.review_instructions || "",
     memo: data.memo || "",
   };
 }
@@ -350,6 +351,7 @@ export async function updateAiSettings(input) {
     api_key_configured: input.api_key_configured ?? false,
     edge_function_url: input.edge_function_url || "",
     api_key_hint: input.api_key_hint || "",
+    review_instructions: String(input.review_instructions || "").trim().slice(0, 4000),
     memo: input.memo || "",
     updated_at: new Date().toISOString(),
   };
@@ -848,28 +850,31 @@ export async function getFounderDashboard() {
 
   const program = company.support_programs;
 
-  // 2. 비목 템플릿 정보 조회
-  const { data: programBudgets } = await supabase
-    .from("support_program_budgets")
-    .select("*")
-    .eq("support_program_id", company.support_program_id);
-
-  // 3. 확정 배정액 목록 조회
-  const { data: allocations } = await supabase
-    .from("company_budget_allocations")
-    .select("*")
-    .eq("company_id", company.id);
-
-  // 4. 지출 신청 전체 목록 조회
-  const { data: expenses } = await supabase
-    .from("expense_requests")
-    .select("*")
-    .eq("company_id", company.id);
-
-  // 4-1. 관리자가 등록한 안내 및 유의사항(첨부파일 포함) — 사업개요 탭에서 노출한다.
-  const guidanceItems = company.support_program_id
-    ? await getGuidanceItems(company.support_program_id)
-    : [];
+  // 2~4. 비목 템플릿 / 확정 배정액 / 지출 신청 목록은 서로 의존성이 없어 병렬로 조회한다.
+  //   (직렬 await 누적으로 첫 배정 직후 등 화면 갱신 시 체감 로딩이 길어지던 것을 줄인다.)
+  // 4-1. 관리자가 등록한 안내 및 유의사항(첨부파일 포함, 사업개요 탭 노출)도 함께 병렬로 가져온다.
+  const [
+    { data: programBudgets },
+    { data: allocations },
+    { data: expenses },
+    guidanceItems,
+  ] = await Promise.all([
+    supabase
+      .from("support_program_budgets")
+      .select("*")
+      .eq("support_program_id", company.support_program_id),
+    supabase
+      .from("company_budget_allocations")
+      .select("*")
+      .eq("company_id", company.id),
+    supabase
+      .from("expense_requests")
+      .select("*")
+      .eq("company_id", company.id),
+    company.support_program_id
+      ? getGuidanceItems(company.support_program_id)
+      : Promise.resolve([]),
+  ]);
 
   // 5. 예산 제출 이력 + 파생 필드(검토 대기 제출안/라운드 트리/2차 상태 등) 일괄 구성.
   //    mock 제거(7a03da5) 때 사라졌던 pendingSubmission/round2Status/pendingBudgetTree 를 복원한다.
@@ -982,10 +987,13 @@ export async function submitFounderBudgetAllocations(companyId, inputAllocations
   if (cleanupErr) throw cleanupErr;
 
   // 기업 예산 상태 업데이트(스키마 chk_budget_status 허용값).
-  await supabase
+  //   이 쓰기가 RLS/제약으로 조용히 실패하면 founder 에겐 '제출 완료'로 보이지만 상태/배너가
+  //   안 바뀌는 '조용한 실패'가 된다. 위 insert/delete 와 동일하게 에러를 반드시 전파한다.
+  const { error: statusErr } = await supabase
     .from("companies")
     .update({ budget_status: submissionStatus })
     .eq("id", targetCompanyId);
+  if (statusErr) throw statusErr;
 
   return { ok: true, submissionId: sub.id };
 }
@@ -993,6 +1001,20 @@ export async function submitFounderBudgetAllocations(companyId, inputAllocations
 // ----------------------------------------------------
 // 7. 관리자 대시보드 (Admin Dashboard)
 // ----------------------------------------------------
+
+// Supabase 응답 기본 상한(1000행)을 넘겨 받기 위해 range 로 끝까지 나눠 fetch 한다.
+//   buildQuery(from, to): 매번 from~to 범위를 가진 select 쿼리를 "새로" 만들어 반환해야 한다(쿼리 객체는 재사용 불가).
+async function fetchAllRows(buildQuery, pageSize = 1000) {
+  const rows = [];
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await buildQuery(from, from + pageSize - 1);
+    if (error) throw error;
+    rows.push(...(data || []));
+    if (!data || data.length < pageSize) break; // 마지막 페이지(받은 수 < 페이지 크기)면 종료
+  }
+  return rows;
+}
+
 export async function getAdminDashboard() {
   const supabase = await getSupabase();
   const { profile } = await getMyProfile(supabase);
@@ -1034,11 +1056,14 @@ export async function getAdminDashboard() {
   // 지출 신청 전체 조회 (예산 사용 승인 화면의 검토 대기 목록 + 전체 현황 공용)
   let expenses = [];
   if (companyIds.length > 0) {
-    const { data: expenseRows, error: expErr } = await supabase
-      .from("expense_requests")
-      .select("*")
-      .in("company_id", companyIds);
-    if (expErr) throw expErr;
+    // 지출 신청은 기업 수 × 누적 건수라 1000행 상한에 걸릴 수 있어 range 로 끝까지 받는다.
+    const expenseRows = await fetchAllRows((from, to) =>
+      supabase
+        .from("expense_requests")
+        .select("*")
+        .in("company_id", companyIds)
+        .range(from, to)
+    );
     expenses = (expenseRows || []).map((e) => ({
       ...e,
       company_name: companyNameById.get(e.company_id) || "",
@@ -1196,35 +1221,38 @@ export async function getAdminCompanyDetail(companyId) {
     .single();
   if (compErr) throw compErr;
 
-  // 2. 예산 비목 템플릿
-  const { data: programBudgets } = await supabase
-    .from("support_program_budgets")
-    .select("*")
-    .eq("support_program_id", company.support_program_id);
+  // 2~5. 비목 템플릿 / 확정 배정 / 지출 신청 / 소속원은 서로 의존성이 없어 병렬로 조회한다.
+  //   (직렬 await 누적으로 기업 상세 페이지 첫 로딩이 길어지던 것을 줄인다.)
+  const [
+    { data: programBudgets },
+    { data: allocations },
+    { data: expenseRows },
+    { data: members },
+  ] = await Promise.all([
+    supabase
+      .from("support_program_budgets")
+      .select("*")
+      .eq("support_program_id", company.support_program_id),
+    supabase
+      .from("company_budget_allocations")
+      .select("*")
+      .eq("company_id", companyId),
+    supabase
+      .from("expense_requests")
+      .select("*")
+      .eq("company_id", companyId),
+    supabase
+      .from("company_members")
+      .select("*, profiles(*)")
+      .eq("company_id", companyId),
+  ]);
 
-  // 3. 확정 배정 예산
-  const { data: allocations } = await supabase
-    .from("company_budget_allocations")
-    .select("*")
-    .eq("company_id", companyId);
-
-  // 4. 지출 신청 전체
-  const { data: expenseRows } = await supabase
-    .from("expense_requests")
-    .select("*")
-    .eq("company_id", companyId);
   // 지출 신청에 예산 항목(비목 단계 경로) 라벨을 붙인다(예산 사용 현황/검토 표 '예산 항목' 열).
   //   getAdminDashboard 와 동일 규칙: business_plan_item_id → 확정 배정 → leaf 비목 부모 경로.
   const expenses = (expenseRows || []).map((e) => ({
     ...e,
     business_plan_item_label: resolveBusinessPlanItemLabel(e, allocations || [], programBudgets || []),
   }));
-
-  // 5. 소속원 정보
-  const { data: members } = await supabase
-    .from("company_members")
-    .select("*, profiles(*)")
-    .eq("company_id", companyId);
 
   // 6. 지출 검토 결재 기록(검토 이력 탭의 '지출' 부분).
   const expenseIds = (expenses || []).map((e) => e.id);
@@ -1925,8 +1953,12 @@ export async function mockGetAiDocumentReviewTargetByFile(fileId) {
     file,
     req,
     expense,
-    criteriaText: criteria?.extracted_criteria_text || "",
-    criteriaTitle: criteria?.title || "",
+    criteria: {
+      id: criteria?.id || null,
+      title: criteria?.title || "",
+      text: criteria?.extracted_criteria_text || "",
+      updated_at: criteria?.updated_at || null,
+    },
   };
 }
 
@@ -1984,8 +2016,12 @@ export async function mockGetAiDocumentReviewContext(expenseRequestId, phase) {
 
   return {
     expense,
-    criteriaText: criteria?.extracted_criteria_text || "",
-    criteriaTitle: criteria?.title || "",
+    criteria: {
+      id: criteria?.id || null,
+      title: criteria?.title || "",
+      text: criteria?.extracted_criteria_text || "",
+      updated_at: criteria?.updated_at || null,
+    },
     targets,
   };
 }

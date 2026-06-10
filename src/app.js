@@ -68,6 +68,7 @@ export function mountShell() {
           <div class="nav-category" style="margin-top: 8px;">운영관리</div>
           <a class="${filename === "support-programs.html" ? "active" : ""}" href="./support-programs.html">신규사업 관리</a>
           <a class="${filename === "program-management.html" ? "active" : ""}" href="./program-management.html">운영사업 관리</a>
+          <a class="${filename === "expense-tools.html" ? "active" : ""}" href="./expense-tools.html">예산사용 정리기</a>
           <a class="${filename === "ai-management.html" ? "active" : ""}" href="./ai-management.html">AI 관리</a>
           <a class="${filename === "admins.html" ? "active" : ""}" href="./admins.html">관리자 계정 관리</a>
           <button data-logout type="button">로그아웃</button>
@@ -119,14 +120,31 @@ export function setText(selector, value) {
 
 export async function runWithErrorBoundary(action, options = {}) {
   const button = options.button;
+  // loadingText 가 있으면 처리 중 버튼을 스피너 + 문구로 바꿔 진행 상태를 보이게 한다.
+  // (AI 검토처럼 수 초 걸리는 동작에서 "눌렸는지/멈췄는지" 모호함을 없앤다)
+  const loadingText = options.loadingText;
+  let originalHtml;
   try {
-    if (button) button.disabled = true;
+    if (button) {
+      button.disabled = true;
+      if (loadingText) {
+        originalHtml = button.innerHTML;
+        button.classList.add("is-loading");
+        button.innerHTML = `<span class="btn-spinner" aria-hidden="true"></span>${loadingText}`;
+      }
+    }
     return await action();
   } catch (error) {
     showError(error);
     return null;
   } finally {
-    if (button) button.disabled = false;
+    if (button) {
+      button.disabled = false;
+      if (originalHtml !== undefined) {
+        button.classList.remove("is-loading");
+        button.innerHTML = originalHtml;
+      }
+    }
   }
 }
 

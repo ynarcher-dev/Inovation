@@ -2,6 +2,7 @@
 // (mock 계층은 제거됨 — 항상 실 백엔드에 연결한다.)
 import {
   requestBudgetAiReview as requestBudgetAiReviewFromEdge,
+  requestDocumentBatchReview as requestDocumentBatchReviewFromEdge,
   requestDocumentReview as requestDocumentReviewFromEdge,
 } from "./services/ai-agent.js";
 import { parsePdfText } from "./services/pdf-parse.js";
@@ -174,78 +175,136 @@ function buildDocumentReviewComment(result, { criteriaTitle, batchCount }) {
 // 창업가(신청자) 1차 검토 결과 저장 — ai_review_* 컬럼.
 const saveFounderReview = (fileId, payload) => remote.mockSaveAiDocumentReviewResult(fileId, payload);
 
-// 보관된 첨부 파일 한 건을 실제 LLM 으로 검토하고 결과를 저장한다.
-// save: (fileId, payload) => Promise — 저장 대상(창업가/관리자 컬럼)을 호출부가 주입한다.
-async function reviewStoredDocument({ file, req, expense, criteriaText, criteriaTitle, batchCount, save = saveFounderReview }) {
+function buildDocumentReviewContext(req, file, expense) {
+  return {
+    doc_title: req?.title || file.original_filename || "첨부파일",
+    expense: {
+      title: expense.title || "",
+      vendor_name: expense.vendor_name || "",
+      vendor_business_number: expense.vendor_business_number || "",
+      amount_supply: Number(expense.amount_supply || 0),
+      vat_amount: Number(expense.vat_amount || 0),
+      expected_completion_date: expense.expected_completion_date || "",
+      purpose: expense.purpose || "",
+    },
+  };
+}
+
+function buildReviewAudit(result, criteria, batchCount) {
+  return {
+    findings: result.findings,
+    criteria_applied: !!criteria?.text,
+    criteria_id: criteria?.id || null,
+    criteria_title: criteria?.title || null,
+    criteria_updated_at: criteria?.updated_at || null,
+    provider: result.provider || null,
+    model: result.model || null,
+    review_instructions: result.review_instructions || "",
+    reviewed_at: new Date().toISOString(),
+    prompt_version: "document-review-v2",
+    batch_size: batchCount || 1,
+    raw_text: result.raw_text || "",
+  };
+}
+
+async function loadStoredDocument(file) {
   const s3Url = await getS3DownloadUrl(file.link_url);
   const res = await fetch(s3Url);
   if (!res.ok) throw new Error("S3에서 첨부 파일을 가져오지 못했습니다.");
   const blob = await res.blob();
   const dataUrl = await readFileAsDataUrl(blob);
-  const stored = { data: dataUrl, type: blob.type, filename: file.original_filename };
+  return { data: dataUrl, type: blob.type, filename: file.original_filename };
+}
 
+// 보관된 첨부 파일 한 건을 실제 LLM 으로 검토하고 결과를 저장한다.
+// save: (fileId, payload) => Promise — 저장 대상(창업가/관리자 컬럼)을 호출부가 주입한다.
+async function reviewStoredDocument({ file, req, expense, criteria, batchCount, save = saveFounderReview }) {
+  const stored = await loadStoredDocument(file);
   const result = await requestDocumentReviewFromEdge({
     fileBase64: dataUrlToBase64(stored.data),
     filename: file.original_filename || stored.filename || "document",
     mimeType: stored.type || file.mime_type || "application/pdf",
-    context: {
-      doc_title: req?.title || file.original_filename || "첨부파일",
-      expense: {
-        title: expense.title || "",
-        vendor_name: expense.vendor_name || "",
-        vendor_business_number: expense.vendor_business_number || "",
-        amount_supply: Number(expense.amount_supply || 0),
-        vat_amount: Number(expense.vat_amount || 0),
-        expected_completion_date: expense.expected_completion_date || "",
-        purpose: expense.purpose || "",
-      },
-    },
-    criteriaText,
+    context: buildDocumentReviewContext(req, file, expense),
+    criteriaText: criteria?.text || "",
     batchCount: batchCount || 1,
   });
 
   return await save(file.id, {
     status: result.status,
-    comment: buildDocumentReviewComment(result, { criteriaTitle, batchCount }),
-    ai_check_result: {
-      findings: result.findings,
-      criteria_applied: !!criteriaText,
-      criteria_title: criteriaTitle || null,
-      batch_size: batchCount || 1,
-      raw_text: result.raw_text || "",
-    },
+    comment: buildDocumentReviewComment(result, { criteriaTitle: criteria?.title, batchCount }),
+    ai_check_result: buildReviewAudit(result, criteria, batchCount),
   });
 }
 
 // 단일 파일 실제 AI 검토(개별 재검토).
 export async function requestAiDocumentReview(fileId) {
-  const { file, req, expense, criteriaText, criteriaTitle } = await remote.mockGetAiDocumentReviewTargetByFile(fileId);
-  return reviewStoredDocument({ file, req, expense, criteriaText, criteriaTitle, batchCount: 1 });
+  const { file, req, expense, criteria } = await remote.mockGetAiDocumentReviewTargetByFile(fileId);
+  return reviewStoredDocument({ file, req, expense, criteria, batchCount: 1 });
 }
 
-// 단계별 일괄 실제 AI 검토(§4): 해당 단계의 'AI검토 사용 + 파일 업로드' 서류를 순차 검토한다.
-export async function requestAiBatchDocumentReview(expenseRequestId, phase) {
-  const { expense, criteriaText, criteriaTitle, targets } = await remote.mockGetAiDocumentReviewContext(expenseRequestId, phase);
+// 관리자 단일 파일 AI 재검토. 신청자 결과와 분리된 admin_ai_* 컬럼에 저장한다.
+export async function requestAdminAiDocumentReview(fileId, user) {
+  const { file, req, expense, criteria } = await remote.mockGetAiDocumentReviewTargetByFile(fileId);
+  const save = (targetFileId, payload) =>
+    remote.mockSaveAdminAiDocumentReviewResult(targetFileId, payload, user);
+  return reviewStoredDocument({ file, req, expense, criteria, batchCount: 1, save });
+}
+
+async function reviewDocumentBatch({ expense, criteria, targets, save }) {
   if (!targets.length) return { reviewed: 0 };
+
+  const documents = [];
   for (const req of targets) {
-    await reviewStoredDocument({ file: req.file, req, expense, criteriaText, criteriaTitle, batchCount: targets.length });
+    const stored = await loadStoredDocument(req.file);
+    documents.push({
+      id: req.file.id,
+      fileBase64: dataUrlToBase64(stored.data),
+      filename: req.file.original_filename || stored.filename || "document",
+      mimeType: stored.type || req.file.mime_type || "application/pdf",
+      context: buildDocumentReviewContext(req, req.file, expense),
+    });
   }
+
+  const response = await requestDocumentBatchReviewFromEdge({
+    documents,
+    criteriaText: criteria?.text || "",
+  });
+  const resultById = new Map(response.results.map((result) => [result.id, {
+    ...result,
+    provider: response.provider,
+    model: response.model,
+    review_instructions: response.review_instructions,
+    raw_text: result.raw_text || response.raw_text,
+  }]));
+
+  for (const req of targets) {
+    const result = resultById.get(String(req.file.id));
+    if (!result) throw new Error(`AI 검토 결과에서 파일을 찾을 수 없습니다: ${req.file.original_filename}`);
+    await save(req.file.id, {
+      status: result.status,
+      comment: buildDocumentReviewComment(result, { criteriaTitle: criteria?.title, batchCount: targets.length }),
+      ai_check_result: buildReviewAudit(result, criteria, targets.length),
+    });
+  }
+
   return { reviewed: targets.length };
+}
+
+// 단계별 일괄 실제 AI 검토: 같은 단계의 모든 문서를 한 요청에 전달해 문서 간 정합성까지 검토한다.
+export async function requestAiBatchDocumentReview(expenseRequestId, phase) {
+  const { expense, criteria, targets } = await remote.mockGetAiDocumentReviewContext(expenseRequestId, phase);
+  return reviewDocumentBatch({ expense, criteria, targets, save: saveFounderReview });
 }
 
 // 관리자 2차 일괄 AI 검토: 창업가 검토와 동일한 로직으로 검토하되,
 // 결과는 admin_ai_* 컬럼에만 저장한다(창업가 화면에는 반영되지 않음).
 export async function requestAdminAiBatchDocumentReview(expenseRequestId, phase, user) {
-  const { expense, criteriaText, criteriaTitle, targets } = await remote.mockGetAiDocumentReviewContext(expenseRequestId, phase);
-  if (!targets.length) return { reviewed: 0 };
+  const { expense, criteria, targets } = await remote.mockGetAiDocumentReviewContext(expenseRequestId, phase);
   const save = (fileId, payload) => remote.mockSaveAdminAiDocumentReviewResult(fileId, payload, user);
-  for (const req of targets) {
-    await reviewStoredDocument({ file: req.file, req, expense, criteriaText, criteriaTitle, batchCount: targets.length, save });
-  }
-  return { reviewed: targets.length };
+  return reviewDocumentBatch({ expense, criteria, targets, save });
 }
 
-// 창업자 'AI 보완 → 이상없음' 소명 처리/취소. AI 결과는 보존하고 소명만 덧붙인다.
+// 창업자 AI 결과 소명 처리/취소. AI 결과는 보존하고 신청자 의견만 덧붙인다.
 export const setExpenseDocumentUserReview = remote.mockSetExpenseDocumentUserReview;
 
 // 운영사업 공통 AI 기준 문서 업로드: 실제 파일을 S3 에 보관(link_url)한 뒤 메타데이터를 등록한다.
@@ -328,21 +387,24 @@ export async function getGuidanceDownloadUrl(linkUrl) {
   return await getS3DownloadUrl(linkUrl);
 }
 
-// 보관된 실제 첨부 파일을 S3 Presigned URL 로 새 탭에서 연다.
-export async function downloadStoredFile(linkUrl) {
-  if (!linkUrl) throw new Error("파일을 찾을 수 없습니다.");
-  const s3Url = await getS3DownloadUrl(linkUrl);
-  window.open(s3Url, "_blank", "noopener,noreferrer");
+// 보관된 실제 첨부 파일을 지정한 파일명으로 즉시 내려받는다(새 탭 열기가 아니라 실제 다운로드).
+//  - 모든 호출부가 original_filename 을 함께 넘기므로 그 이름으로 저장한다.
+export async function downloadStoredFile(linkUrl, filename) {
+  return downloadStoredFileToDisk(linkUrl, filename);
 }
 
 // 보관된 첨부 파일(S3) 한 건을 지정한 파일명으로 즉시 내려받는다(새 탭 열기가 아니라 실제 다운로드).
 export async function downloadStoredFileToDisk(linkUrl, filename) {
   if (!linkUrl) throw new Error("파일을 찾을 수 없습니다.");
-  const s3Url = await getS3DownloadUrl(linkUrl);
-  const res = await fetch(s3Url);
-  if (!res.ok) throw new Error("S3에서 파일을 가져오지 못했습니다.");
-  const blob = await res.blob();
-  triggerBlobDownload(blob, filename || "download");
+  const s3Url = await getS3DownloadUrl(linkUrl, filename);
+  
+  const a = document.createElement("a");
+  a.href = s3Url;
+  a.download = filename || "download";
+  a.style.display = "none";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
 }
 
 // 보관된 첨부 파일(S3) 한 건을 내려받아 base64 로 반환한다.

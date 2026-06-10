@@ -71,25 +71,25 @@ async function callEdgeFunction(url, body) {
       continue;
     }
     if (response.status === 401 || response.status === 403) {
-      throw aiError(data.error || "AI 기능을 사용할 권한이 없습니다. 관리자 계정으로 로그인했는지 확인해주세요.", "auth");
+      throw aiError(data.error || "AI 검토 권한이 없습니다. 로그인이 풀렸을 수 있어요. 다시 로그인한 뒤 시도해주세요.", "auth");
     }
     if (response.status === 429) {
-      throw aiError(data.error || "요청이 너무 많습니다. 잠시 후 다시 시도해주세요.", "rate_limit");
+      throw aiError(data.error || "요청이 잠시 몰렸어요. 1~2분 후 다시 시도해주세요.", "rate_limit");
     }
     if (response.status === 413 || response.status === 415) {
-      throw aiError(data.error || "첨부 파일 형식 또는 크기가 허용되지 않습니다.", "payload");
+      throw aiError(data.error || "이 파일은 검토할 수 없어요. PDF·이미지(JPG/PNG) 형식으로, 5MB 이하인지 확인해주세요.", "payload");
     }
     if (response.status === 502 || response.status === 503) {
-      throw aiError(data.error || "AI provider가 일시적으로 혼잡합니다. 잠시 후 다시 시도해주세요.", "overloaded");
+      throw aiError(data.error || "AI가 지금 혼잡해요. 잠시 후 다시 시도하면 대부분 해결됩니다. 계속되면 AI 관리에서 모델을 바꿔보세요.", "overloaded");
     }
-    throw aiError(data.error || "AI 요청에 실패했습니다.", "request_failed");
+    throw aiError(data.error || "AI 검토를 완료하지 못했어요. 잠시 후 다시 시도해주세요. 계속되면 관리자에게 문의해주세요.", "request_failed");
   }
-  throw aiError(lastData.error || "AI provider가 일시적으로 혼잡합니다. 잠시 후 다시 시도해주세요.", "overloaded");
+  throw aiError(lastData.error || "AI가 지금 혼잡해요. 잠시 후 다시 시도하면 대부분 해결됩니다. 계속되면 AI 관리에서 모델을 바꿔보세요.", "overloaded");
 }
 
 // Edge Function 이 JSON 파싱 실패 시 채우는 안내 문구. structured 플래그가 없는 (구버전) 응답을 위해 문자열로도 실패를 감지한다.
 const AI_REVIEW_UNSTRUCTURED_SUMMARY =
-  "AI 응답을 구조화하지 못했습니다. (원문은 raw_text 참고) 다시 시도하거나 관리자가 직접 검토해주세요.";
+  "AI 검토 결과를 정리하지 못했어요. 다시 시도하거나, 아래 원문을 참고해 직접 확인해주세요.";
 
 function normalizeAiReviewResult(result = {}) {
   const risks = Array.isArray(result.risks) ? result.risks : [];
@@ -126,18 +126,26 @@ function normalizeDocumentReviewResult(result = {}) {
   };
 }
 
+function withExecutionMeta(result, data = {}) {
+  return {
+    ...result,
+    provider: String(data.provider || "").trim(),
+    model: String(data.model || "").trim(),
+  };
+}
+
 export async function requestBudgetAiReview(input = {}) {
   const settings = await getAiSettings();
   if (!settings.enabled) {
-    throw aiError("AI 기능이 비활성화되어 있습니다. AI 관리에서 기능 상태를 켜주세요.", "disabled");
+    throw aiError("AI 검토 기능이 꺼져 있어요. [AI 관리]에서 기능을 켜주세요.", "disabled");
   }
   if (!settings.api_key_configured) {
-    throw aiError("API Key 등록 상태가 미등록입니다. 선택한 provider의 Secret을 Supabase Edge Function에 등록한 뒤 AI 관리에서 등록됨으로 바꿔주세요.", "no_key");
+    throw aiError("AI 연결이 아직 설정되지 않았어요. [AI 관리]에서 API Key 등록을 완료해주세요.", "no_key");
   }
 
   const url = resolveEdgeFunctionUrl(settings.edge_function_url);
   if (!url) {
-    throw aiError("Supabase Edge Function URL을 입력해주세요. 예: /functions/v1/ai-review", "no_url");
+    throw aiError("AI 서버 주소가 설정되지 않았어요. [AI 관리]에서 연결 주소를 입력해주세요.", "no_url");
   }
 
   const provider = settings.provider || "openai";
@@ -145,9 +153,15 @@ export async function requestBudgetAiReview(input = {}) {
     type: "budget_submission_review",
     provider,
     model: settings.model || DEFAULT_MODEL_BY_PROVIDER[provider] || DEFAULT_MODEL_BY_PROVIDER.openai,
-    payload: input,
+    payload: {
+      ...input,
+      review_instructions: settings.review_instructions || "",
+    },
   });
-  return normalizeAiReviewResult(data.result || data);
+  return {
+    ...withExecutionMeta(normalizeAiReviewResult(data.result || data), data),
+    review_instructions: settings.review_instructions || "",
+  };
 }
 
 // 제출 서류(영수증/견적서 등) 한 건을 실제 LLM 으로 검토한다.
@@ -156,18 +170,18 @@ export async function requestBudgetAiReview(input = {}) {
 export async function requestDocumentReview(input = {}) {
   const settings = await getAiSettings();
   if (!settings.enabled) {
-    throw new Error("AI 기능이 비활성화되어 있습니다. AI 관리에서 기능 상태를 켜주세요.");
+    throw new Error("AI 검토 기능이 꺼져 있어요. [AI 관리]에서 기능을 켜주세요.");
   }
   if (!settings.api_key_configured) {
-    throw new Error("API Key 등록 상태가 미등록입니다. 선택한 provider의 Secret을 Supabase Edge Function에 등록한 뒤 AI 관리에서 등록됨으로 바꿔주세요.");
+    throw new Error("AI 연결이 아직 설정되지 않았어요. [AI 관리]에서 API Key 등록을 완료해주세요.");
   }
   if (!input.fileBase64) {
-    throw new Error("검토할 문서 데이터가 비어 있습니다.");
+    throw new Error("검토할 파일을 찾지 못했어요. 파일을 다시 첨부한 뒤 시도해주세요.");
   }
 
   const url = resolveEdgeFunctionUrl(settings.edge_function_url);
   if (!url) {
-    throw new Error("Supabase Edge Function URL을 입력해주세요. 예: /functions/v1/ai-review");
+    throw new Error("AI 서버 주소가 설정되지 않았어요. [AI 관리]에서 연결 주소를 입력해주세요.");
   }
 
   const provider = settings.provider || "openai";
@@ -183,10 +197,62 @@ export async function requestDocumentReview(input = {}) {
       },
       context: input.context || {},
       criteria_text: input.criteriaText || "",
+      review_instructions: settings.review_instructions || "",
       batch_count: input.batchCount || 1,
     },
   });
-  return normalizeDocumentReviewResult(data.result || data);
+  return {
+    ...withExecutionMeta(normalizeDocumentReviewResult(data.result || data), data),
+    review_instructions: settings.review_instructions || "",
+  };
+}
+
+export async function requestDocumentBatchReview(input = {}) {
+  const settings = await getAiSettings();
+  if (!settings.enabled) {
+    throw new Error("AI 검토 기능이 꺼져 있어요. [AI 관리]에서 기능을 켜주세요.");
+  }
+  if (!settings.api_key_configured) {
+    throw new Error("AI 연결이 아직 설정되지 않았어요. [AI 관리]에서 API Key 등록을 완료해주세요.");
+  }
+
+  const documents = Array.isArray(input.documents) ? input.documents : [];
+  if (!documents.length) throw new Error("검토할 파일을 찾지 못했어요. 파일을 다시 첨부한 뒤 시도해주세요.");
+
+  const url = resolveEdgeFunctionUrl(settings.edge_function_url);
+  if (!url) {
+    throw new Error("AI 서버 주소가 설정되지 않았어요. [AI 관리]에서 연결 주소를 입력해주세요.");
+  }
+
+  const provider = settings.provider || "openai";
+  const data = await callEdgeFunction(url, {
+    type: "document_batch_review",
+    provider,
+    model: settings.model || DEFAULT_MODEL_BY_PROVIDER[provider] || DEFAULT_MODEL_BY_PROVIDER.openai,
+    payload: {
+      documents: documents.map((item) => ({
+        id: item.id,
+        filename: item.filename || "document",
+        mime_type: item.mimeType || "application/pdf",
+        data_base64: item.fileBase64,
+        context: item.context || {},
+      })),
+      criteria_text: input.criteriaText || "",
+      review_instructions: settings.review_instructions || "",
+    },
+  });
+
+  const rawResults = Array.isArray(data.result?.results) ? data.result.results : [];
+  return {
+    provider: String(data.provider || "").trim(),
+    model: String(data.model || "").trim(),
+    review_instructions: settings.review_instructions || "",
+    raw_text: String(data.result?.raw_text || "").trim(),
+    results: rawResults.map((item) => ({
+      id: String(item.id || "").trim(),
+      ...normalizeDocumentReviewResult(item),
+    })),
+  };
 }
 
 // 운영사업 공통 AI 검토 기준 문서에서 검토 기준 텍스트를 추출한다.
@@ -195,18 +261,18 @@ export async function requestDocumentReview(input = {}) {
 export async function requestCriteriaExtraction(input = {}) {
   const settings = await getAiSettings();
   if (!settings.enabled) {
-    throw new Error("AI 기능이 비활성화되어 있습니다. AI 관리에서 기능 상태를 켜주세요.");
+    throw new Error("AI 검토 기능이 꺼져 있어요. [AI 관리]에서 기능을 켜주세요.");
   }
   if (!settings.api_key_configured) {
-    throw new Error("API Key 등록 상태가 미등록입니다. 선택한 provider의 Secret을 Supabase Edge Function에 등록한 뒤 AI 관리에서 등록됨으로 바꿔주세요.");
+    throw new Error("AI 연결이 아직 설정되지 않았어요. [AI 관리]에서 API Key 등록을 완료해주세요.");
   }
   if (!input.fileBase64) {
-    throw new Error("추출할 문서 데이터가 비어 있습니다.");
+    throw new Error("읽어올 파일을 찾지 못했어요. 기준 문서를 다시 첨부해주세요.");
   }
 
   const url = resolveEdgeFunctionUrl(settings.edge_function_url);
   if (!url) {
-    throw new Error("Supabase Edge Function URL을 입력해주세요. 예: /functions/v1/ai-review");
+    throw new Error("AI 서버 주소가 설정되지 않았어요. [AI 관리]에서 연결 주소를 입력해주세요.");
   }
 
   const provider = settings.provider || "openai";

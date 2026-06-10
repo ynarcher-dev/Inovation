@@ -1,4 +1,4 @@
-import { mountShell, setText, showError } from "../../app.js";
+import { mountShell, setText, showError, showToast } from "../../app.js";
 import { getFounderProfile } from "../../api.js";
 import { requireRole, changePassword, deleteFounderAccount } from "../../auth.js";
 import { enhancePasswordInputs } from "../../password-toggle.js";
@@ -70,10 +70,10 @@ function openWithdrawModal() {
     try {
       // 2차 블락: 비밀번호 확인 후에만 실제 탈퇴 처리.
       await deleteFounderAccount(passwordInput.value);
-      window.alert("회원 탈퇴가 완료되었습니다.");
-      window.location.href = "../auth/login.html";
+      showToast("회원 탈퇴가 완료되었습니다.", { type: "success" });
+      setTimeout(() => { window.location.href = "../auth/login.html"; }, 800);
     } catch (error) {
-      window.alert(error?.message || "회원 탈퇴 중 오류가 발생했습니다.");
+      showToast(error?.message || "회원 탈퇴 중 오류가 발생했습니다.", { type: "danger" });
       submit.disabled = false;
     }
   });
@@ -141,8 +141,20 @@ try {
       const current = document.querySelector("#current_password").value;
       const next = document.querySelector("#new_password").value;
       const confirm = document.querySelector("#new_password_confirm").value;
+      // 서버 왕복 전에 규칙을 먼저 안내한다(6자 이상·현재 비밀번호와 다름·확인 일치).
+      if (next.length < 6) {
+        showToast("새 비밀번호는 6자 이상이어야 합니다.", { type: "warning" });
+        document.querySelector("#new_password").focus();
+        return;
+      }
+      if (next === current) {
+        showToast("현재 비밀번호와 다른 비밀번호를 입력해 주세요.", { type: "warning" });
+        document.querySelector("#new_password").focus();
+        return;
+      }
       if (next !== confirm) {
-        window.alert("새 비밀번호가 일치하지 않습니다.");
+        showToast("새 비밀번호가 일치하지 않습니다.", { type: "warning" });
+        document.querySelector("#new_password_confirm").focus();
         return;
       }
 
@@ -151,9 +163,9 @@ try {
       try {
         await changePassword(current, next);
         event.target.reset();
-        window.alert("비밀번호가 변경되었습니다.");
+        showToast("비밀번호가 변경되었습니다.", { type: "success" });
       } catch (error) {
-        window.alert(error?.message || "비밀번호 변경 중 오류가 발생했습니다.");
+        showToast(error?.message || "비밀번호 변경 중 오류가 발생했습니다.", { type: "danger" });
       } finally {
         button.disabled = false;
       }

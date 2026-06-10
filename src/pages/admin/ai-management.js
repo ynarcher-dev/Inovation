@@ -26,6 +26,12 @@ function updateProviderHelp(provider) {
   if (helpEl) helpEl.textContent = help.text;
 }
 
+function updateReviewInstructionsCount() {
+  const input = document.querySelector("[data-ai-review-instructions]");
+  const count = document.querySelector("[data-ai-review-instructions-count]");
+  if (input && count) count.textContent = `${input.value.length} / 4000자`;
+}
+
 function setForm(settings) {
   const provider = settings.provider || "openai";
   document.querySelector("[data-ai-enabled]").checked = !!settings.enabled;
@@ -35,8 +41,10 @@ function setForm(settings) {
   document.querySelector("[data-ai-edge-function-url]").value = settings.edge_function_url || "";
   document.querySelector("[data-ai-key-configured]").value = String(!!settings.api_key_configured);
   document.querySelector("[data-ai-key-hint]").value = settings.api_key_hint || "";
+  document.querySelector("[data-ai-review-instructions]").value = settings.review_instructions || "";
   document.querySelector("[data-ai-memo]").value = settings.memo || "";
   updateProviderHelp(provider);
+  updateReviewInstructionsCount();
 }
 
 function readForm() {
@@ -47,6 +55,7 @@ function readForm() {
     edge_function_url: document.querySelector("[data-ai-edge-function-url]").value,
     api_key_configured: document.querySelector("[data-ai-key-configured]").value === "true",
     api_key_hint: document.querySelector("[data-ai-key-hint]").value,
+    review_instructions: document.querySelector("[data-ai-review-instructions]").value.trim(),
     memo: document.querySelector("[data-ai-memo]").value,
   };
 }
@@ -179,6 +188,7 @@ try {
     document.querySelector("[data-ai-provider]").addEventListener("change", (event) => {
       updateProviderHelp(event.currentTarget.value);
     });
+    document.querySelector("[data-ai-review-instructions]").addEventListener("input", updateReviewInstructionsCount);
 
     document.querySelector("[data-ai-test-button]")?.addEventListener("click", async (event) => {
       const button = event.currentTarget;

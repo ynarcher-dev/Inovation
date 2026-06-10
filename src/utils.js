@@ -14,6 +14,20 @@ export function parseNumber(value) {
   return digits ? Number(digits) : 0;
 }
 
+// 천단위 콤마 입력란을 재포맷하면서 커서 위치를 보존한다.
+// 커서 앞의 '숫자 개수'를 기준으로 다시 배치하므로, 값 중간을 수정해도 커서가 끝으로 튀지 않는다.
+export function formatMoneyInput(input) {
+  const digitsBeforeCaret = (input.value.slice(0, input.selectionStart).match(/\d/g) || []).length;
+  input.value = formatNumber(input.value);
+  let pos = 0;
+  let seen = 0;
+  while (pos < input.value.length && seen < digitsBeforeCaret) {
+    if (/\d/.test(input.value[pos])) seen += 1;
+    pos += 1;
+  }
+  input.setSelectionRange(pos, pos);
+}
+
 export function formatDate(value) {
   if (!value) return "-";
   const date = new Date(value);

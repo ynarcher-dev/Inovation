@@ -141,7 +141,7 @@ serve(async (req) => {
 
   try {
     const { userId, role } = await authenticateRequest(req);
-    const { action, filePath, mimeType } = await req.json();
+    const { action, filePath, mimeType, filename } = await req.json();
 
     if (!action || !filePath) {
       throw new HttpError(400, "action과 filePath가 입력되어야 합니다.");
@@ -182,6 +182,9 @@ serve(async (req) => {
       const command = new GetObjectCommand({
         Bucket: bucketName,
         Key: filePath,
+        ResponseContentDisposition: filename
+          ? `attachment; filename="${encodeURIComponent(filename)}"; filename*=UTF-8''${encodeURIComponent(filename)}`
+          : undefined,
       });
       // 다운로드 URL 유효시간: 15분 (900초)
       presignedUrl = await getSignedUrl(s3Client, command, { expiresIn: 900 });

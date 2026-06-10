@@ -3,6 +3,7 @@ import { approveCompany, getAdminDashboard, rejectCompany } from "../../api.js";
 import { requireRole } from "../../auth.js";
 import { escapeHtml, formatDate } from "../../utils.js";
 import { FilterToolbar, bindFilters, fillFilterSelect, readFilters } from "../../components/admin/FilterToolbar.js";
+import { createPaginatedList } from "../../components/admin/Pagination.js";
 
 const SIGNUP_STATUS_OPTIONS = [
   { value: "all", label: "전체 상태" },
@@ -120,28 +121,9 @@ try {
       (dashboard.supportPrograms || []).map((p) => ({ value: p.id, label: p.name }))
     );
 
-    const renderAll = () => {
-      const { term, selects, dateFrom, dateTo } = readFilters(toolbar);
-      const filtered = dashboard.companies.filter((company) =>
-        (selects.status === "all" || company.approval_status === selects.status)
-        && (selects.program === "all" || company.support_program_id === selects.program)
-        && inDateRange(company, dateFrom, dateTo)
-        && matchesSearch(company, term)
-      );
-      const allTarget = document.querySelector("[data-all-signups]");
-      allTarget.innerHTML = SignupTable(filtered);
-      bindRowNavigation(allTarget);
-    };
-
-    const render = () => {
-      const pending = dashboard.companies.filter((company) => company.approval_status === "pending");
-      const pendingTarget = document.querySelector("[data-pending-signups]");
-      pendingTarget.innerHTML = SignupTable(pending, { actions: true });
-      bindRowNavigation(pendingTarget);
-      renderAll();
-      updateAdminNavBadges();
-
-      document.querySelectorAll("[data-approve-company]").forEach((button) => {
+    // 승인 대기 표의 승인/반려 버튼 바인딩. 페이지 전환마다 다시 그려지므로 컨테이너 범위로 재바인딩한다.
+    const bindPendingActions = (container) => {
+      container.querySelectorAll("[data-approve-company]").forEach((button) => {
         button.addEventListener("click", async () => {
           const ok = await showConfirm("이 기업의 가입을 승인하시겠습니까?", {
             title: "가입 승인",
@@ -158,7 +140,7 @@ try {
         });
       });
 
-      document.querySelectorAll("[data-reject-company]").forEach((button) => {
+      container.querySelectorAll("[data-reject-company]").forEach((button) => {
         button.addEventListener("click", async () => {
           const ok = await showConfirm("이 기업의 가입을 반려하시겠습니까?", {
             title: "가입 반려",
@@ -175,6 +157,35 @@ try {
           }, { button });
         });
       });
+    };
+
+    const pendingList = createPaginatedList({
+      container: document.querySelector("[data-pending-signups]"),
+      renderItems: (rows) => SignupTable(rows, { actions: true }),
+      onRendered: (container) => { bindRowNavigation(container); bindPendingActions(container); },
+    });
+    const allList = createPaginatedList({
+      container: document.querySelector("[data-all-signups]"),
+      renderItems: (rows) => SignupTable(rows),
+      onRendered: bindRowNavigation,
+    });
+
+    const renderAll = () => {
+      const { term, selects, dateFrom, dateTo } = readFilters(toolbar);
+      const filtered = dashboard.companies.filter((company) =>
+        (selects.status === "all" || company.approval_status === selects.status)
+        && (selects.program === "all" || company.support_program_id === selects.program)
+        && inDateRange(company, dateFrom, dateTo)
+        && matchesSearch(company, term)
+      );
+      allList.setItems(filtered);
+    };
+
+    const render = () => {
+      const pending = dashboard.companies.filter((company) => company.approval_status === "pending");
+      pendingList.setItems(pending);
+      renderAll();
+      updateAdminNavBadges();
     };
 
     bindFilters(toolbar, renderAll);
