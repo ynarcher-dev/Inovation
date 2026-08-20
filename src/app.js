@@ -265,6 +265,107 @@ export function showConfirm(message, options = {}) {
   });
 }
 
+// 사유 입력이 필요한 확인 모달. showConfirm 과 같은 구조에 textarea 를 추가한 형태다.
+// 확인 시 입력한 문자열을, 취소/Escape/배경 클릭 시 null 을 돌려준다.
+// options.detail 로 "이 처리를 하면 무엇이 바뀌는지"(영향 요약)를 함께 보여줄 수 있다.
+export function showPrompt(message, options = {}) {
+  const {
+    title = "확인",
+    detail = "",
+    label = "사유",
+    placeholder = "",
+    confirmText = "확인",
+    cancelText = "취소",
+    tone = "default",
+    required = true,
+    requiredMessage = "사유를 입력해 주세요.",
+  } = options;
+
+  return new Promise((resolve) => {
+    const previouslyFocused = document.activeElement;
+    const backdrop = document.createElement("div");
+    backdrop.className = "modal-backdrop ux-confirm-backdrop";
+
+    const confirmBtnClass = tone === "danger" ? "button modal-danger" : "button";
+    backdrop.innerHTML = `
+      <div class="modal ux-confirm-modal" role="dialog" aria-modal="true" aria-labelledby="ux-prompt-title">
+        <h3 class="modal-title" id="ux-prompt-title"></h3>
+        <p class="ux-confirm-message"></p>
+        <p class="ux-prompt-detail muted" hidden></p>
+        <label class="field">
+          <span data-prompt-label></span>
+          <textarea rows="3" data-prompt-input></textarea>
+        </label>
+        <div class="modal-actions">
+          <button type="button" class="button secondary" data-confirm-cancel></button>
+          <button type="button" class="${confirmBtnClass}" data-confirm-ok></button>
+        </div>
+      </div>`;
+
+    // 사용자 입력값은 textContent 로 넣어 XSS 를 방지한다(showConfirm 과 동일).
+    backdrop.querySelector(".modal-title").textContent = title;
+    backdrop.querySelector(".ux-confirm-message").textContent = message;
+    const detailEl = backdrop.querySelector(".ux-prompt-detail");
+    if (detail) {
+      detailEl.textContent = detail;
+      detailEl.hidden = false;
+    }
+    backdrop.querySelector("[data-prompt-label]").textContent = label;
+    const input = backdrop.querySelector("[data-prompt-input]");
+    input.placeholder = placeholder;
+    const okBtn = backdrop.querySelector("[data-confirm-ok]");
+    const cancelBtn = backdrop.querySelector("[data-confirm-cancel]");
+    okBtn.textContent = confirmText;
+    cancelBtn.textContent = cancelText;
+
+    document.body.appendChild(backdrop);
+    input.focus();
+
+    const cleanup = (result) => {
+      document.removeEventListener("keydown", onKeydown, true);
+      backdrop.remove();
+      if (previouslyFocused && typeof previouslyFocused.focus === "function") {
+        previouslyFocused.focus();
+      }
+      resolve(result);
+    };
+
+    const submit = () => {
+      const value = input.value.trim();
+      if (required && !value) {
+        showToast(requiredMessage, { type: "warning" });
+        input.focus();
+        return;
+      }
+      cleanup(value);
+    };
+
+    // 모달 안에 포커스를 가둔다(간단한 focus trap). Escape 로 취소.
+    // textarea 에서는 Enter 가 줄바꿈이므로 showConfirm 과 달리 Enter 확인은 두지 않는다.
+    const onKeydown = (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        cleanup(null);
+      } else if (event.key === "Tab") {
+        const focusable = [input, cancelBtn, okBtn];
+        const idx = focusable.indexOf(document.activeElement);
+        event.preventDefault();
+        const dir = event.shiftKey ? -1 : 1;
+        const next = focusable[(idx + dir + focusable.length) % focusable.length];
+        next.focus();
+      }
+    };
+    document.addEventListener("keydown", onKeydown, true);
+
+    okBtn.addEventListener("click", submit);
+    cancelBtn.addEventListener("click", () => cleanup(null));
+    // 배경(backdrop) 클릭 시 취소.
+    backdrop.addEventListener("click", (event) => {
+      if (event.target === backdrop) cleanup(null);
+    });
+  });
+}
+
 // 페이지 reload 후 직전에 예약해 둔 토스트를 소비한다(§6.2).
 // sessionStorage 에 "toast:next"(메시지) / "toast:next:type"(유형)을 담아두면 다음 로드에서 표시한다.
 export function consumePendingToast() {

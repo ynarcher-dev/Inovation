@@ -35,6 +35,34 @@ export function nextReviewStatus(current, decision) {
   return branch ? branch[decision] || null : null;
 }
 
+// admin 승인 취소: 승인 완료 상태 → 되돌아갈 상태.
+// 보완요청(창업자 잘못)과 달리 '관리자 판단 정정'이며, 창업자가 다시 제출해야 하는 직전 단계로 돌아간다.
+//   final_approved -> pre_approved : 최종승인 서류를 수정해 재제출
+//   pre_approved   -> draft        : 신청 내용/사전승인 서류를 수정해 재제출
+// 두 롤백 지점 모두 isDocumentPhaseEditable(status.js) 기준으로 해당 단계 첨부서류가 자동 해금된다.
+export const EXPENSE_CANCEL_TRANSITIONS = {
+  final_approved: "pre_approved",
+  pre_approved: "draft",
+};
+
+// 취소 후 되돌아갈 상태. 취소 불가 상태면 null.
+// 키가 '승인 완료' 상태뿐이라 역순 강제가 규칙에서 자연히 따라온다. 최종승인 단계로 넘어간 건은
+// status 가 pre_approved 가 아니므로 사전승인만 먼저 취소할 수 없고, 최종승인을 먼저 취소해야 한다.
+export function nextCancelStatus(current) {
+  return EXPENSE_CANCEL_TRANSITIONS[current] || null;
+}
+
+export function canCancelApproval(current) {
+  return nextCancelStatus(current) !== null;
+}
+
+// 취소 대상이 사전승인인지 최종승인인지 구분한다(status.js 의 getReviewKind 와 같은 축).
+export function getCancelKind(current) {
+  if (current === "final_approved") return "final";
+  if (current === "pre_approved") return "pre";
+  return null;
+}
+
 // 최초 제출(예산을 처음 점유) 상태인지 — 예산 초과 검증이 필요한 시점.
 export function isInitialCommitStatus(nextStatus) {
   return nextStatus === "pre_approval_submitted";

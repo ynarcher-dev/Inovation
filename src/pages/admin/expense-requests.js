@@ -7,7 +7,7 @@ import {
   buildExpenseVoucherText,
 } from "../../api.js";
 import { requireRole } from "../../auth.js";
-import { ADMIN_REVIEW_STATUSES, EXPENSE_SEGMENTS, getExpenseSegment } from "../../domains/status.js";
+import { ADMIN_REVIEW_STATUSES, EXPENSE_SEGMENTS, getAdminExpenseSegment, hasCancelHistory } from "../../domains/status.js";
 import { ExpenseTable } from "../../components/ExpenseTable.js";
 import { openVoucherTextModal } from "../../components/ExpenseVoucherModal.js";
 import { FilterToolbar, bindFilters, fillFilterSelect, readFilters } from "../../components/admin/FilterToolbar.js";
@@ -24,8 +24,10 @@ const SEGMENT_OPTIONS = EXPENSE_SEGMENTS
   .filter((s) => s.key !== "draft")
   .map((s) => ({ value: s.key, label: s.label }));
 
-// 관리자에게 제출된 적이 있는(=현황 추적 대상) 지출인지. draft 는 제출 전이므로 제외.
-const isSubmittedToAdmin = (expense) => expense.status !== "draft";
+// 관리자에게 제출된 적이 있는(=현황 추적 대상) 지출인지. draft 는 제출 전이므로 제외한다.
+// 단, 사전승인이 취소되어 draft 로 되돌아간 건은 이미 제출·승인을 거쳤으므로 계속 추적한다.
+// (그러지 않으면 관리자가 방금 취소한 건이 현황에서 사라져 재제출 전까지 추적이 끊긴다.)
+const isSubmittedToAdmin = (expense) => expense.status !== "draft" || hasCancelHistory(expense);
 
 // 표 행 클릭 → 상세 이동. 페이지 전환마다 다시 그려지므로 컨테이너 범위로 재바인딩한다.
 function bindRowNav(root) {
@@ -158,7 +160,7 @@ try {
       const { term, selects, dateFrom, dateTo } = readFilters(toolbar);
       const filtered = (expenses || []).filter((e) =>
         isSubmittedToAdmin(e)
-        && (selects.segment === "all" || getExpenseSegment(e.status) === selects.segment)
+        && (selects.segment === "all" || getAdminExpenseSegment(e) === selects.segment)
         && (selects.program === "all" || programIdOf(e) === selects.program)
         && inDateRange(e, dateFrom, dateTo)
         && matchesSearch(e, term)

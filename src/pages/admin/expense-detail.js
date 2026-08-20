@@ -1,8 +1,9 @@
-import { mountShell, runWithErrorBoundary, showError, showToast, showConfirm, setPendingToast } from "../../app.js";
+import { mountShell, runWithErrorBoundary, showError, showToast, showConfirm, showPrompt, setPendingToast } from "../../app.js";
 import { requireRole } from "../../auth.js";
 import {
   getExpenseDetail,
   reviewExpenseRequest,
+  cancelExpenseApproval,
   getExpenseDocumentRequirements,
   downloadStoredFile,
   getAiSettings,
@@ -10,7 +11,9 @@ import {
   requestAdminAiBatchDocumentReview,
 } from "../../api.js";
 import { StatusBadge } from "../../components/StatusBadge.js";
-import { getReviewKind } from "../../domains/status.js";
+import { getReviewKind, getStatusLabel } from "../../domains/status.js";
+import { canCancelApproval, getCancelKind, nextCancelStatus } from "../../domains/expense/expense-validation.js";
+import { REVIEW_DECISIONS, isKnownReviewDecision } from "../../domains/review-decision.js";
 import { renderDocumentPhasePanel, openAiReviewModal } from "../../components/expense/DocumentPhasePanel.js";
 import { escapeHtml, formatCurrency, formatDate, getQueryParam } from "../../utils.js";
 
@@ -72,17 +75,12 @@ async function renderAdminDocPanels(expenseId, aiEnabled, user) {
   for (const def of defs) await renderPhase(def);
 }
 
-const REVIEW_DECISIONS = {
-  approved: { label: "승인", tone: "success" },
-  revision_requested: { label: "보완요청", tone: "warning" },
-};
-
-// 승인/보완요청 코멘트를 최신순으로 노출한다(검토 이력이 없으면 카드를 숨김).
+// 승인/보완요청/승인취소 코멘트를 최신순으로 노출한다(검토 이력이 없으면 카드를 숨김).
 function renderReviews(reviews) {
   const reviewRoot = document.querySelector("[data-reviews]");
   if (!reviewRoot) return;
   const list = (reviews || [])
-    .filter((r) => REVIEW_DECISIONS[r.decision])
+    .filter((r) => isKnownReviewDecision(r.decision))
     .slice()
     .sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || "")));
   if (!list.length) {
@@ -178,6 +176,47 @@ try {
     const reviewTitle = document.querySelector("[data-review-title]");
     const reviewEmpty = document.querySelector("[data-review-empty]");
 
+    // 승인 완료 상태에서만 '승인 취소'를 노출한다. 되돌린 뒤 창업자가 다시 제출하는 구조이므로
+    // 안내문에 되돌아갈 상태와 예산 영향을 함께 적어 오조작을 줄인다(승인 액션보다 낮은 위계의 버튼).
+    const renderCancelPanel = () => {
+      if (!canCancelApproval(expense.status)) return;
+      const cancelKind = getCancelKind(expense.status);
+      const targetStatus = nextCancelStatus(expense.status);
+      const kindLabel = cancelKind === "final" ? "최종승인" : "사전승인";
+
+      reviewEmpty.textContent = `${kindLabel}이 완료된 건입니다. 승인을 취소하면 '${getStatusLabel(targetStatus)}' 상태로 되돌아갑니다.`;
+      const actions = document.createElement("div");
+      actions.className = "actions";
+      actions.innerHTML = `<button type="button" class="button secondary" data-cancel-approval>${escapeHtml(kindLabel)} 취소</button>`;
+      reviewEmpty.insertAdjacentElement("afterend", actions);
+
+      actions.querySelector("[data-cancel-approval]").addEventListener("click", async (event) => {
+        // 사전승인 취소는 draft 로 내려가 예산 점유가 완전히 풀린다(다른 건이 그 잔액을 먼저 쓸 수 있음).
+        // 최종승인 취소는 pre_approved 로만 내려가므로 점유가 유지된다.
+        const budgetImpact = cancelKind === "pre"
+          ? `이 건이 점유하던 ${formatCurrency(expense.total_amount)}이 예산 잔액으로 환원됩니다.`
+          : "예산 점유 금액은 사전승인 상태로 유지됩니다.";
+        const reason = await showPrompt(
+          `${kindLabel} 승인을 취소하고 '${getStatusLabel(targetStatus)}' 상태로 되돌립니다.`,
+          {
+            title: `${kindLabel} 취소`,
+            detail: `${budgetImpact} 창업자가 내용을 수정해 다시 제출해야 합니다.`,
+            label: "취소 사유 (창업자에게 표시됩니다)",
+            placeholder: "예) 거래처 사업자등록번호 오기재 확인",
+            confirmText: "승인 취소",
+            tone: "danger",
+            requiredMessage: "승인 취소 시에는 사유를 입력해야 합니다.",
+          });
+        if (reason === null) return;
+
+        await runWithErrorBoundary(async () => {
+          await cancelExpenseApproval(expense.id, reason);
+          setPendingToast(`${kindLabel} 승인이 취소되었습니다.`, "success");
+          window.location.reload();
+        }, { button: event.currentTarget });
+      });
+    };
+
     if (reviewKind === "pre") {
       reviewTitle.textContent = "사전승인 검토";
       reviewForm.hidden = false;
@@ -190,6 +229,7 @@ try {
       reviewTitle.textContent = "검토 처리";
       reviewForm.hidden = true;
       reviewEmpty.hidden = false;
+      renderCancelPanel();
     }
 
     reviewForm.addEventListener("submit", async (event) => {

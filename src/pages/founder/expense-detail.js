@@ -14,6 +14,7 @@ import {
   getAiSettings,
 } from "../../api.js";
 import { getStatusLabel, getStatusTone, isDocumentPhaseEditable, getSubmitDocumentPhase } from "../../domains/status.js";
+import { getReviewDecisionMeta, isKnownReviewDecision } from "../../domains/review-decision.js";
 import { renderDocumentPhasePanel, openAiReviewModal } from "../../components/expense/DocumentPhasePanel.js";
 import { escapeHtml, formatCurrency, formatDate, getQueryParam } from "../../utils.js";
 
@@ -145,18 +146,12 @@ try {
         }));
     };
 
-    // 검토 결과(decision)별 한글 라벨/배지 톤.
-    const REVIEW_DECISIONS = {
-      approved: { label: "승인", tone: "success" },
-      revision_requested: { label: "보완요청", tone: "warning" },
-    };
-
-    // 승인/보완요청 코멘트를 최신순으로 노출한다(검토 이력이 없으면 영역 자체를 숨김).
+    // 승인/보완요청/승인취소 코멘트를 최신순으로 노출한다(검토 이력이 없으면 영역 자체를 숨김).
     const renderReviews = () => {
       const reviewRoot = document.querySelector("[data-reviews]");
       if (!reviewRoot) return;
       const list = (reviews || [])
-        .filter((r) => REVIEW_DECISIONS[r.decision])
+        .filter((r) => isKnownReviewDecision(r.decision))
         .slice()
         .sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || "")));
       if (!list.length) {
@@ -166,7 +161,7 @@ try {
       }
       reviewRoot.hidden = false;
       const rows = list.map((review) => {
-        const meta = REVIEW_DECISIONS[review.decision];
+        const meta = getReviewDecisionMeta(review.decision);
         return `
           <div class="review-row">
             <div class="review-row-head">

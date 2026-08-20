@@ -15,6 +15,17 @@ const COL_WIDTHS = {
   action: 11,
 };
 
+// 승인 취소 이력 마커. 취소하면 상태가 이전 신청 단계로 되돌아가므로 상태값만으로는
+// '한 번 승인됐다가 취소된 건'을 구분할 수 없다. 상태 배지 옆에 횟수를 덧붙여 표시한다.
+// cancel_count 는 대시보드 조회에서 붙여준다(없으면 아무것도 그리지 않는다).
+function CancelMarker(row) {
+  const count = Number(row.cancel_count || 0);
+  if (count <= 0) return "";
+  const at = row.last_cancelled_at ? formatDate(row.last_cancelled_at) : "";
+  const title = at ? `최근 승인 취소: ${at}` : "승인 취소 이력";
+  return ` <span class="cancel-marker" title="${escapeHtml(title)}">↺ 취소 ${count}회</span>`;
+}
+
 export function ExpenseTable(rows, options = {}) {
   const isSubFolder = window.location.pathname.includes("/admin/") || window.location.pathname.includes("/founder/");
   const base = isSubFolder ? "../" : "./";
@@ -67,7 +78,7 @@ export function ExpenseTable(rows, options = {}) {
               <td><a href="${hrefFor(row)}">${escapeHtml(row.title)}</a></td>
               <td class="wrap-cell">${escapeHtml(row.business_plan_item_label || row.budget_category || "-")}</td>
               <td>${formatCurrency(row.amount_supply)}</td>
-              <td>${StatusBadge(row.status)}</td>
+              <td>${StatusBadge(row.status)}${CancelMarker(row)}</td>
               ${showChecklist ? `<td>${Number(row.missing_count || 0)}</td><td>${Number(row.warning_count || 0)}</td>` : ""}
               <td>${formatDate(row.submitted_at)}</td>
               ${showActionColumn ? `<td>${hasAction ? options.action(row, hrefFor(row)) : ""}</td>` : ""}

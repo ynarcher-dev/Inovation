@@ -1,6 +1,7 @@
 import { getSupabase } from "../auth.js";
 import { CONFIG } from "../config.js";
 import { BUDGET_APPROVED_STATUSES, BUDGET_PENDING_STATUSES, COMMITTED_STATUSES } from "../domains/status.js";
+import { nextCancelStatus } from "../domains/expense/expense-validation.js";
 
 
 // Helper to get logged in user profile
@@ -1090,6 +1091,30 @@ export async function getAdminDashboard() {
         business_plan_item_label: resolveBusinessPlanItemLabel(e, allocRows || [], budgetRes.data || []),
       }));
     }
+
+    // 승인 취소 이력을 붙인다(관리자 현황의 '취소 N회' 마커 + draft 로 되돌아간 건의 추적용).
+    //   expense_request_id 목록으로 필터하면 IN 절이 지나치게 길어지므로 decision 으로만 좁혀 받고
+    //   화면에 필요한 건만 매칭한다(취소는 드문 이벤트라 행 수가 적다). 가시 범위는 RLS 가 제한한다.
+    const { data: cancelRows } = await supabase
+      .from("expense_reviews")
+      .select("expense_request_id, created_at")
+      .eq("decision", "cancelled");
+    if (cancelRows?.length) {
+      const cancelStats = new Map();
+      for (const row of cancelRows) {
+        const prev = cancelStats.get(row.expense_request_id);
+        // 최신 취소 시각만 남긴다(마커 tooltip 용).
+        if (!prev) cancelStats.set(row.expense_request_id, { count: 1, last_at: row.created_at });
+        else {
+          prev.count += 1;
+          if (String(row.created_at || "") > String(prev.last_at || "")) prev.last_at = row.created_at;
+        }
+      }
+      expenses = expenses.map((e) => {
+        const stat = cancelStats.get(e.id);
+        return stat ? { ...e, cancel_count: stat.count, last_cancelled_at: stat.last_at } : e;
+      });
+    }
   }
   // 결재 대기 건수 세기 (회사별 지출 신청 중 대기 상태 세기)
   const expensePendingCount = expenses.filter((e) =>
@@ -1264,6 +1289,17 @@ export async function getAdminCompanyDetail(companyId) {
       .in("expense_request_id", expenseIds)
       .order("created_at", { ascending: false });
     expenseReviewRows = data || [];
+  }
+
+  // 6-1. 승인 취소 이력을 지출 행에 붙인다(현황 표의 '취소 N회' 마커용).
+  //      이미 받아 둔 검토 기록을 재사용하므로 추가 조회가 없다.
+  for (const row of expenseReviewRows) {
+    if (row.decision !== "cancelled") continue;
+    const target = expenses.find((e) => e.id === row.expense_request_id);
+    if (!target) continue;
+    target.cancel_count = (target.cancel_count || 0) + 1;
+    // expenseReviewRows 는 created_at 내림차순이므로 첫 건이 최신 취소다.
+    if (!target.last_cancelled_at) target.last_cancelled_at = row.created_at;
   }
 
   // 7. 예산 제출 이력 + 파생 필드(검토 대기 제출안/라운드 트리/감액 하한/2차 상태 등).
@@ -1657,6 +1693,59 @@ export async function reviewExpenseRequest(id, decision, comment) {
     .single();
 
   if (error) throw error;
+  return data;
+}
+
+// 승인 취소: 관리자가 자신의 승인 결정을 되돌린다(보완요청과 달리 '관리자 판단 정정').
+// 취소하면 창업자가 다시 제출해야 하는 직전 신청 단계로 돌아간다(EXPENSE_CANCEL_TRANSITIONS).
+//   final_approved -> pre_approved / pre_approved -> draft
+// 사전승인 취소는 status 가 정확히 pre_approved 일 때만 가능하므로, 최종승인 단계가 시작된 건은
+// 최종승인부터 역순으로 취소해야 한다(규칙상 자동으로 막힌다).
+export async function cancelExpenseApproval(id, reason) {
+  const comment = String(reason || "").trim();
+  if (!comment) throw new Error("승인 취소 사유를 입력해 주세요.");
+
+  const supabase = await getSupabase();
+  const { profile } = await getMyProfile(supabase);
+
+  const { data: current, error: curErr } = await supabase
+    .from("expense_requests").select("status").eq("id", id).single();
+  if (curErr) throw curErr;
+
+  const targetStatus = nextCancelStatus(current.status);
+  if (!targetStatus) {
+    throw new Error("현재 상태에서는 승인을 취소할 수 없습니다. 최종승인 단계가 진행 중이면 최종승인부터 취소해 주세요.");
+  }
+
+  // 취소된 승인의 승인일시를 지운다. 남겨두면 재승인 전까지 지출증빙의 {승인일} 에 옛 날짜가 찍힌다.
+  //  - 최종승인 취소: final_approved_at 만 해제(사전승인 승인일은 유지)
+  //  - 사전승인 취소: approved_at 해제(이 시점엔 final_approved_at 이 이미 비어 있다)
+  const payload = { status: targetStatus };
+  if (current.status === "final_approved") payload.final_approved_at = null;
+  else payload.approved_at = null;
+
+  // 조건부 UPDATE 로 동시성을 막는다. 창업자 제출/다른 관리자 처리로 상태가 이미 바뀌었으면 0건이 갱신된다.
+  const { data, error } = await supabase
+    .from("expense_requests")
+    .update(payload)
+    .eq("id", id)
+    .eq("status", current.status)
+    .select("*")
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) throw new Error("처리 중 신청 상태가 변경되었습니다. 새로고침 후 다시 시도해 주세요.");
+
+  // 상태 전이에 성공한 뒤에만 이력을 남긴다(취소되지 않았는데 이력만 남는 것을 방지).
+  const { error: revErr } = await supabase
+    .from("expense_reviews")
+    .insert({
+      expense_request_id: id,
+      reviewer_id: profile.id,
+      decision: "cancelled",
+      comment,
+    });
+  if (revErr) throw revErr;
+
   return data;
 }
 

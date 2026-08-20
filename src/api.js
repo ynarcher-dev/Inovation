@@ -98,6 +98,7 @@ export const createExpense = remote.createExpense;
 export const updateExpenseRequest = remote.updateExpenseRequest;
 export const submitExpenseRequest = remote.submitExpenseRequest;
 export const reviewExpenseRequest = remote.reviewExpenseRequest;
+export const cancelExpenseApproval = remote.cancelExpenseApproval;
 
 // ----------------------------------------------------
 // 예산 항목별 커스텀 첨부서류 / 운영사업 공통 AI 검토 기준 문서

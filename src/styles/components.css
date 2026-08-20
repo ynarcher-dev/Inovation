@@ -159,6 +159,16 @@ td a:hover {
   white-space: normal;
   word-break: break-word;
 }
+/* 승인 취소 이력 마커 — 상태 배지 옆에 붙는 보조 표시라 배지보다 약하게 둔다. */
+.cancel-marker {
+  display: inline-block;
+  margin-top: 2px;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: #991b1b;
+  white-space: nowrap;
+}
+
 /* 표 안의 처리/관리 버튼은 좌측 정렬(전역 .actions 는 우측 정렬이라 여기서만 덮어쓴다). */
 .fixed-table .actions {
   justify-content: flex-start;

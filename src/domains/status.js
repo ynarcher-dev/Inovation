@@ -56,6 +56,9 @@ export function getReviewKind(status) {
   return null;
 }
 
+// 승인 취소 후 되돌아갈 상태(승인 취소 전이 규칙)는 상태 전이 단일 소스인
+// domains/expense/expense-validation.js 의 nextCancelStatus / canCancelApproval 를 사용한다.
+
 // ----------------------------------------------------
 // 첨부서류 단계(phase) 잠금/해금 규칙 (custom-document-requirements-plan.md §4.3)
 // ----------------------------------------------------
@@ -144,6 +147,21 @@ export function getExpenseSegment(status) {
   if (status?.startsWith("pre_")) return "pre";
   if (status?.startsWith("final_")) return "final";
   return "draft";
+}
+
+// 승인 취소 이력이 있는 건인지. 취소하면 상태가 이전 신청 단계로 되돌아가므로,
+// 상태값만으로는 '한 번도 제출하지 않은 건'과 '승인됐다가 취소된 건'을 구분할 수 없다.
+// cancel_count 는 대시보드 조회에서 붙여준다.
+export function hasCancelHistory(expense) {
+  return Number(expense?.cancel_count || 0) > 0;
+}
+
+// 관리자 현황에서 쓰는 결재 구간. 사전승인이 취소되어 draft 로 되돌아간 건은
+// '작성 중'이 아니라 사전승인 재제출을 기다리는 상태이므로 사전승인 구간으로 본다.
+// (관리자 현황에는 '작성 중' 필터가 없어, 그대로 두면 어느 구간에도 잡히지 않는다.)
+export function getAdminExpenseSegment(expense) {
+  if (expense?.status === "draft" && hasCancelHistory(expense)) return "pre";
+  return getExpenseSegment(expense?.status);
 }
 
 // 4-스텝 미니 프로세스(작성 → 사전승인 → 최종승인 → 완료)에서 각 스텝의 상태(new.md §5).

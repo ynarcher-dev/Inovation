@@ -1,18 +1,10 @@
 import { escapeHtml, formatDate } from "../utils.js";
-
-const decisionText = {
-  approved: "승인 완료",
-  revision_requested: "보완 요청",
-};
-
-const decisionTone = {
-  approved: "success",
-  revision_requested: "warning",
-};
+import { getReviewDecisionMeta } from "../domains/review-decision.js";
 
 function DecisionBadge(decision) {
-  const label = decisionText[decision] || decision || "-";
-  const tone = decisionTone[decision] || "neutral";
+  const meta = getReviewDecisionMeta(decision);
+  const label = meta?.historyLabel || decision || "-";
+  const tone = meta?.tone || "neutral";
   return `<span class="badge badge-${tone}">${escapeHtml(label)}</span>`;
 }
 
