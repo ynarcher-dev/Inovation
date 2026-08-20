@@ -99,6 +99,10 @@ export const updateExpenseRequest = remote.updateExpenseRequest;
 export const submitExpenseRequest = remote.submitExpenseRequest;
 export const reviewExpenseRequest = remote.reviewExpenseRequest;
 export const cancelExpenseApproval = remote.cancelExpenseApproval;
+// 창업자 셀프서비스: 검토 대기 건 철회 / 신청 취소(종결) / 미제출 임시저장 삭제
+export const withdrawExpenseRequest = remote.withdrawExpenseRequest;
+export const cancelExpenseRequestByFounder = remote.cancelExpenseRequestByFounder;
+export const deleteExpenseRequest = remote.deleteExpenseRequest;
 
 // ----------------------------------------------------
 // 예산 항목별 커스텀 첨부서류 / 운영사업 공통 AI 검토 기준 문서

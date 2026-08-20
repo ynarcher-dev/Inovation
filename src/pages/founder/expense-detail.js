@@ -1,8 +1,11 @@
-import { mountShell, runWithErrorBoundary, showError, showToast, showConfirm, setPendingToast } from "../../app.js";
+import { mountShell, runWithErrorBoundary, showError, showToast, showConfirm, showPrompt, setPendingToast } from "../../app.js";
 import { requireRole } from "../../auth.js";
 import {
   getExpenseDetail,
   submitExpenseRequest,
+  withdrawExpenseRequest,
+  cancelExpenseRequestByFounder,
+  deleteExpenseRequest,
   getExpenseDocumentRequirements,
   uploadExpenseDocumentFile,
   deleteExpenseDocumentFile,
@@ -14,6 +17,7 @@ import {
   getAiSettings,
 } from "../../api.js";
 import { getStatusLabel, getStatusTone, isDocumentPhaseEditable, getSubmitDocumentPhase } from "../../domains/status.js";
+import { canFounderDelete } from "../../domains/expense/expense-validation.js";
 import { getReviewDecisionMeta, isKnownReviewDecision } from "../../domains/review-decision.js";
 import { renderDocumentPhasePanel, openAiReviewModal } from "../../components/expense/DocumentPhasePanel.js";
 import { escapeHtml, formatCurrency, formatDate, getQueryParam } from "../../utils.js";
@@ -174,7 +178,8 @@ try {
       reviewRoot.innerHTML = `<h2>검토 결과</h2>${rows}`;
     };
 
-    // 수정 가능 상태별 CTA(수정/보완하기, 사전·최종승인 신청)를 렌더한다.
+    // 수정 가능 상태별 CTA(수정/보완하기, 사전·최종승인 신청)와
+    // 셀프서비스 액션(제출 철회/신청 취소/임시저장 삭제)을 렌더한다.
     const renderCta = () => {
       const ctaRoot = document.querySelector("[data-cta]");
       const guideEl = document.querySelector("[data-edit-guide]");
@@ -183,23 +188,107 @@ try {
       const buttons = [];
       let guide = "";
 
+      // 신청 취소는 '기업 손에 있는' 상태 공통의 마지막(낮은 위계) 버튼. 제출 이력 없는 draft 는 완전 삭제.
+      const cancelBtn = `<button class="button secondary" type="button" data-cancel-expense>신청 취소</button>`;
+      const deleteBtn = `<button class="button secondary" type="button" data-delete-expense>삭제</button>`;
+
       if (expense.status === "draft") {
         buttons.push(`<a class="button secondary" href="${editHref}">수정하기</a>`);
         buttons.push(`<button class="button" type="button" data-submit-expense>사전승인 신청</button>`);
+        buttons.push(canFounderDelete(expense) ? deleteBtn : cancelBtn);
         guide = "임시저장 상태입니다. 내용·서류를 수정한 뒤 사전승인을 신청하세요.";
+      } else if (expense.status === "pre_approval_submitted") {
+        buttons.push(`<button class="button secondary" type="button" data-withdraw-expense>신청 철회</button>`);
+        guide = "사전승인 검토가 진행 중입니다. 잘못 제출했다면 검토 완료 전까지 철회할 수 있으며, 철회하면 점유 중이던 예산이 잔액으로 환원됩니다.";
+      } else if (expense.status === "final_approval_submitted") {
+        buttons.push(`<button class="button secondary" type="button" data-withdraw-expense>최종승인 신청 철회</button>`);
+        guide = "최종승인 검토가 진행 중입니다. 철회하면 사전승인 완료 상태로 되돌아가 서류를 정비한 뒤 다시 신청할 수 있습니다.";
       } else if (expense.status === "pre_approval_revision") {
         buttons.push(`<a class="button" href="${editHref}">보완하기</a>`);
-        guide = "보완 요청된 건은 같은 신청 건에서 서류와 내용을 수정한 뒤 다시 제출할 수 있습니다.";
+        buttons.push(cancelBtn);
+        guide = "보완 요청된 건은 같은 신청 건에서 서류와 내용을 수정한 뒤 다시 제출할 수 있습니다. 진행하지 않을 신청은 취소해 예산 점유를 해제할 수 있습니다.";
       } else if (expense.status === "final_approval_revision") {
         buttons.push(`<a class="button" href="${editHref}">최종승인 보완하기</a>`);
-        guide = "최종승인 보완 요청된 건은 같은 신청 건에서 수정한 뒤 다시 제출할 수 있습니다.";
+        buttons.push(cancelBtn);
+        guide = "최종승인 보완 요청된 건은 같은 신청 건에서 수정한 뒤 다시 제출할 수 있습니다. 진행하지 않을 신청은 취소할 수 있습니다.";
       } else if (expense.status === "pre_approved") {
         buttons.push(`<button class="button" type="button" data-submit-expense>최종승인 신청</button>`);
-        guide = "사전승인이 완료되었습니다. 최종승인용 서류를 추가한 뒤 최종승인을 신청하세요.";
+        guide = "사전승인이 완료되었습니다. 최종승인용 서류를 추가한 뒤 최종승인을 신청하세요. 지출을 진행하지 않게 됐다면 관리자에게 사전승인 취소를 요청해 주세요.";
+      } else if (expense.status === "final_approved") {
+        guide = "최종승인이 완료된 신청입니다.";
+      } else if (expense.status === "cancelled") {
+        guide = "취소된 신청입니다. 예산을 점유하지 않으며, 제출했던 내용과 서류는 기록으로 보존됩니다.";
       }
 
       ctaRoot.innerHTML = buttons.join("");
       if (guideEl) guideEl.textContent = guide;
+
+      // 제출 철회: 검토 대기 상태 한정. 검토가 먼저 끝나면 서비스 계층이 안내 오류를 던진다.
+      const withdrawBtn = ctaRoot.querySelector("[data-withdraw-expense]");
+      if (withdrawBtn) {
+        withdrawBtn.addEventListener("click", async (event) => {
+          const isFinal = expense.status === "final_approval_submitted";
+          const impact = isFinal
+            ? "철회하면 '사전승인 완료' 상태로 되돌아갑니다. 사전승인과 예산 점유는 유지됩니다."
+            : "철회하면 '제출 대기' 상태로 되돌아가고, 이 건이 점유하던 예산이 비목 잔액으로 환원됩니다.";
+          const ok = await showConfirm(`${isFinal ? "최종승인" : "사전승인"} 신청을 철회하시겠습니까?\n${impact}`, {
+            title: "신청 철회",
+            confirmText: "철회",
+            cancelText: "닫기",
+            tone: "danger",
+          });
+          if (!ok) return;
+          await runWithErrorBoundary(async () => {
+            await withdrawExpenseRequest(id);
+            setPendingToast("신청이 철회되었습니다. 내용을 수정한 뒤 다시 제출할 수 있습니다.", "success");
+            window.location.reload();
+          }, { button: event.currentTarget });
+        });
+      }
+
+      // 신청 취소: 종결 처리(재제출 불가). 사유는 선택 입력이며 관리자 검토 이력에 함께 남는다.
+      const cancelExpenseBtn = ctaRoot.querySelector("[data-cancel-expense]");
+      if (cancelExpenseBtn) {
+        cancelExpenseBtn.addEventListener("click", async (event) => {
+          const reason = await showPrompt(
+            "이 지출 신청을 취소하시겠습니까? 취소하면 다시 진행할 수 없으며, 점유 중이던 예산이 있다면 잔액으로 환원됩니다.",
+            {
+              title: "신청 취소",
+              detail: "제출했던 내용과 서류는 기록으로 보존됩니다.",
+              label: "취소 사유 (선택)",
+              placeholder: "예) 지출 계획 변경으로 미진행",
+              confirmText: "신청 취소",
+              cancelText: "닫기",
+              tone: "danger",
+              required: false,
+            });
+          if (reason === null) return;
+          await runWithErrorBoundary(async () => {
+            await cancelExpenseRequestByFounder(id, reason);
+            setPendingToast("지출 신청이 취소되었습니다.", "success");
+            window.location.reload();
+          }, { button: event.currentTarget });
+        });
+      }
+
+      // 임시저장 삭제: 제출 이력이 없는 draft 한정 완전 삭제. 삭제 후에는 대시보드로 이동한다.
+      const deleteExpenseBtn = ctaRoot.querySelector("[data-delete-expense]");
+      if (deleteExpenseBtn) {
+        deleteExpenseBtn.addEventListener("click", async (event) => {
+          const ok = await showConfirm("이 임시저장 건을 삭제하시겠습니까? 업로드한 첨부 파일도 함께 삭제되며 되돌릴 수 없습니다.", {
+            title: "임시저장 삭제",
+            confirmText: "삭제",
+            cancelText: "닫기",
+            tone: "danger",
+          });
+          if (!ok) return;
+          await runWithErrorBoundary(async () => {
+            await deleteExpenseRequest(id);
+            setPendingToast("임시저장 건이 삭제되었습니다.", "info");
+            window.location.href = "dashboard.html";
+          }, { button: event.currentTarget });
+        });
+      }
 
       const submitBtn = ctaRoot.querySelector("[data-submit-expense]");
       if (submitBtn) {

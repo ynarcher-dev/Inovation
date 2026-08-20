@@ -4,6 +4,10 @@ import {
   nextSubmitStatus,
   nextReviewStatus,
   isInitialCommitStatus,
+  nextWithdrawStatus,
+  canWithdraw,
+  canFounderCancel,
+  canFounderDelete,
   computeExpenseTotals,
   validateExpenseFields,
   validateBudgetWithinLimit,
@@ -43,6 +47,44 @@ test("검토: 검토 대상이 아닌 상태/결정은 null", () => {
 test("최초 점유 상태는 사전승인 제출뿐", () => {
   assert.equal(isInitialCommitStatus("pre_approval_submitted"), true);
   assert.equal(isInitialCommitStatus("final_approval_submitted"), false);
+});
+
+// ----------------------------------------------------
+// founder 철회 / 신청 취소 / 삭제
+// ----------------------------------------------------
+test("철회: 검토 대기 상태에서만 제출 직전 단계로 되돌아간다", () => {
+  assert.equal(nextWithdrawStatus("pre_approval_submitted"), "draft");
+  assert.equal(nextWithdrawStatus("final_approval_submitted"), "pre_approved");
+});
+
+test("철회: 검토가 끝난 상태에서는 불가", () => {
+  assert.equal(nextWithdrawStatus("draft"), null);
+  assert.equal(nextWithdrawStatus("pre_approval_revision"), null); // 보완 건은 수정·재제출 또는 신청 취소
+  assert.equal(nextWithdrawStatus("pre_approved"), null);
+  assert.equal(nextWithdrawStatus("final_approved"), null);
+  assert.equal(nextWithdrawStatus("cancelled"), null);
+  assert.equal(canWithdraw("pre_approval_submitted"), true);
+  assert.equal(canWithdraw("final_approved"), false);
+});
+
+test("신청 취소: 창업자가 수정 가능한 상태에서만 가능", () => {
+  assert.equal(canFounderCancel("draft"), true);
+  assert.equal(canFounderCancel("pre_approval_revision"), true);
+  assert.equal(canFounderCancel("final_approval_revision"), true);
+  // 검토 대기는 철회부터, 승인 완료 건은 관리자 승인 취소부터 거쳐야 한다.
+  assert.equal(canFounderCancel("pre_approval_submitted"), false);
+  assert.equal(canFounderCancel("pre_approved"), false);
+  assert.equal(canFounderCancel("final_approved"), false);
+  assert.equal(canFounderCancel("cancelled"), false);
+});
+
+test("완전 삭제: 제출 이력이 없는 임시저장 건만 가능", () => {
+  assert.equal(canFounderDelete({ status: "draft", submitted_at: null }), true);
+  // 한 번이라도 제출된 건(철회·승인취소로 draft 에 돌아온 건 포함)은 삭제 대신 취소로 기록을 보존한다.
+  assert.equal(canFounderDelete({ status: "draft", submitted_at: "2026-08-01T00:00:00Z" }), false);
+  assert.equal(canFounderDelete({ status: "pre_approval_submitted", submitted_at: "2026-08-01T00:00:00Z" }), false);
+  assert.equal(canFounderDelete({ status: "cancelled", submitted_at: null }), false);
+  assert.equal(canFounderDelete(null), false);
 });
 
 // ----------------------------------------------------

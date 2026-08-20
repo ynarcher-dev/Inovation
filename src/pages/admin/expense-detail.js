@@ -234,8 +234,9 @@ try {
       actions.querySelector("[data-cancel-approval]").addEventListener("click", async (event) => {
         // 사전승인 취소는 draft 로 내려가 예산 점유가 완전히 풀린다(다른 건이 그 잔액을 먼저 쓸 수 있음).
         // 최종승인 취소는 pre_approved 로만 내려가므로 점유가 유지된다.
+        // 예산 집계는 공급가액(amount_supply) 기준이므로 환원 안내도 같은 기준으로 표기한다(총액 표기 시 부가세만큼 과대 안내).
         const budgetImpact = cancelKind === "pre"
-          ? `이 건이 점유하던 ${formatCurrency(expense.total_amount)}이 예산 잔액으로 환원됩니다.`
+          ? `이 건이 점유하던 공급가액 ${formatCurrency(expense.amount_supply)}이 예산 잔액으로 환원됩니다.`
           : "예산 점유 금액은 사전승인 상태로 유지됩니다.";
         const reason = await showPrompt(
           `${kindLabel} 승인을 취소하고 '${getStatusLabel(targetStatus)}' 상태로 되돌립니다.`,
@@ -270,6 +271,10 @@ try {
       reviewTitle.textContent = "검토 처리";
       reviewForm.hidden = true;
       reviewEmpty.hidden = false;
+      // 창업자가 종결한 건은 검토 대상이 아님을 사유와 함께 안내한다(이력의 신청 취소 코멘트 참고).
+      if (expense.status === "cancelled") {
+        reviewEmpty.textContent = "창업자가 취소한 신청입니다. 예산을 점유하지 않으며, 제출됐던 내용과 서류는 기록으로 보존됩니다.";
+      }
       renderCancelPanel();
     }
 

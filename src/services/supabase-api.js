@@ -1,7 +1,12 @@
 import { getSupabase } from "../auth.js";
 import { CONFIG } from "../config.js";
 import { BUDGET_APPROVED_STATUSES, BUDGET_PENDING_STATUSES, COMMITTED_STATUSES } from "../domains/status.js";
-import { nextCancelStatus } from "../domains/expense/expense-validation.js";
+import {
+  nextCancelStatus,
+  nextWithdrawStatus,
+  canFounderCancel,
+  canFounderDelete,
+} from "../domains/expense/expense-validation.js";
 
 
 // Helper to get logged in user profile
@@ -1614,7 +1619,9 @@ export async function updateExpenseRequest(id, input) {
       vendor_business_number: input.vendor_business_number || "",
       purpose: input.purpose || "",
       expected_completion_date: input.expected_completion_date || null,
-      status: input.status || "draft",
+      // status 는 건드리지 않는다. 여기서 덮어쓰면 보완(*_revision) 건을 수정·임시저장하는 순간
+      // draft 로 초기화돼, 최종승인 보완 재제출이 사전승인 단계로 회귀하는 버그가 된다.
+      // 상태 전이는 submit/withdraw/review 전용 함수만 수행한다.
     })
     .eq("id", id)
     .select("*")
@@ -1642,14 +1649,18 @@ export async function submitExpenseRequest(id) {
     throw new Error("현재 상태에서는 제출할 수 없습니다.");
   }
 
+  // 조건부 UPDATE 로 동시성을 막는다. 읽은 시점과 제출 사이에 관리자 검토 등으로
+  // 상태가 바뀌었으면 0건이 갱신된다(엉뚱한 상태 위에 제출 상태를 덮어쓰는 것을 방지).
   const payload = { status, [stamp]: new Date().toISOString() };
   const { data, error } = await supabase
     .from("expense_requests")
     .update(payload)
     .eq("id", id)
+    .eq("status", current.status)
     .select("*")
-    .single();
+    .maybeSingle();
   if (error) throw error;
+  if (!data) throw new Error("처리 중 신청 상태가 변경되었습니다. 새로고침 후 다시 시도해 주세요.");
   return data;
 }
 
@@ -1657,7 +1668,40 @@ export async function reviewExpenseRequest(id, decision, comment) {
   const supabase = await getSupabase();
   const { profile } = await getMyProfile(supabase);
 
-  // 1. 심사 이력 기록 등록
+  // 1. 상태 전이 계산 — 검토 대기 상태가 아니면(창업자가 철회했거나 다른 관리자가 처리) 거부한다.
+  const { data: current, error: curErr } = await supabase
+    .from("expense_requests").select("status").eq("id", id).single();
+  if (curErr) throw curErr;
+
+  let newStatus = null;
+  if (current.status === "pre_approval_submitted") {
+    newStatus = decision === "approved" ? "pre_approved" : "pre_approval_revision";
+  } else if (current.status === "final_approval_submitted") {
+    newStatus = decision === "approved" ? "final_approved" : "final_approval_revision";
+  }
+  if (!newStatus) {
+    throw new Error("검토 대기 상태가 아닙니다. 창업자가 철회했거나 이미 처리된 건일 수 있습니다. 새로고침 후 확인해 주세요.");
+  }
+
+  const payload = { status: newStatus };
+  if (decision === "approved" && current.status === "pre_approval_submitted") {
+    payload.approved_at = new Date().toISOString();
+  } else if (decision === "approved" && current.status === "final_approval_submitted") {
+    payload.final_approved_at = new Date().toISOString();
+  }
+
+  // 2. 조건부 UPDATE 로 동시성을 막는다. 창업자 철회/다른 관리자 처리로 상태가 이미 바뀌었으면 0건.
+  const { data, error } = await supabase
+    .from("expense_requests")
+    .update(payload)
+    .eq("id", id)
+    .eq("status", current.status)
+    .select("*")
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) throw new Error("처리 중 신청 상태가 변경되었습니다. 창업자가 철회했을 수 있습니다. 새로고침 후 다시 확인해 주세요.");
+
+  // 3. 상태 전이에 성공한 뒤에만 이력을 남긴다(전이되지 않았는데 이력만 쌓이는 것을 방지 — 승인 취소와 동일 순서).
   const { error: revErr } = await supabase
     .from("expense_reviews")
     .insert({
@@ -1668,32 +1712,116 @@ export async function reviewExpenseRequest(id, decision, comment) {
     });
   if (revErr) throw revErr;
 
-  // 2. 지출 신청 정보 상태 전이
-  let newStatus = "draft";
-  const { data: current } = await supabase.from("expense_requests").select("status").eq("id", id).single();
-  
-  if (current.status === "pre_approval_submitted") {
-    newStatus = decision === "approved" ? "pre_approved" : "pre_approval_revision";
-  } else if (current.status === "final_approval_submitted") {
-    newStatus = decision === "approved" ? "final_approved" : "final_approval_revision";
+  return data;
+}
+
+// ----------------------------------------------------
+// 창업자 셀프서비스: 제출 철회 / 신청 취소 / 임시저장 삭제
+// (전이 규칙 단일 소스: domains/expense/expense-validation.js)
+// ----------------------------------------------------
+
+// 제출 철회: 관리자가 아직 검토하지 않은 '검토 대기' 건을 제출 직전 단계로 되돌린다.
+//   pre_approval_submitted   -> draft        (검토 중 점유가 풀려 비목 잔액으로 환원)
+//   final_approval_submitted -> pre_approved (사전승인 약정은 유지)
+// 제출 시각(submitted_at 등)은 지우지 않는다 — '제출 이력 있음'이 완전 삭제를 막는 판별 기준이다.
+export async function withdrawExpenseRequest(id, reason) {
+  const supabase = await getSupabase();
+  const { profile } = await getMyProfile(supabase);
+
+  const { data: current, error: curErr } = await supabase
+    .from("expense_requests").select("status").eq("id", id).single();
+  if (curErr) throw curErr;
+
+  const targetStatus = nextWithdrawStatus(current.status);
+  if (!targetStatus) {
+    throw new Error("검토 대기 상태에서만 철회할 수 있습니다. 이미 검토가 진행됐다면 검토 결과를 확인해 주세요.");
   }
 
-  const payload = { status: newStatus };
-  if (decision === "approved" && current.status === "pre_approval_submitted") {
-    payload.approved_at = new Date().toISOString();
-  } else if (decision === "approved" && current.status === "final_approval_submitted") {
-    payload.final_approved_at = new Date().toISOString();
+  // 조건부 UPDATE 로 동시성을 막는다. 철회하는 사이 관리자가 승인/보완요청을 끝냈으면 0건이 갱신되고,
+  // 그 검토 결과가 그대로 유지된다(철회보다 먼저 끝난 검토가 이긴다).
+  const { data, error } = await supabase
+    .from("expense_requests")
+    .update({ status: targetStatus })
+    .eq("id", id)
+    .eq("status", current.status)
+    .select("*")
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) throw new Error("철회 처리 전에 관리자 검토가 완료되었습니다. 새로고침 후 검토 결과를 확인해 주세요.");
+
+  // 전이 성공 후에만 이력을 남긴다(전이되지 않았는데 이력만 남는 것을 방지 — 승인 취소와 동일 순서).
+  // 이 INSERT 는 expense_reviews_member_insert_self_service RLS 정책(마이그레이션 필요)에 의존한다.
+  const { error: revErr } = await supabase
+    .from("expense_reviews")
+    .insert({
+      expense_request_id: id,
+      reviewer_id: profile.id,
+      decision: "withdrawn",
+      comment: String(reason || "").trim() || null,
+    });
+  if (revErr) throw revErr;
+
+  return data;
+}
+
+// 신청 취소: 창업자 손에 있는(수정 가능한) 건을 종결 상태(cancelled)로 보낸다.
+// 예산 집계에서 완전히 빠지고, 기록 보존을 위해 목록·첨부는 남는다(재제출 불가).
+export async function cancelExpenseRequestByFounder(id, reason) {
+  const supabase = await getSupabase();
+  const { profile } = await getMyProfile(supabase);
+
+  const { data: current, error: curErr } = await supabase
+    .from("expense_requests").select("status").eq("id", id).single();
+  if (curErr) throw curErr;
+
+  if (!canFounderCancel(current.status)) {
+    throw new Error("작성 중이거나 보완 요청된 건만 취소할 수 있습니다. 검토 대기 건은 먼저 철회해 주세요.");
   }
 
   const { data, error } = await supabase
     .from("expense_requests")
-    .update(payload)
+    .update({ status: "cancelled" })
     .eq("id", id)
+    .eq("status", current.status)
     .select("*")
-    .single();
-
+    .maybeSingle();
   if (error) throw error;
+  if (!data) throw new Error("처리 중 신청 상태가 변경되었습니다. 새로고침 후 다시 시도해 주세요.");
+
+  const { error: revErr } = await supabase
+    .from("expense_reviews")
+    .insert({
+      expense_request_id: id,
+      reviewer_id: profile.id,
+      decision: "founder_cancelled",
+      comment: String(reason || "").trim() || null,
+    });
+  if (revErr) throw revErr;
+
   return data;
+}
+
+// 임시저장 삭제: 한 번도 제출된 적 없는 draft 건만 완전 삭제한다.
+// 첨부 파일 메타(uploaded_files)·검토 이력은 FK ON DELETE CASCADE 로 함께 지워진다.
+// (S3 원본 파일은 남지만 참조가 사라진 고아 객체로, 화면에는 노출되지 않는다.)
+export async function deleteExpenseRequest(id) {
+  const supabase = await getSupabase();
+
+  const { data: current, error: curErr } = await supabase
+    .from("expense_requests").select("id, status, submitted_at").eq("id", id).single();
+  if (curErr) throw curErr;
+
+  if (!canFounderDelete(current)) {
+    throw new Error("제출 이력이 없는 임시저장 건만 삭제할 수 있습니다. 제출된 적이 있는 건은 '신청 취소'로 처리해 주세요.");
+  }
+
+  const { error } = await supabase
+    .from("expense_requests")
+    .delete()
+    .eq("id", id)
+    .eq("status", "draft");
+  if (error) throw error;
+  return true;
 }
 
 // 승인 취소: 관리자가 자신의 승인 결정을 되돌린다(보완요청과 달리 '관리자 판단 정정').

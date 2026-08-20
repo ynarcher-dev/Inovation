@@ -3,7 +3,7 @@ import { requireRole } from "../../auth.js";
 import { getFounderDashboard, submitFounderBudgetAllocations, downloadStoredFile, uploadFile, updateBusinessPlan } from "../../api.js";
 import { FounderExpenseStatusTable } from "../../components/FounderExpenseStatusTable.js";
 import { BudgetTreeView } from "../../components/BudgetTreeView.js";
-import { BUDGET_APPROVED_STATUSES, EXPENSE_STATUS_ORDER, EXPENSE_SEGMENTS, getExpenseSegment, getStatusLabel, getStatusTone } from "../../domains/status.js";
+import { BUDGET_APPROVED_STATUSES, BUDGET_PENDING_STATUSES, EXPENSE_STATUS_ORDER, EXPENSE_SEGMENTS, getExpenseSegment, getStatusLabel, getStatusTone } from "../../domains/status.js";
 import { hasApprovedBudget, isBudgetPendingReview, isChangeStatus, founderBudgetBanners } from "../../domains/budget/budget-status.js";
 import { escapeHtml, formatCurrency, formatDate, formatMoneyInput, parseNumber } from "../../utils.js";
 import { AttachmentList } from "../../components/attachments/AttachmentList.js";
@@ -487,7 +487,8 @@ try {
       };
       // 결재 단계(작성/사전승인/최종승인)별로 칩을 묶어 좌→우 프로세스 흐름처럼 보여준다.
       // 같은 단계 내부는 가는 화살표(›), 단계가 바뀌는 지점은 굵은 화살표로 연결한다.
-      const phaseOf = (s) => (s === "draft" ? "draft" : s.startsWith("pre_") ? "pre" : "final");
+      // 취소됨은 프로세스 밖의 종결 상태라 별도 그룹으로 맨 뒤에 둔다.
+      const phaseOf = (s) => (s === "draft" ? "draft" : s === "cancelled" ? "cancelled" : s.startsWith("pre_") ? "pre" : "final");
       const arrow = (major) => `<span class="chip-arrow${major ? " chip-arrow-major" : ""}" aria-hidden="true">›</span>`;
       const groups = [];
       for (const s of EXPENSE_STATUS_ORDER) {
@@ -598,17 +599,30 @@ try {
         ? `협약기간 ${formatDate(agreeStart)} ~ ${formatDate(agreeEnd)}`
         : "협약기간 미정");
       
-      const supportTotal = Number(detail.company?.support_total_amount || 0);
+      // 확정 총 예산 — companies.support_total_amount 는 승인 흐름이 갱신하지 않아 0 으로 남는 경우가 있어
+      // 확정 배정(allocations) 합을 우선 사용한다(관리자 기업 목록과 동일 기준, 없으면 컬럼 값으로 대체).
+      const allocatedTotal = (detail.allocations || []).reduce((s, a) => {
+        const r1 = Number(a.round1_allocated_amount ?? a.allocated_amount ?? 0);
+        const r2 = Number(a.round2_allocated_amount ?? 0);
+        return s + Number(a.allocated_amount ?? r1 + r2);
+      }, 0);
+      const supportTotal = allocatedTotal > 0 ? allocatedTotal : Number(detail.company?.support_total_amount || 0);
       setText("[data-support-total]", `${formatCurrency(supportTotal)}`);
-      
+
       // Approved total — 사전승인 완료 이후(최종승인 대기/보완/완료 포함) 약정 금액을 집행 현황으로 본다.
       const approvedExpenses = expenses.filter((r) => BUDGET_APPROVED_STATUSES.includes(r.status));
       const approvedTotalSum = approvedExpenses.reduce((s, r) => s + Number(r.amount_supply || 0), 0);
       setText("[data-approved-total]", formatCurrency(approvedTotalSum));
 
-      // Execution rate
+      // Execution rate — 예산 탭 트리와 기준을 맞추기 위해 검토 중(사전승인 대기/보완) 금액도 함께 보여준다.
+      // (트리 잔액은 검토 중 금액까지 차감하므로, 카드에 이를 숨기면 두 화면 숫자가 어긋나 보인다.)
+      const pendingTotalSum = expenses
+        .filter((r) => BUDGET_PENDING_STATUSES.includes(r.status))
+        .reduce((s, r) => s + Number(r.amount_supply || 0), 0);
       const rate = supportTotal ? Math.round((approvedTotalSum / supportTotal) * 100) : 0;
-      setText("[data-execution-rate]", `${rate}% 집행 완료`);
+      setText("[data-execution-rate]", pendingTotalSum > 0
+        ? `${rate}% 집행 (검토 중 ${formatCurrency(pendingTotalSum)} 별도)`
+        : `${rate}% 집행 완료`);
 
       // 지출 8단계 상태 칩/검색/필터 + 표 (new.md §4/§5)
       renderExpenseSection();

@@ -1,6 +1,7 @@
 // 지출 결재 상태 정의 (new.md 2장).
 // 사전승인(pre_*)과 최종승인(final_*)으로 분리하고, 보완 건은 같은 expense.id 를 유지한 채
 // 수정/재제출한다. 반려 개념은 없으며 검토 결과는 승인/보완요청 두 가지다.
+// cancelled 는 창업자가 신청 자체를 취소한 종결 상태다(예산 미점유, 수정/재제출 불가, 기록 보존용).
 export const statusLabels = {
   draft: "제출 대기",
   pre_approval_submitted: "사전승인 대기",
@@ -9,6 +10,7 @@ export const statusLabels = {
   final_approval_submitted: "최종승인 대기",
   final_approval_revision: "최종승인 보완",
   final_approved: "최종승인 완료",
+  cancelled: "취소됨",
 };
 
 export function getStatusLabel(status) {
@@ -34,8 +36,8 @@ export const BUDGET_PENDING_STATUSES = [
   "pre_approval_revision",
 ];
 
-// 예산을 점유하지 않는 상태(임시저장).
-export const BUDGET_NONE_STATUSES = ["draft"];
+// 예산을 점유하지 않는 상태(임시저장 + 신청 취소).
+export const BUDGET_NONE_STATUSES = ["draft", "cancelled"];
 
 // 예산 감액 하한 계산에 쓰는 '이미 점유된' 상태(승인/예약 + 검토 중).
 export const COMMITTED_STATUSES = [...BUDGET_APPROVED_STATUSES, ...BUDGET_PENDING_STATUSES];
@@ -88,6 +90,7 @@ export function getSubmitDocumentPhase(status) {
 // 창업자 지출 현황용 단순 상태(대시보드 카운터 그룹핑). 각 단계를 대기/승인/보완으로 묶는다.
 export function getSimpleExpenseStatus(status) {
   if (status === "draft") return { label: "제출 대기", tone: "neutral" };
+  if (status === "cancelled") return { label: "취소", tone: "neutral" };
   if (["pre_approval_revision", "final_approval_revision"].includes(status)) return { label: "보완", tone: "warning" };
   if (["pre_approved", "final_approved"].includes(status)) return { label: "승인", tone: "success" };
   if (["pre_approval_submitted", "final_approval_submitted"].includes(status)) return { label: "검토 중", tone: "info" };
@@ -95,6 +98,7 @@ export function getSimpleExpenseStatus(status) {
 }
 
 export function getStatusTone(status) {
+  if (status === "cancelled") return "neutral";
   if (["pre_approved", "final_approved"].includes(status)) return "success";
   if (status?.includes("revision")) return "warning";
   if (status?.includes("submitted")) return "info";
@@ -115,6 +119,7 @@ export const statusMeta = {
   final_approval_submitted: { phase: "최종승인", step: 2, group: "pending" },
   final_approval_revision: { phase: "최종승인", step: 2, group: "revision" },
   final_approved: { phase: "완료", step: 3, group: "approved" },
+  cancelled: { phase: "취소됨", step: 0, group: "cancelled" },
 };
 
 export function getStatusMeta(status) {
@@ -130,6 +135,7 @@ export const EXPENSE_STATUS_ORDER = [
   "final_approval_submitted",
   "final_approval_revision",
   "final_approved",
+  "cancelled",
 ];
 
 // 결재 구간 필터(new.md §4.2): 작성 중 / 사전승인 / 최종승인 / 종료.
@@ -143,7 +149,8 @@ export const EXPENSE_SEGMENTS = [
 
 export function getExpenseSegment(status) {
   if (status === "draft") return "draft";
-  if (status === "final_approved") return "closed";
+  // 최종승인 완료·신청 취소 모두 더 진행할 것이 없는 '종료' 구간이다.
+  if (["final_approved", "cancelled"].includes(status)) return "closed";
   if (status?.startsWith("pre_")) return "pre";
   if (status?.startsWith("final_")) return "final";
   return "draft";
@@ -175,6 +182,7 @@ const PROCESS_STEP_STATES = {
   final_approval_submitted: ["done", "done", "active", "todo"],
   final_approval_revision: ["done", "done", "revision", "todo"],
   final_approved: ["done", "done", "done", "done"],
+  cancelled: ["todo", "todo", "todo", "todo"], // 취소된 건은 프로세스 진행 없음(전부 미진입 표시)
 };
 
 export function getProcessSteps(status) {

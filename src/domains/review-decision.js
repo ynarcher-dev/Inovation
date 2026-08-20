@@ -4,10 +4,14 @@
 //   approved           : 승인
 //   revision_requested : 보완요청 (창업자가 수정 후 재제출)
 //   cancelled          : 승인 취소 (관리자가 자신의 승인 결정을 되돌림 — status.js 의 승인 취소 규칙 참고)
+//   withdrawn          : 신청 철회 (창업자가 검토 대기 중인 제출을 스스로 거둬들임 — 직전 단계로 복귀)
+//   founder_cancelled  : 신청 취소 (창업자가 신청 건 자체를 종결 — status 'cancelled' 전이)
 export const REVIEW_DECISIONS = {
   approved: { label: "승인", historyLabel: "승인 완료", tone: "success" },
   revision_requested: { label: "보완요청", historyLabel: "보완 요청", tone: "warning" },
   cancelled: { label: "승인 취소", historyLabel: "승인 취소", tone: "danger" },
+  withdrawn: { label: "신청 철회", historyLabel: "신청 철회", tone: "neutral" },
+  founder_cancelled: { label: "신청 취소", historyLabel: "신청 취소", tone: "neutral" },
 };
 
 export function getReviewDecisionMeta(decision) {

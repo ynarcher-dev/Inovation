@@ -63,6 +63,45 @@ export function getCancelKind(current) {
   return null;
 }
 
+// ----------------------------------------------------
+// founder 철회 / 신청 취소 / 삭제 규칙
+// ----------------------------------------------------
+
+// founder 제출 철회: 관리자가 아직 검토하지 않은 '검토 대기' 상태에서만,
+// 제출 직전 단계로 한 단계 되돌린다(승인 취소와 같은 단계적 롤백 축).
+//   pre_approval_submitted   -> draft        : 예산 점유(검토 중)가 풀려 잔액으로 환원된다
+//   final_approval_submitted -> pre_approved : 사전승인은 유지되므로 예산 점유(약정)는 유지된다
+// 검토가 이미 끝난 건(승인/보완)은 철회 대상이 아니다 — 보완 건은 수정·재제출 또는 신청 취소로 처리한다.
+export const EXPENSE_WITHDRAW_TRANSITIONS = {
+  pre_approval_submitted: "draft",
+  final_approval_submitted: "pre_approved",
+};
+
+// 철회 후 되돌아갈 상태. 철회 불가 상태면 null.
+export function nextWithdrawStatus(current) {
+  return EXPENSE_WITHDRAW_TRANSITIONS[current] || null;
+}
+
+export function canWithdraw(current) {
+  return nextWithdrawStatus(current) !== null;
+}
+
+// founder 신청 취소(cancelled 전이): 신청 건이 창업자 손에 있는(수정 가능한) 상태에서만 가능하다.
+// 검토 대기 건은 철회부터, 승인 완료 건은 관리자 승인 취소부터 거쳐야 이 상태로 내려온다.
+// cancelled 는 종결 상태다 — 예산 집계에서 빠지고, 수정/재제출할 수 없으며, 기록 보존을 위해 목록에는 남는다.
+export const FOUNDER_CANCELLABLE_STATUSES = ["draft", "pre_approval_revision", "final_approval_revision"];
+
+export function canFounderCancel(current) {
+  return FOUNDER_CANCELLABLE_STATUSES.includes(current);
+}
+
+// founder 완전 삭제: 한 번도 제출된 적 없는 임시저장 건만 지울 수 있다.
+// submitted_at 은 최초 사전승인 제출 시 찍힌 뒤 지워지지 않으므로 '제출 이력'의 판별 기준이 된다.
+// 제출 이력이 있는 건은 삭제 대신 신청 취소(cancelled)로 기록을 보존한다.
+export function canFounderDelete(expense) {
+  return expense?.status === "draft" && !expense?.submitted_at;
+}
+
 // 최초 제출(예산을 처음 점유) 상태인지 — 예산 초과 검증이 필요한 시점.
 export function isInitialCommitStatus(nextStatus) {
   return nextStatus === "pre_approval_submitted";
