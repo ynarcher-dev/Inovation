@@ -1,15 +1,27 @@
-[
-  {
-    "AllowedOrigins": [
-      "http://localhost:5500",
-      "http://127.0.0.1:5500",
-      "http://localhost:3000",
-      "http://127.0.0.1:3000",
-      "https://your-production-domain.com"
-    ],
-    "AllowedMethods": ["GET", "PUT", "HEAD"],
-    "AllowedHeaders": ["*"],
-    "ExposeHeaders": ["ETag"],
-    "MaxAgeSeconds": 3000
-  }
-]
+{
+    "CORSRules":  [
+                      {
+                          "AllowedOrigins":  [
+                                                 "http://localhost:5500",
+                                                 "http://127.0.0.1:5500",
+                                                 "http://localhost:3000",
+                                                 "http://127.0.0.1:3000",
+                                                 "https://www.athlete-ynarcher.com",
+                                                 "https://athlete-ynarcher.com",
+                                                 "https://your-production-domain.com"
+                                             ],
+                          "AllowedMethods":  [
+                                                 "GET",
+                                                 "PUT",
+                                                 "HEAD"
+                                             ],
+                          "AllowedHeaders":  [
+                                                 "*"
+                                             ],
+                          "ExposeHeaders":  [
+                                                "ETag"
+                                            ],
+                          "MaxAgeSeconds":  3000
+                      }
+                  ]
+}
