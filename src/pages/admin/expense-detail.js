@@ -6,6 +6,8 @@ import {
   cancelExpenseApproval,
   getExpenseDocumentRequirements,
   downloadStoredFile,
+  downloadExpenseEvidenceZip,
+  getEvidenceFilenameSettings,
   getAiSettings,
   requestAdminAiDocumentReview,
   requestAdminAiBatchDocumentReview,
@@ -19,16 +21,21 @@ import { escapeHtml, formatCurrency, formatDate, getQueryParam } from "../../uti
 
 // 관리자 상세: 제출된 첨부서류 + 1차(창업가) AI 검토 결과를 단계별로 표시하고,
 // 관리자가 필요하면 2차로 AI 재검토를 실행할 수 있다(결과는 admin_ai_* 컬럼에 분리 저장).
+//  반환: 업로드된 첨부 파일 수(증빙 일괄 다운로드 버튼의 건수 표기에 쓴다).
+//   - 파일은 (요구사항, 단계) 한 쌍에 하나씩 연결되므로 단계별 합계가 곧 전체 건수다.
+//   - AI 재검토로 패널을 다시 그려도 파일 구성은 바뀌지 않아, 최초 렌더 시점 값을 그대로 쓴다.
 async function renderAdminDocPanels(expenseId, aiEnabled, user) {
   const defs = [
     { phase: "pre", title: "사전승인 첨부서류", container: "[data-doc-panel-pre]" },
     { phase: "final", title: "최종승인 첨부서류", container: "[data-doc-panel-final]" },
   ];
+  const fileCounts = new Map();
   // 단계 하나를 렌더하고 이벤트를 다시 바인딩한다(재검토 후 재호출 가능).
   const renderPhase = async (def) => {
     const container = document.querySelector(def.container);
     if (!container) return;
     const requirements = (await getExpenseDocumentRequirements(expenseId, def.phase)) || [];
+    fileCounts.set(def.phase, requirements.filter((r) => r.file).length);
     renderDocumentPhasePanel(container, {
       phase: def.phase, title: def.title, requirements, editable: false, mode: "admin",
       aiEnabled,
@@ -73,6 +80,35 @@ async function renderAdminDocPanels(expenseId, aiEnabled, user) {
     });
   };
   for (const def of defs) await renderPhase(def);
+  return [...fileCounts.values()].reduce((sum, n) => sum + n, 0);
+}
+
+// 상단 액션: 이 신청의 증빙 첨부를 사전·최종 구분 없이 ZIP 한 개로 내려받는다.
+// 지출 목록의 '증빙 다운로드'와 같은 동작이며, 파일명은 '파일명 정리기' 템플릿을 따른다.
+//  - 첨부가 한 건도 없으면 버튼을 만들지 않는다(눌러도 빈손인 버튼을 두지 않는다).
+//  - 결재 버튼(승인/보완요청)과 떨어진 topbar 에 두어 오조작을 피한다.
+function renderEvidenceDownload(expense, fileCount, filenameSettings) {
+  const root = document.querySelector("[data-topbar-actions]");
+  if (!root || fileCount <= 0) return;
+  root.innerHTML =
+    `<button class="button secondary" type="button" data-evidence-zip>증빙 일괄 다운로드 (${fileCount}건)</button>`;
+
+  root.querySelector("[data-evidence-zip]").addEventListener("click", async (event) => {
+    await runWithErrorBoundary(async () => {
+      const count = await downloadExpenseEvidenceZip(expense, {
+        template: filenameSettings.template,
+        seqConfig: { seq_start: filenameSettings.seq_start, seq_pad: filenameSettings.seq_pad },
+      });
+      // 개별 파일 내려받기가 실패하면 ZIP 에서 조용히 빠지므로, 버튼에 표기한 건수와 다르면 알린다.
+      if (count === 0) {
+        showToast("첨부된 증빙서류가 없습니다.", { type: "info" });
+      } else if (count < fileCount) {
+        showToast(`증빙서류 ${fileCount}건 중 ${count}건만 내려받았습니다. 잠시 후 다시 시도해주세요.`, { type: "warning", duration: 6000 });
+      } else {
+        showToast(`증빙서류 ${count}건을 ZIP으로 내려받았습니다.`, { type: "success" });
+      }
+    }, { button: event.currentTarget, loadingText: "압축 중…" });
+  });
 }
 
 // 승인/보완요청/승인취소 코멘트를 최신순으로 노출한다(검토 이력이 없으면 카드를 숨김).
@@ -109,7 +145,11 @@ try {
   if (user) {
     const id = getQueryParam("id");
     const { expense, budgetCheck, reviews } = await getExpenseDetail(id);
-    const aiSettings = await getAiSettings();
+    // 증빙 ZIP 의 파일명 규칙은 지출 목록 화면과 같은 '파일명 정리기' 설정을 쓴다(관리자 전용 설정).
+    const [aiSettings, evidenceFilenameSettings] = await Promise.all([
+      getAiSettings(),
+      getEvidenceFilenameSettings(),
+    ]);
     document.querySelector("[data-title]").textContent = expense.title;
     document.querySelector("[data-status]").innerHTML = StatusBadge(expense.status);
     document.querySelector("[data-summary]").innerHTML = `
@@ -166,7 +206,8 @@ try {
       </dl>
     `;
     renderReviews(reviews);
-    await renderAdminDocPanels(expense.id, aiSettings.enabled, user);
+    const evidenceFileCount = await renderAdminDocPanels(expense.id, aiSettings.enabled, user);
+    renderEvidenceDownload(expense, evidenceFileCount, evidenceFilenameSettings);
 
     // 현재 상태에 따라 검토 종류(사전승인/최종승인)와 폼을 분기한다.
     //  - 검토 결과는 승인/보완요청 두 가지다(반려 없음).

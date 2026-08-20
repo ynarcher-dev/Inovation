@@ -168,6 +168,9 @@ a:hover {
   display: flex;
   align-items: center;
   gap: 8px;
+  /* 제목(지출 제목 등)이 길어도 액션 버튼이 줄바꿈/축소되지 않게 고정한다. */
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 h1 {
