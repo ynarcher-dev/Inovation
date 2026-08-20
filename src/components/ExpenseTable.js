@@ -3,12 +3,14 @@ import { escapeHtml, formatCurrency, formatDate } from "../utils.js";
 
 // 열별 고정 너비(%). table-layout:fixed 와 함께 써서 내용 길이와 무관하게 열 위치를 고정한다.
 //   '승인 대기'와 '전체 현황'이 같은 너비로 정렬되도록, 두 표가 동일한 열 구성을 공유한다.
+//   상태 열은 배지 옆에 승인 취소 마커가 붙을 수 있어 넓게 잡는다. 늘린 폭은 여유가 있는
+//   기업/공급가액에서 가져온다(예산 항목은 wrap-cell 이라 좁히면 줄바꿈으로 행 높이가 어긋난다).
 const COL_WIDTHS = {
-  company: 13,
+  company: 11,
   title: 14,
   budget: 28,
-  amount: 12,
-  status: 10,
+  amount: 10,
+  status: 14,
   missing: 7,
   warning: 7,
   date: 12,
@@ -18,12 +20,15 @@ const COL_WIDTHS = {
 // 승인 취소 이력 마커. 취소하면 상태가 이전 신청 단계로 되돌아가므로 상태값만으로는
 // '한 번 승인됐다가 취소된 건'을 구분할 수 없다. 상태 배지 옆에 횟수를 덧붙여 표시한다.
 // cancel_count 는 대시보드 조회에서 붙여준다(없으면 아무것도 그리지 않는다).
+//  - 배지와 같은 줄에 두어 행 높이를 균일하게 유지한다(간격은 .cancel-marker 가 담당).
+//  - 목록에서는 '↺ N회'로 짧게만 알리고, 자세한 내용은 tooltip 과 상세 화면에서 확인한다.
 function CancelMarker(row) {
   const count = Number(row.cancel_count || 0);
   if (count <= 0) return "";
   const at = row.last_cancelled_at ? formatDate(row.last_cancelled_at) : "";
-  const title = at ? `최근 승인 취소: ${at}` : "승인 취소 이력";
-  return ` <span class="cancel-marker" title="${escapeHtml(title)}">↺ 취소 ${count}회</span>`;
+  const title = at ? `승인 취소 ${count}회 · 최근 ${at}` : `승인 취소 ${count}회`;
+  return `<span class="cancel-marker" title="${escapeHtml(title)}">`
+    + `<span class="cancel-marker-icon" aria-hidden="true">↺</span>${count}회</span>`;
 }
 
 export function ExpenseTable(rows, options = {}) {
