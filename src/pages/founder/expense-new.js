@@ -372,12 +372,15 @@ try {
         if (!req) return;
         const file = await pickFile();
         if (!file) return;
-        await runWithErrorBoundary(async () => {
+        await runWithErrorBoundary(async ({ setLoadingText }) => {
           const targetId = await ensureDraft();
           if (!targetId) return;
-          await uploadExpenseDocumentFile(targetId, req, phase, file, user);
+          await uploadExpenseDocumentFile(targetId, req, phase, file, user, {
+            onProgress: (percent) => setLoadingText(`업로드 중… ${percent}%`),
+          });
+          setLoadingText("저장 중…");
           await renderDocSection();
-        }, { button });
+        }, { button, loadingText: "업로드 중… 0%" });
       };
 
       container.querySelectorAll("[data-doc-upload]").forEach((btn) =>

@@ -74,10 +74,13 @@ try {
         const req = reqById.get(reqId);
         const file = await pickFile();
         if (!file) return;
-        await runWithErrorBoundary(async () => {
-          await uploadExpenseDocumentFile(id, req, phase, file, user);
+        await runWithErrorBoundary(async ({ setLoadingText }) => {
+          await uploadExpenseDocumentFile(id, req, phase, file, user, {
+            onProgress: (percent) => setLoadingText(`업로드 중… ${percent}%`),
+          });
+          setLoadingText("저장 중…");
           await renderDocPanels();
-        }, { button });
+        }, { button, loadingText: "업로드 중… 0%" });
       };
 
       container.querySelectorAll("[data-doc-upload]").forEach((btn) =>

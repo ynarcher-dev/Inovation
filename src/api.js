@@ -326,10 +326,11 @@ export async function uploadProgramAiCriteriaDocument(programId, file, user) {
 }
 
 // 창업자 첨부서류 업로드: 실제 파일을 S3 에 보관(link_url)한 뒤 요구사항에 연결한다.
-export async function uploadExpenseDocumentFile(expenseRequestId, requirement, phase, file, user) {
+export async function uploadExpenseDocumentFile(expenseRequestId, requirement, phase, file, user, opts = {}) {
   const upload = await uploadFile(file, {
     companyId: user?.company_id || user?.profile?.company_id,
     expenseRequestId,
+    onProgress: opts.onProgress,
   });
   return remote.mockUploadExpenseDocumentFile(expenseRequestId, requirement.id, phase, {
     support_program_budget_id: requirement.support_program_budget_id || null,
@@ -379,7 +380,7 @@ export async function uploadFile(file, policyOpts = {}) {
     filePath = `companies/${companyId}/general/${uuid}.${ext}`;
   }
 
-  const key = await uploadFileToS3(file, filePath);
+  const key = await uploadFileToS3(file, filePath, policyOpts.onProgress);
   return { link_url: key, original_filename: sanitizeFilename(file.name) };
 }
 

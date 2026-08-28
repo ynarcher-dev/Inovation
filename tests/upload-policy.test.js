@@ -29,9 +29,16 @@ test("MIME 이 비어 있으면 확장자로 판정", () => {
   assert.equal(validateUploadFile({ name: "a.exe", type: "", size: 1000 }).valid, false);
 });
 
-test("최대 크기 초과는 거부, 빈 파일도 거부", () => {
-  assert.equal(validateUploadFile({ name: "a.pdf", type: "application/pdf", size: MAX_UPLOAD_BYTES + 1 }).valid, false);
+test("용량 상한은 없다 — 빈 파일만 거부", () => {
+  assert.equal(MAX_UPLOAD_BYTES, Infinity);
+  assert.equal(validateUploadFile({ name: "a.pdf", type: "application/pdf", size: 2 * 1024 * 1024 * 1024 }).valid, true);
   assert.equal(validateUploadFile({ name: "a.pdf", type: "application/pdf", size: 0 }).valid, false);
+});
+
+test("호출처가 opts.maxBytes 를 준 경우에만 상한이 걸린다", () => {
+  const opts = { maxBytes: 1024 };
+  assert.equal(validateUploadFile({ name: "a.pdf", type: "application/pdf", size: 2048 }, opts).valid, false);
+  assert.equal(validateUploadFile({ name: "a.pdf", type: "application/pdf", size: 512 }, opts).valid, true);
 });
 
 test("호출처별 정책 좁히기(이미지/PDF만)", () => {

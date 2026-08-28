@@ -124,6 +124,12 @@ export async function runWithErrorBoundary(action, options = {}) {
   // (AI 검토처럼 수 초 걸리는 동작에서 "눌렸는지/멈췄는지" 모호함을 없앤다)
   const loadingText = options.loadingText;
   let originalHtml;
+  // 진행 중 문구를 도중에 바꿀 수 있게 action 에 넘긴다(업로드 진행률 등).
+  // loadingText 없이 호출한 기존 호출부에서는 아무 일도 하지 않는다.
+  const setLoadingText = (text) => {
+    if (!button || originalHtml === undefined) return;
+    button.innerHTML = `<span class="btn-spinner" aria-hidden="true"></span>${text}`;
+  };
   try {
     if (button) {
       button.disabled = true;
@@ -133,7 +139,7 @@ export async function runWithErrorBoundary(action, options = {}) {
         button.innerHTML = `<span class="btn-spinner" aria-hidden="true"></span>${loadingText}`;
       }
     }
-    return await action();
+    return await action({ setLoadingText });
   } catch (error) {
     showError(error);
     return null;
