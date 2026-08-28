@@ -16,7 +16,7 @@ import { StatusBadge } from "../../components/StatusBadge.js";
 import { getReviewKind, getStatusLabel } from "../../domains/status.js";
 import { canCancelApproval, getCancelKind, nextCancelStatus } from "../../domains/expense/expense-validation.js";
 import { REVIEW_DECISIONS, isKnownReviewDecision } from "../../domains/review-decision.js";
-import { renderDocumentPhasePanel, openAiReviewModal } from "../../components/expense/DocumentPhasePanel.js";
+import { renderDocumentPhasePanel, openAiReviewModal, batchReviewMessage } from "../../components/expense/DocumentPhasePanel.js";
 import { escapeHtml, formatCurrency, formatDate, getQueryParam } from "../../utils.js";
 
 // 관리자 상세: 제출된 첨부서류 + 1차(창업가) AI 검토 결과를 단계별로 표시하고,
@@ -73,9 +73,10 @@ async function renderAdminDocPanels(expenseId, aiEnabled, user) {
     // 2차: 관리자 AI 일괄 재검토
     container.querySelector("[data-doc-admin-batch-review]")?.addEventListener("click", async (e) => {
       await runWithErrorBoundary(async () => {
-        const { reviewed } = await requestAdminAiBatchDocumentReview(expenseId, def.phase, user);
+        const result = await requestAdminAiBatchDocumentReview(expenseId, def.phase, user);
         await renderPhase(def);
-        if (!reviewed) showToast("AI 재검토할 업로드 파일이 없습니다.", { type: "info" });
+        const message = batchReviewMessage(result, { emptyText: "AI 재검토할 업로드 파일이 없습니다." });
+        if (message) showToast(message, { type: "info" });
       }, { button: e.currentTarget, loadingText: "일괄 재검토 중…" });
     });
   };

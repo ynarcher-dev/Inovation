@@ -1,4 +1,5 @@
 import { getSupabase } from "../auth.js";
+import { isAiReviewableFilename } from "../domains/upload-policy.js";
 import { CONFIG } from "../config.js";
 import { BUDGET_APPROVED_STATUSES, BUDGET_PENDING_STATUSES, COMMITTED_STATUSES } from "../domains/status.js";
 import {
@@ -2229,7 +2230,11 @@ export async function mockGetAiDocumentReviewContext(expenseRequestId, phase) {
 
   // 대상 요구 서류들 및 업로드된 파일들 조인
   const reqs = await getExpenseDocumentRequirements(expenseRequestId, phase);
-  const targets = reqs.filter((r) => r.ai_review_enabled && r.file);
+  // 검토 불가 형식(hwp/xlsx/zip 등)은 대상에서 뺀다. 한 건이라도 섞이면 엣지 함수가
+  // documents.forEach(validateDocument) 에서 415 를 던져 배치 전체가 실패하기 때문이다.
+  const candidates = reqs.filter((r) => r.ai_review_enabled && r.file);
+  const targets = candidates.filter((r) => isAiReviewableFilename(r.file.original_filename));
+  const skipped = candidates.filter((r) => !isAiReviewableFilename(r.file.original_filename));
 
   return {
     expense,
@@ -2240,6 +2245,7 @@ export async function mockGetAiDocumentReviewContext(expenseRequestId, phase) {
       updated_at: criteria?.updated_at || null,
     },
     targets,
+    skipped,
   };
 }
 

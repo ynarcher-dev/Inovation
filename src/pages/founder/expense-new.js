@@ -19,7 +19,7 @@ import {
 import { hasApprovedBudget } from "../../domains/budget/budget-status.js";
 import { FOUNDER_EDITABLE_STATUSES, COMMITTED_STATUSES, getSubmitDocumentPhase } from "../../domains/status.js";
 import { getExpenseTypesForBudgetCategory } from "../../domains/expense/rules-engine.js";
-import { renderDocumentPhasePanel, openAiReviewModal } from "../../components/expense/DocumentPhasePanel.js";
+import { renderDocumentPhasePanel, openAiReviewModal, batchReviewMessage } from "../../components/expense/DocumentPhasePanel.js";
 import { escapeHtml, formatMoneyInput, formatNumber, getQueryParam, parseNumber } from "../../utils.js";
 
 // 단계(phase) 매칭: 사전승인(pre)은 pre+both, 최종승인(final)은 final+both 서류.
@@ -405,9 +405,10 @@ try {
 
       container.querySelector("[data-doc-batch-review]")?.addEventListener("click", async (e) => {
         await runWithErrorBoundary(async () => {
-          const { reviewed } = await requestAiBatchDocumentReview(editId, phase);
+          const result = await requestAiBatchDocumentReview(editId, phase);
           await renderDocSection();
-          if (!reviewed) showToast("AI검토할 업로드 파일이 없습니다.", { type: "info" });
+          const message = batchReviewMessage(result, { emptyText: "AI검토할 업로드 파일이 없습니다." });
+          if (message) showToast(message, { type: "info" });
         }, { button: e.currentTarget, loadingText: "일괄 검토 중…" });
       });
 

@@ -6,7 +6,7 @@ import {
   requestDocumentReview as requestDocumentReviewFromEdge,
 } from "./services/ai-agent.js";
 import { parsePdfText } from "./services/pdf-parse.js";
-import { validateUploadFile, sanitizeFilename, getFileExtension } from "./domains/upload-policy.js";
+import { validateUploadFile, sanitizeFilename, getFileExtension, resolveAiReviewMime } from "./domains/upload-policy.js";
 import {
   renderEvidenceFilename,
   buildExpenseTokenValues,
@@ -265,7 +265,7 @@ async function reviewDocumentBatch({ expense, criteria, targets, save }) {
       id: req.file.id,
       fileBase64: dataUrlToBase64(stored.data),
       filename: req.file.original_filename || stored.filename || "document",
-      mimeType: stored.type || req.file.mime_type || "application/pdf",
+      mimeType: resolveAiReviewMime(req.file.original_filename, stored.type || req.file.mime_type) || "application/pdf",
       context: buildDocumentReviewContext(req, req.file, expense),
     });
   }
@@ -297,16 +297,23 @@ async function reviewDocumentBatch({ expense, criteria, targets, save }) {
 
 // 단계별 일괄 실제 AI 검토: 같은 단계의 모든 문서를 한 요청에 전달해 문서 간 정합성까지 검토한다.
 export async function requestAiBatchDocumentReview(expenseRequestId, phase) {
-  const { expense, criteria, targets } = await remote.mockGetAiDocumentReviewContext(expenseRequestId, phase);
-  return reviewDocumentBatch({ expense, criteria, targets, save: saveFounderReview });
+  const { expense, criteria, targets, skipped } = await remote.mockGetAiDocumentReviewContext(expenseRequestId, phase);
+  const result = await reviewDocumentBatch({ expense, criteria, targets, save: saveFounderReview });
+  return { ...result, skipped: skippedFilenames(skipped) };
+}
+
+// 검토 불가 형식으로 제외된 파일명 목록(화면 안내용).
+function skippedFilenames(skipped) {
+  return (skipped || []).map((r) => r.file?.original_filename).filter(Boolean);
 }
 
 // 관리자 2차 일괄 AI 검토: 창업가 검토와 동일한 로직으로 검토하되,
 // 결과는 admin_ai_* 컬럼에만 저장한다(창업가 화면에는 반영되지 않음).
 export async function requestAdminAiBatchDocumentReview(expenseRequestId, phase, user) {
-  const { expense, criteria, targets } = await remote.mockGetAiDocumentReviewContext(expenseRequestId, phase);
+  const { expense, criteria, targets, skipped } = await remote.mockGetAiDocumentReviewContext(expenseRequestId, phase);
   const save = (fileId, payload) => remote.mockSaveAdminAiDocumentReviewResult(fileId, payload, user);
-  return reviewDocumentBatch({ expense, criteria, targets, save });
+  const result = await reviewDocumentBatch({ expense, criteria, targets, save });
+  return { ...result, skipped: skippedFilenames(skipped) };
 }
 
 // 창업자 AI 결과 소명 처리/취소. AI 결과는 보존하고 신청자 의견만 덧붙인다.

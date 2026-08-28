@@ -1,6 +1,25 @@
 // 단계별(사전/최종) 첨부서류 패널 — 창업자 상세·관리자 상세 공용.
 // custom-document-requirements-plan.md §4.3(잠금/해금)·§4.4(AI검토 버튼)·§4.5(코멘트 위치) 구현.
 import { escapeHtml, formatDate } from "../../utils.js";
+import { isAiReviewableFilename, AI_REVIEWABLE_EXTENSIONS } from "../../domains/upload-policy.js";
+
+// AI 검토 대상 서류에 붙는 형식 안내. 업로드 전에 미리 알려 헛수고를 막는다.
+const AI_FORMAT_HINT = `AI 검토는 ${AI_REVIEWABLE_EXTENSIONS.join("·").toUpperCase()} 만 가능합니다.`;
+
+// 일괄 AI검토 결과 안내 문구. 형식 때문에 빠진 파일이 있으면 파일명까지 알려준다
+// (예전에는 한 건만 섞여도 배치 전체가 415 로 실패하면서 원인 파일을 알 수 없었다).
+export function batchReviewMessage({ reviewed, skipped = [] }, { emptyText } = {}) {
+  const names = nameList(skipped);
+  if (skipped.length && !reviewed) return `AI 검토 가능한 파일이 없습니다. 형식 미지원 ${skipped.length}건: ${names}`;
+  if (skipped.length) return `${reviewed}건 검토 완료. 형식 미지원 ${skipped.length}건은 제외했습니다: ${names}`;
+  if (!reviewed) return emptyText || "";
+  return "";
+}
+
+function nameList(names, max = 3) {
+  if (names.length <= max) return names.join(", ");
+  return `${names.slice(0, max).join(", ")} 외 ${names.length - max}건`;
+}
 
 // 파일 선택 드롭존 아이콘(feather upload) — 이모지 대신 라인 아이콘으로 통일.
 const UPLOAD_ICON = `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>`;
@@ -222,15 +241,21 @@ function requirementRowHtml(req, { editable, mode, aiEnabled }) {
     const canReview = aiEnabled
       && req.ai_review_enabled
       && (mode === "admin" || editable);
-    const reviewAction = canReview
+    // 검토 대상이지만 형식이 안 맞으면 버튼 대신 이유를 보여준다(눌러도 415 로 실패할 뿐이다).
+    const aiFormatBlocked = canReview && !isAiReviewableFilename(file.original_filename);
+    const reviewAction = canReview && !aiFormatBlocked
       ? `<button class="doc-file-btn is-ai" type="button" ${reviewDataAttr}="${escapeHtml(file.id)}">${
           reviewStatus && reviewStatus !== "not_requested" ? "AI 재검토" : "AI 검토"
         }</button>`
+      : "";
+    const aiFormatNote = aiFormatBlocked
+      ? `<span class="muted caption" title="${escapeHtml(AI_FORMAT_HINT)}">AI 검토 불가 형식</span>`
       : "";
     body = `
       <div class="doc-item-foot">
         <span class="doc-file-name"><span class="doc-file-icon">📄</span><span class="doc-file-label">${escapeHtml(file.original_filename)}</span></span>
         <div class="doc-file-actions">
+          ${aiFormatNote}
           ${fileEdit}
           ${reviewAction}
           <button class="doc-file-btn" type="button" data-doc-open="${escapeHtml(file.id)}">다운로드</button>
@@ -242,7 +267,8 @@ function requirementRowHtml(req, { editable, mode, aiEnabled }) {
     body = `
       <button class="doc-dropzone" type="button" data-doc-upload="${escapeHtml(req.id)}">
         <span class="doc-dropzone-icon">${UPLOAD_ICON}</span> 파일 선택
-      </button>`;
+      </button>
+      ${aiEnabled && req.ai_review_enabled ? `<p class="muted caption" style="margin:6px 0 0">${AI_FORMAT_HINT}</p>` : ""}`;
   } else {
     body = `<p class="doc-file-empty caption">${mode === "admin" ? "미제출" : "잠긴 단계입니다. 해당 단계가 해금되면 업로드할 수 있습니다."}</p>`;
   }

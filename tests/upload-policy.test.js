@@ -5,6 +5,8 @@ import {
   sanitizeFilename,
   getFileExtension,
   MAX_UPLOAD_BYTES,
+  isAiReviewableFilename,
+  resolveAiReviewMime,
 } from "../src/domains/upload-policy.js";
 
 test("허용 형식(PDF/이미지/문서)은 통과", () => {
@@ -87,7 +89,37 @@ test("매크로 포함 오피스 포맷은 거부", () => {
   }
 });
 
+test("zip 은 허용된다", () => {
+  for (const mime of ["application/zip", "application/x-zip-compressed", "application/octet-stream", ""]) {
+    assert.equal(validateUploadFile({ name: "증빙묶음.zip", type: mime, size: 1000 }).valid, true, mime);
+  }
+});
+
 test("컨테이너 MIME 을 허용해도 확장자 게이트는 그대로다", () => {
-  assert.equal(validateUploadFile({ name: "x.zip", type: "application/zip", size: 1000 }).valid, false);
+  // zip 을 열어도 확장자 목록 밖은 여전히 막힌다. 압축해 올리는 것과 그대로 올리는 것은 다르다.
   assert.equal(validateUploadFile({ name: "x.exe", type: "application/octet-stream", size: 1000 }).valid, false);
+  assert.equal(validateUploadFile({ name: "x.7z", type: "application/zip", size: 1000 }).valid, false);
+  assert.equal(validateUploadFile({ name: "x.rar", type: "application/octet-stream", size: 1000 }).valid, false);
+  // zip 이라도 렌더 가능한 MIME 이면 거부한다.
+  assert.equal(validateUploadFile({ name: "evil.zip", type: "text/html", size: 1000 }).valid, false);
+});
+
+test("AI 검토 가능 형식은 PDF·이미지뿐", () => {
+  for (const name of ["a.pdf", "a.PNG", "a.jpg", "a.jpeg", "a.webp"]) {
+    assert.equal(isAiReviewableFilename(name), true, name);
+  }
+  for (const name of ["a.hwp", "a.hwpx", "a.xlsx", "a.xls", "a.docx", "a.doc", "a.pptx", "a.zip"]) {
+    assert.equal(isAiReviewableFilename(name), false, name);
+  }
+});
+
+test("AI 검토용 MIME: 저장 ContentType 이 컨테이너 계열이면 확장자로 되살린다", () => {
+  // 브라우저가 MIME 을 비워 보내면 S3 에 octet-stream 으로 저장된다.
+  // 그대로 보내면 멀쩡한 PDF 가 엣지 함수에서 415 로 거절당한다.
+  assert.equal(resolveAiReviewMime("a.pdf", "application/octet-stream"), "application/pdf");
+  assert.equal(resolveAiReviewMime("a.pdf", ""), "application/pdf");
+  assert.equal(resolveAiReviewMime("a.png", "application/zip"), "image/png");
+  // 정상 MIME 은 그대로 둔다.
+  assert.equal(resolveAiReviewMime("a.png", "image/png"), "image/png");
+  assert.equal(resolveAiReviewMime("a.jpg", "image/jpeg"), "image/jpeg");
 });

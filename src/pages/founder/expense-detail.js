@@ -19,7 +19,7 @@ import {
 import { getStatusLabel, getStatusTone, isDocumentPhaseEditable, getSubmitDocumentPhase } from "../../domains/status.js";
 import { canFounderDelete } from "../../domains/expense/expense-validation.js";
 import { getReviewDecisionMeta, isKnownReviewDecision } from "../../domains/review-decision.js";
-import { renderDocumentPhasePanel, openAiReviewModal } from "../../components/expense/DocumentPhasePanel.js";
+import { renderDocumentPhasePanel, openAiReviewModal, batchReviewMessage } from "../../components/expense/DocumentPhasePanel.js";
 import { escapeHtml, formatCurrency, formatDate, getQueryParam } from "../../utils.js";
 
 try {
@@ -106,9 +106,10 @@ try {
       // 단계별 일괄 AI검토: 해당 단계의 업로드 파일을 한 번에 검토하고 결과를 각 행에 분배한다.
       container.querySelector("[data-doc-batch-review]")?.addEventListener("click", async (e) => {
         await runWithErrorBoundary(async () => {
-          const { reviewed } = await requestAiBatchDocumentReview(id, phase);
+          const result = await requestAiBatchDocumentReview(id, phase);
           await renderDocPanels();
-          if (!reviewed) showToast("AI검토할 업로드 파일이 없습니다.", { type: "info" });
+          const message = batchReviewMessage(result, { emptyText: "AI검토할 업로드 파일이 없습니다." });
+          if (message) showToast(message, { type: "info" });
         }, { button: e.currentTarget, loadingText: "일괄 검토 중…" });
       });
 
