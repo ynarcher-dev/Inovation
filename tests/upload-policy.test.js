@@ -60,3 +60,34 @@ test("getFileExtension", () => {
   assert.equal(getFileExtension("a.b.PDF"), "pdf");
   assert.equal(getFileExtension("noext"), "");
 });
+
+test("hwpx·pptx 는 허용된다", () => {
+  assert.equal(validateUploadFile({ name: "a.hwpx", type: "application/hwp+zip", size: 1000 }).valid, true);
+  assert.equal(validateUploadFile({ name: "a.pptx", type: "application/vnd.openxmlformats-officedocument.presentationml.presentation", size: 1000 }).valid, true);
+});
+
+test("컨테이너 계열 일반 MIME 은 확장자가 맞으면 통과 (PC 별 MIME 편차 흡수)", () => {
+  for (const mime of ["application/zip", "application/x-zip-compressed", "application/octet-stream", ""]) {
+    assert.equal(validateUploadFile({ name: "a.hwpx", type: mime, size: 1000 }).valid, true, mime);
+    assert.equal(validateUploadFile({ name: "a.hwp", type: mime, size: 1000 }).valid, true, mime);
+    assert.equal(validateUploadFile({ name: "a.xlsx", type: mime, size: 1000 }).valid, true, mime);
+  }
+});
+
+test("브라우저가 렌더할 수 있는 MIME 은 확장자가 맞아도 거부 (저장형 XSS 방지)", () => {
+  // 업로드 MIME 이 S3 저장 ContentType 이 되고, 안내자료 미리보기는 attachment 없이 열린다.
+  assert.equal(validateUploadFile({ name: "a.hwpx", type: "text/html", size: 1000 }).valid, false);
+  assert.equal(validateUploadFile({ name: "a.pdf", type: "image/svg+xml", size: 1000 }).valid, false);
+  assert.equal(validateUploadFile({ name: "a.pdf", type: "text/html", size: 1000 }).valid, false);
+});
+
+test("매크로 포함 오피스 포맷은 거부", () => {
+  for (const name of ["a.docm", "a.xlsm", "a.pptm", "a.xlsb"]) {
+    assert.equal(validateUploadFile({ name, type: "", size: 1000 }).valid, false, name);
+  }
+});
+
+test("컨테이너 MIME 을 허용해도 확장자 게이트는 그대로다", () => {
+  assert.equal(validateUploadFile({ name: "x.zip", type: "application/zip", size: 1000 }).valid, false);
+  assert.equal(validateUploadFile({ name: "x.exe", type: "application/octet-stream", size: 1000 }).valid, false);
+});
