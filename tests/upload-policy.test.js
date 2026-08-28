@@ -64,6 +64,10 @@ test("getFileExtension", () => {
 });
 
 test("hwpx·pptx 는 허용된다", () => {
+  // application/haansofthwpx 는 한컴오피스가 실제로 등록하는 값이다(운영에서 거부되어 확인됨).
+  for (const mime of ["application/hwp+zip", "application/vnd.hancom.hwpx", "application/haansofthwpx", "application/x-hwpx"]) {
+    assert.equal(validateUploadFile({ name: "a.hwpx", type: mime, size: 1000 }).valid, true, mime);
+  }
   assert.equal(validateUploadFile({ name: "a.hwpx", type: "application/hwp+zip", size: 1000 }).valid, true);
   assert.equal(validateUploadFile({ name: "a.pptx", type: "application/vnd.openxmlformats-officedocument.presentationml.presentation", size: 1000 }).valid, true);
 });
