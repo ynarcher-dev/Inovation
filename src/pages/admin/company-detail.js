@@ -227,8 +227,8 @@ try {
     const initialTab = getQueryParam("tab");
     if (initialTab) activateTab(initialTab);
 
-    // 사업계획서 1차/2차 탭: 첨부 파일/상태/최종 수정일. 승인 완료 파일만 다운로드를 노출한다.
-    // 승인 대기 예산 제출에 연결된 첨부본은 최종 승인본으로 제공하지 않는다(창업자 대시보드와 동일 규칙).
+    // 사업계획서 1차/2차 탭: 첨부 파일/상태/최종 수정일.
+    // 관리자는 예산 승인 여부와 관계없이 제출된 사업계획서를 확인한 뒤 예산을 검토해야 한다.
     const renderBusinessPlanTab = () => {
       const plans = detail.company?.business_plans || {};
       const approvedSubmissionIds = new Set(
@@ -250,7 +250,7 @@ try {
         setText(`[data-bp-${round}-file]`, plan.original_filename);
         setText(`[data-bp-${round}-status]`, approved ? "승인 완료" : "승인 대기");
         setText(`[data-bp-${round}-updated]`, plan.updated_at ? formatDate(plan.updated_at) : "-");
-        if (dlBtn) dlBtn.hidden = !approved;
+        if (dlBtn) dlBtn.hidden = !plan.link_url;
       };
       renderSlot("round1");
       renderSlot("round2");
@@ -558,7 +558,7 @@ try {
       }, { button: btn });
     });
 
-    // 사업계획서 1차/2차 다운로드(승인 완료 파일만 버튼 노출 — renderBusinessPlanTab 에서 제어).
+    // 사업계획서 1차/2차 다운로드(제출 즉시 관리자에게 노출 — renderBusinessPlanTab 에서 제어).
     // 새 탭에서 여는 대신 원본 파일명으로 실제 파일을 내려받는다.
     document.querySelectorAll("[data-bp-download]").forEach((btn) => {
       btn.addEventListener("click", async () => {
