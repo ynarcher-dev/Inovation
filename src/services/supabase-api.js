@@ -2,6 +2,7 @@ import { getSupabase } from "../auth.js";
 import { isAiReviewableFilename } from "../domains/upload-policy.js";
 import { CONFIG } from "../config.js";
 import { BUDGET_APPROVED_STATUSES, BUDGET_PENDING_STATUSES, COMMITTED_STATUSES } from "../domains/status.js";
+import { getActiveBudgetSubmission } from "../domains/budget/budget-status.js";
 import {
   nextCancelStatus,
   nextWithdrawStatus,
@@ -758,11 +759,14 @@ async function buildBudgetDerived(supabase, { company, programBudgets, allocatio
   const budgetById = new Map(budgets.map((b) => [b.id, b]));
 
   // 제출 이력(최신순) + 제출자 이름
-  const { data: rawSubmissions } = await supabase
+  const { data: rawSubmissions, error: submissionsErr } = await supabase
     .from("budget_submissions")
     .select("*, profiles(name)")
     .eq("company_id", companyId)
-    .order("submitted_at", { ascending: false });
+    .order("submitted_at", { ascending: false })
+    .order("created_at", { ascending: false })
+    .order("id", { ascending: false });
+  if (submissionsErr) throw submissionsErr;
   const submissionRows = rawSubmissions || [];
 
   // 제출별 항목 일괄 조회
@@ -782,8 +786,8 @@ async function buildBudgetDerived(supabase, { company, programBudgets, allocatio
   }
 
   const budgetSubmissions = attachSubmissionItems(submissionRows, itemsBySubmission, budgetById);
-  const pendingSubmission =
-    budgetSubmissions.find((s) => pendingStatuses.includes(s.status)) || null;
+  const latestSubmission = budgetSubmissions[0] || null;
+  const pendingSubmission = getActiveBudgetSubmission(budgetSubmissions, pendingStatuses);
   if (pendingSubmission && !pendingSubmission.submitted_by_name) {
     pendingSubmission.submitted_by_name = company.representative_name || "-";
   }
@@ -837,7 +841,7 @@ async function buildBudgetDerived(supabase, { company, programBudgets, allocatio
     );
   }
 
-  return { budgetSubmissions, pendingSubmission, committedByBudgetId, budgetTree, pendingBudgetTree, round2Status };
+  return { budgetSubmissions, latestSubmission, pendingSubmission, committedByBudgetId, budgetTree, pendingBudgetTree, round2Status };
 }
 
 export async function getFounderDashboard() {
@@ -904,6 +908,7 @@ export async function getFounderDashboard() {
     manualLinks: guidanceItems || [],
     programBudgets: programBudgets || [],
     budgetSubmissions: derived.budgetSubmissions,
+    latestBudgetSubmission: derived.latestSubmission,
     pendingSubmission: derived.pendingSubmission,
     pendingBudgetTree: derived.pendingBudgetTree,
     committedByBudgetId: derived.committedByBudgetId,
@@ -1362,6 +1367,7 @@ export async function getAdminCompanyDetail(companyId) {
     pendingSubmission: derived.pendingSubmission,
     committedByBudgetId: derived.committedByBudgetId,
     budgetSubmissions: derived.budgetSubmissions,
+    latestBudgetSubmission: derived.latestSubmission,
     round2Status: derived.round2Status,
     reviewHistory,
     // 기존 호출부 호환: 제출 이력을 budgetHistory 로도 노출한다.
@@ -1412,6 +1418,18 @@ export async function reviewBudgetSubmission(submissionId, decision, comment) {
 
   if (error) throw error;
   return { ok: true };
+}
+
+// 최신 승인본에서 뒤늦게 문제가 발견된 경우 승인 이력을 덮어쓰지 않고,
+// 확정 예산을 복사한 새 변경 보완 버전을 만든다.
+export async function requestApprovedBudgetRevision(submissionId, comment) {
+  const supabase = await getSupabase();
+  const { data, error } = await supabase.rpc("request_budget_revision_after_approval", {
+    p_submission_id: submissionId,
+    p_comment: comment || null,
+  });
+  if (error) throw error;
+  return { ok: true, submissionId: data?.submission_id || null };
 }
 
 export async function upsertCompanyBudgetAllocation(companyId, budgetId, allocatedAmount) {
@@ -2398,4 +2416,3 @@ export async function updateBusinessPlan(companyId, round, file, options = {}) {
 
   return business_plans;
 }
-

@@ -3,6 +3,7 @@ import { requireRole } from "../../auth.js";
 import {
   getAdminCompanyDetail,
   reviewBudgetSubmission,
+  requestApprovedBudgetRevision,
   downloadStoredFile,
   downloadStoredFileToDisk,
   updateCompanyInternalMemo,
@@ -22,7 +23,7 @@ import { BudgetSubmissionDiff } from "../../components/budget/BudgetSubmissionDi
 import { BudgetHistoryTable } from "../../components/budget/BudgetHistoryTable.js";
 import { ExpenseTable } from "../../components/ExpenseTable.js";
 import { attachCategoryHighlight, attachAllocationHandlers } from "../../dom/admin-company-detail.js";
-import { getBudgetStatusLabel } from "../../domains/budget/budget-status.js";
+import { getBudgetStatusLabel, isApprovedBudgetSubmission } from "../../domains/budget/budget-status.js";
 import { ADMIN_REVIEW_STATUSES } from "../../domains/status.js";
 import {
   escapeHtml,
@@ -374,6 +375,7 @@ try {
       const detailEl = document.getElementById("budget-review-detail");
       const actionsEl = document.getElementById("budget-review-actions");
       const pending = detail.pendingSubmission;
+      const latest = detail.latestBudgetSubmission || detail.budgetSubmissions?.[0] || null;
       const reviewButtons = actionsEl ? actionsEl.querySelectorAll("button") : [];
 
       if (pending) {
@@ -406,7 +408,43 @@ try {
         }
       } else {
         const status = detail.company.budget_status || "not_submitted";
-        detailEl.innerHTML = `<p class="empty">현재 검토할 예산 제출안이 없습니다. (예산안 상태: ${escapeHtml(getBudgetStatusLabel(status))})</p>`;
+        if (isApprovedBudgetSubmission(latest)) {
+          detailEl.innerHTML = `
+            <div class="notice notice-success">
+              <div>
+                <strong>현재 최신 버전은 승인 완료 상태입니다.</strong><br>
+                <span class="caption">승인 후 문제가 발견됐다면 승인 이력을 유지한 채 새 보완 버전을 만들 수 있습니다.</span>
+              </div>
+            </div>
+            <div style="margin-top:12px; display:flex; gap:12px; align-items:flex-start;">
+              <textarea id="approved-budget-revision-comment" placeholder="승인 후 보완이 필요한 사유를 입력하세요." style="flex:1; min-height:64px; box-sizing:border-box; resize:vertical;"></textarea>
+              <button class="button warning" id="btn-reopen-approved-budget" type="button">승인 후 보완요청</button>
+            </div>`;
+          const reopenBtn = detailEl.querySelector("#btn-reopen-approved-budget");
+          reopenBtn?.addEventListener("click", async () => {
+            const reopenComment = detailEl.querySelector("#approved-budget-revision-comment")?.value.trim() || "";
+            if (!reopenComment) {
+              showToast("승인 후 보완요청 사유를 입력해야 합니다.", { type: "warning" });
+              detailEl.querySelector("#approved-budget-revision-comment")?.focus();
+              return;
+            }
+            const ok = await showConfirm("최신 승인본을 기준으로 새 보완 버전을 생성하시겠습니까? 기존 승인 이력과 확정 예산은 유지됩니다.", {
+              title: "승인 후 보완요청",
+              confirmText: "보완요청",
+              cancelText: "취소",
+              tone: "danger",
+            });
+            if (!ok) return;
+            await runWithErrorBoundary(async () => {
+              await requestApprovedBudgetRevision(latest.id, reopenComment);
+              detail = await getAdminCompanyDetail(id);
+              renderHeader();
+              showToast("새 보완 버전이 생성되었습니다.", { type: "success" });
+            }, { button: reopenBtn });
+          });
+        } else {
+          detailEl.innerHTML = `<p class="empty">현재 검토할 예산 제출안이 없습니다. (예산안 상태: ${escapeHtml(getBudgetStatusLabel(status))})</p>`;
+        }
         // 검토할 제출안이 없으면 코멘트 입력란·승인/보완요청 버튼 영역 자체를 숨긴다.
         if (actionsEl) actionsEl.style.display = "none";
         reviewButtons.forEach((b) => (b.disabled = true));

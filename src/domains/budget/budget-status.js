@@ -137,3 +137,15 @@ export function canEditBudget(status) {
     BUDGET_STATUS.CHANGE_APPROVED,
   ].includes(status);
 }
+
+// 제출 이력은 API에서 최신순으로 전달된다. 현재 작업 건은 "이력 전체에서
+// 대기 상태인 첫 건"이 아니라 반드시 최신 제출 한 건이어야 한다.
+export function getActiveBudgetSubmission(submissions, activeStatuses) {
+  const latest = submissions?.[0] || null;
+  return latest && activeStatuses.includes(latest.status) ? latest : null;
+}
+
+export function isApprovedBudgetSubmission(submission) {
+  return [BUDGET_STATUS.BUDGET_APPROVED, BUDGET_STATUS.CHANGE_APPROVED]
+    .includes(submission?.status);
+}

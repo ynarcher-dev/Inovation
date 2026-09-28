@@ -86,6 +86,7 @@ export const approveCompany = remote.approveCompany;
 export const rejectCompany = remote.rejectCompany;
 export const resetFounderPassword = remote.resetFounderPassword;
 export const reviewBudgetSubmission = remote.reviewBudgetSubmission;
+export const requestApprovedBudgetRevision = remote.requestApprovedBudgetRevision;
 export const upsertCompanyBudgetAllocation = remote.upsertCompanyBudgetAllocation;
 export const updateCompanySupportTotal = remote.updateCompanySupportTotal;
 export const updateCompanyInternalMemo = remote.updateCompanyInternalMemo;
